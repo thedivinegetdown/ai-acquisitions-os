@@ -5,6 +5,8 @@ import DealModal from "./components/DealModal";
 import CommandPalette from "./components/CommandPalette";
 import ThemeToggle from "./components/ThemeToggle";
 import ChatInbox from "./components/ChatInbox";
+import ConversationInbox from "./components/ConversationInbox";
+import ConversationThread from "./components/ConversationThread";
 import { pageStyleBase, headerStyle } from "./AppLayout";
 import { getPageSections, SectionRenderer } from "./AppSections";
 
@@ -20,6 +22,7 @@ loadDeals,
 
 const [selectedDeal, setSelectedDeal] = useState(null);
 const [selectedIds, setSelectedIds] = useState([]);
+const [selectedPhone, setSelectedPhone] = useState(null);
 const [dark, setDark] = useState(false);
 
 useEffect(() => {
@@ -87,6 +90,15 @@ color: text,
   </div>
 
   <ChatInbox />
+
+  <ConversationInbox
+    selectedPhone={selectedPhone}
+    setSelectedPhone={setSelectedPhone}
+  />
+
+  <ConversationThread
+    selectedPhone={selectedPhone}
+  />
 
   {isLoaded && (
     <SectionRenderer

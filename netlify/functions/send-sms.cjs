@@ -115,6 +115,8 @@ async function handleRequest(event) {
     to,
     deal_id,
     hasMessage: !!message,
+    messageLength: message.length,
+    rawBody: event.body,
   });
 
   if (!to.trim()) {
@@ -140,14 +142,9 @@ async function handleRequest(event) {
   }
 
   if (!deal_id) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({
-        success: false,
-        error: "Missing deal_id",
-      }),
-    };
+    console.log(
+      "[SMS] No deal_id provided. Continuing send; function-side deal log will be skipped."
+    );
   }
 
   let mode = "live";
@@ -159,10 +156,22 @@ async function handleRequest(event) {
     status = "test";
     provider_sid = "TEST_MESSAGE";
 
-    console.log(`[SMS TEST MODE] To: ${to}`);
+    console.log("[SMS] Test mode or missing Twilio env. Twilio will not be called:", {
+      to,
+      hasAccountSid: !!accountSid,
+      hasAuthToken: !!authToken,
+      hasFromNumber: !!fromNumber,
+      testMode,
+    });
     console.log(`[SMS TEST MODE] Message: ${message}`);
   } else {
     try {
+      console.log("[SMS] Calling Twilio messages.create:", {
+        from: fromNumber,
+        to,
+        messageLength: message.length,
+      });
+
       const client = twilio(accountSid, authToken);
 
       const twilioResult = await client.messages.create({
@@ -173,16 +182,24 @@ async function handleRequest(event) {
 
       provider_sid = twilioResult.sid;
 
-      console.log("[SMS] Twilio sent:", provider_sid);
+      console.log("[SMS] Twilio sent:", {
+        sid: provider_sid,
+        status: twilioResult.status,
+        to: twilioResult.to,
+        from: twilioResult.from,
+      });
     } catch (twilioError) {
       console.error("[SMS] Twilio error:", twilioError);
 
-      await saveLog({
-        deal_id,
-        phone: to,
-        message,
-        status: "failed",
-      });
+      if (deal_id) {
+        await saveLog({
+          deal_id,
+          phone: to,
+          message,
+          status: "failed",
+          direction: "outbound",
+        });
+      }
 
       return {
         statusCode: 500,
@@ -195,12 +212,19 @@ async function handleRequest(event) {
     }
   }
 
-  await saveLog({
-    deal_id,
-    phone: to,
-    message,
-    status,
-  });
+  if (deal_id) {
+    await saveLog({
+      deal_id,
+      phone: to,
+      message,
+      status,
+      direction: "outbound",
+    });
+  } else {
+    console.log(
+      "[SMS] Send succeeded without deal_id. Skipping function log so the conversation UI can write the outbound log once."
+    );
+  }
 
   return {
     statusCode: 200,
@@ -225,6 +249,14 @@ async function saveLog(logData) {
   }
 
   try {
+    console.log("[SMS] Saving message log:", {
+      deal_id: logData.deal_id,
+      phone: logData.phone,
+      status: logData.status,
+      direction: logData.direction,
+      messageLength: logData.message?.length || 0,
+    });
+
     const { error } = await supabase
       .from("message_logs")
       .insert({
@@ -232,6 +264,7 @@ async function saveLog(logData) {
         phone: logData.phone,
         message: logData.message,
         status: logData.status,
+        direction: logData.direction,
         created_at: new Date().toISOString(),
       });
 

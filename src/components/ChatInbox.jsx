@@ -7,7 +7,6 @@ const [messages, setMessages] = useState([]);
 useEffect(() => {
 loadMessages();
 
-```
 const subscription = supabase
   .channel("sms-inbox")
   .on(
@@ -31,7 +30,6 @@ const subscription = supabase
 return () => {
   supabase.removeChannel(subscription);
 };
-```
 
 }, []);
 
@@ -43,7 +41,6 @@ const { data, error } = await supabase
 ascending: false,
 });
 
-```
 console.log("MESSAGES:", data);
 console.log("ERROR:", error);
 
@@ -53,7 +50,6 @@ if (error) {
 }
 
 setMessages(data || []);
-```
 
 }
 
@@ -70,7 +66,6 @@ marginBottom: 20,
 <h2 style={{ marginTop: 0 }}>
 SMS Inbox </h2>
 
-```
   <div
     style={{
       marginBottom: 10,
@@ -115,7 +110,6 @@ SMS Inbox </h2>
     ))
   )}
 </div>
-```
 
 );
 }
