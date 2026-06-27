@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { createBuyer, listBuyers } from "../services/repositories";
 
 export default function BuyersBoard() {
   const [buyers, setBuyers] =
@@ -19,19 +19,13 @@ export default function BuyersBoard() {
     useState(false);
 
   async function loadBuyers() {
-    const { data, error } =
-      await supabase
-        .from("buyers")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        });
+    const result = await listBuyers();
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       setBuyers([]);
     } else {
-      setBuyers(data || []);
+      setBuyers(result.data || []);
     }
   }
 
@@ -50,24 +44,10 @@ export default function BuyersBoard() {
     e.preventDefault();
     setSaving(true);
 
-    const { error } =
-      await supabase
-        .from("buyers")
-        .insert([
-          {
-            ...form,
-            max_price:
-              form.max_price ===
-              ""
-                ? null
-                : Number(
-                    form.max_price
-                  ),
-          },
-        ]);
+    const result = await createBuyer(form);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Error saving buyer");
     } else {
       setForm({

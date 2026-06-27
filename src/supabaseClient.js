@@ -1,6 +1,23 @@
 import { createClient } from "@supabase/supabase-js";
+import { appConfig, validateClientConfig } from "./services/config";
+import { logger } from "./services/logging";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const configValidation = validateClientConfig();
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+if (!configValidation.success) {
+  logger.error("[config] Missing required client environment variables", {
+    missing: configValidation.missing,
+  });
+}
+
+export const supabase = createClient(
+  appConfig.supabase.url || "",
+  appConfig.supabase.anonKey || "",
+  {
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  }
+);

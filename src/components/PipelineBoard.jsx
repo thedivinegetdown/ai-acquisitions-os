@@ -3,7 +3,9 @@ import {
   Droppable,
   Draggable,
 } from "@hello-pangea/dnd";
-import { supabase } from "../supabaseClient";
+import { memo, useCallback, useMemo } from "react";
+import { sendOutboundSms } from "../services/sms";
+import { updateDeal } from "../services/repositories";
 
 const STAGES = [
   "New Lead",
@@ -13,14 +15,40 @@ const STAGES = [
   "Closed",
 ];
 
-export default function PipelineBoard({
+function PipelineBoard({
   deals,
   openDeal,
   selectedIds,
   toggleSelect,
   refresh,
 }) {
-  async function onDragEnd(result) {
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const dealsByStage = useMemo(() => {
+    return STAGES.reduce((groups, stage) => {
+      groups[stage] = [];
+      return groups;
+    }, {});
+  }, []);
+
+  const stagedDeals = useMemo(() => {
+    const groups = STAGES.reduce((nextGroups, stage) => {
+      nextGroups[stage] = [];
+      return nextGroups;
+    }, {});
+
+    deals.forEach((deal) => {
+      const stage = deal.stage || "New Lead";
+      if (!groups[stage]) groups[stage] = [];
+      groups[stage].push(deal);
+    });
+
+    return {
+      ...dealsByStage,
+      ...groups,
+    };
+  }, [deals, dealsByStage]);
+
+  const onDragEnd = useCallback(async (result) => {
     if (!result.destination) return;
 
     const deal = deals.find(
@@ -36,13 +64,10 @@ export default function PipelineBoard({
     if (newStage === previousStage) return;
 
     // 🔁 Update stage in Supabase
-    const { error } = await supabase
-      .from("deals")
-      .update({ stage: newStage })
-      .eq("id", deal.id);
+    const updateResult = await updateDeal(deal.id, { stage: newStage });
 
-    if (error) {
-      console.error(error);
+    if (!updateResult.success) {
+      console.error(updateResult.error);
       alert("Could not move deal");
       return;
     }
@@ -53,37 +78,21 @@ export default function PipelineBoard({
       previousStage !== "Contacted"
     ) {
       try {
-        const response = await fetch(
-          "/.netlify/functions/send-sms",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              to: deal.phone,
-              message: `Hi, I'm reaching out about ${
-                deal.property_address || "your property"
-              }. Would you consider an offer?`,
-              deal_id: deal.id,
-            }),
-          }
-        );
-
-        const text = await response.text();
-
-        console.log("[AUTO SMS RESPONSE]", text);
+        await sendOutboundSms({
+          to: deal.phone,
+          message: `Hi, I'm reaching out about ${
+            deal.property_address || "your property"
+          }. Would you consider an offer?`,
+          dealId: deal.id,
+        });
       } catch (err) {
-        console.error(
-          "[AUTO SMS ERROR]",
-          err
-        );
+        console.error("[AUTO SMS ERROR]", err);
       }
     }
 
     // Refresh UI
     refresh();
-  }
+  }, [deals, refresh]);
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
@@ -91,15 +100,14 @@ export default function PipelineBoard({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "repeat(auto-fit, minmax(260px, 1fr))",
+            "repeat(auto-fit, minmax(min(100%, 260px), 1fr))",
           gap: 16,
+          width: "100%",
+          minWidth: 0,
         }}
       >
         {STAGES.map((stage) => {
-          const rows = deals.filter(
-            (deal) =>
-              (deal.stage || "New Lead") === stage
-          );
+          const rows = stagedDeals[stage] || [];
 
           return (
             <Droppable
@@ -130,9 +138,7 @@ export default function PipelineBoard({
                   >
                     {rows.map((deal, index) => {
                       const checked =
-                        selectedIds.includes(
-                          deal.id
-                        );
+                        selectedIdSet.has(deal.id);
 
                       return (
                         <Draggable
@@ -170,6 +176,7 @@ export default function PipelineBoard({
                                 <input
                                   type="checkbox"
                                   checked={checked}
+                                  aria-label={`Select deal ${deal.property_address || deal.id}`}
                                   onChange={() =>
                                     toggleSelect(
                                       deal.id
@@ -178,6 +185,17 @@ export default function PipelineBoard({
                                 />
 
                                 <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(event) => {
+                                    if (
+                                      event.key === "Enter" ||
+                                      event.key === " "
+                                    ) {
+                                      event.preventDefault();
+                                      openDeal(deal);
+                                    }
+                                  }}
                                   style={{
                                     flex: 1,
                                     cursor: "pointer",
@@ -185,6 +203,7 @@ export default function PipelineBoard({
                                   onClick={() =>
                                     openDeal(deal)
                                   }
+                                  aria-label={`Open deal ${deal.property_address || deal.id}`}
                                 >
                                   <div
                                     style={{
@@ -243,3 +262,5 @@ export default function PipelineBoard({
     </DragDropContext>
   );
 }
+
+export default memo(PipelineBoard);

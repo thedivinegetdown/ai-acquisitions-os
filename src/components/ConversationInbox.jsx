@@ -1,90 +1,92 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import AsyncStateView from "./AsyncStateView";
+import { loadConversationInbox } from "../services/conversations";
+import { logger } from "../services/logging";
 
-export default function ConversationInbox({ selectedPhone, setSelectedPhone }) {
+export default function ConversationInbox({
+selectedPhone,
+setSelectedPhone,
+}) {
 const [conversations, setConversations] = useState([]);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState("");
 
 useEffect(() => {
 loadConversations();
 }, []);
 
 async function loadConversations() {
-const { data, error } = await supabase
-.from("message_logs")
-.select("phone, created_at")
-.order("created_at", {
-ascending: false,
-});
+setLoading(true);
+setError("");
+const result = await loadConversationInbox();
 
-if (error) {
-  console.error(error);
+if (!result.success) {
+  logger.error("[ConversationInbox] Conversation load failed", result.error);
   setConversations([]);
+  setError(result.error?.message || "Could not load conversations.");
+  setLoading(false);
   return;
 }
 
-const uniqueConversations = [];
-const seenPhones = new Set();
-
-(data || []).forEach((message) => {
-  if (!message.phone || seenPhones.has(message.phone)) return;
-
-  seenPhones.add(message.phone);
-  uniqueConversations.push(message);
-});
-
-setConversations(uniqueConversations);
+setConversations(result.data);
+setLoading(false);
 }
 
 return (
 <div
 style={{
-background: "#ffffff",
+background: "#fff",
 border: "1px solid #e5e7eb",
 borderRadius: 12,
 padding: 20,
 marginBottom: 20,
 }}
->
-<h2 style={{ marginTop: 0 }}>
-Conversations
-</h2>
+> <h2>Conversations</h2>
 
-{conversations.length === 0 ? (
-  <p>No conversations yet.</p>
-) : (
-  conversations.map((conversation) => (
-    <button
-      key={conversation.phone}
-      type="button"
-      onClick={() => setSelectedPhone(conversation.phone)}
+  <AsyncStateView
+    loading={loading}
+    error={error}
+    empty={conversations.length === 0}
+    loadingMessage="Loading conversations..."
+    emptyMessage="No conversations yet."
+    errorMessage="Unable to load conversations"
+    onRetry={loadConversations}
+  >
+  {conversations.map((conv) => (
+    <div
+      key={conv.phone}
+      onClick={() =>
+        setSelectedPhone(conv.phone)
+      }
       style={{
-      display: "block",
-      width: "100%",
-      textAlign: "left",
-      background:
-        selectedPhone === conversation.phone ? "#e0f2fe" : "#ffffff",
-      border: "1px solid #e5e7eb",
-      borderRadius: 8,
-      padding: 12,
-      marginBottom: 8,
-      cursor: "pointer",
+        padding: 12,
+        cursor: "pointer",
+        borderBottom:
+          "1px solid #e5e7eb",
+        background:
+          selectedPhone ===
+          conv.phone
+            ? "#f1f5f9"
+            : "transparent",
       }}
     >
-      <div>
-        <strong>{conversation.phone}</strong>
-      </div>
+      <strong>
+        {conv.phone}
+      </strong>
+
       <div
         style={{
-        marginTop: 4,
-        fontSize: 12,
-        color: "#64748b",
+          color: "#64748b",
+          marginTop: 4,
         }}
       >
-        {conversation.created_at}
+        {conv.message}
+        {conv.lastMessagePreview}
       </div>
-    </button>
-  ))
-)}
+    </div>
+  ))}
+  </AsyncStateView>
 </div>
+
 );
 }

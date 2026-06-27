@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { listBuyers } from "../services/repositories";
 
 function normalize(text) {
   return String(text || "")
@@ -22,16 +22,13 @@ export default function BuyerMatches({
   async function loadBuyers() {
     setLoading(true);
 
-    const { data, error } =
-      await supabase
-        .from("buyers")
-        .select("*");
+    const result = await listBuyers();
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       setBuyers([]);
     } else {
-      setBuyers(data || []);
+      setBuyers(result.data || []);
     }
 
     setLoading(false);

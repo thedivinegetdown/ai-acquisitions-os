@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { updateDeal } from "../services/repositories";
 
 function money(value) {
   return Number(value || 0).toLocaleString("en-US", {
@@ -29,17 +29,21 @@ export default function DealAnalyzer({ deal, refresh }) {
   async function save() {
     setSaving(true);
 
-    await supabase
-      .from("deals")
-      .update({
+    const result = await updateDeal(deal.id, {
         arv: arvNum,
         repairs: repairsNum,
         price: priceNum,
         rent: rentNum,
-      })
-      .eq("id", deal.id);
+      });
 
     setSaving(false);
+
+    if (!result.success) {
+      console.error(result.error);
+      alert("Error saving analysis");
+      return;
+    }
+
     refresh();
   }
 

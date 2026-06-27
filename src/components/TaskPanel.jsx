@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { updateDeal } from "../services/repositories";
 
 const SOURCES = [
   "Driving for Dollars",
@@ -42,9 +42,7 @@ export default function TaskPanel({
   async function saveTask() {
     setSaving(true);
 
-    const { error } = await supabase
-      .from("deals")
-      .update({
+    const result = await updateDeal(deal.id, {
         next_action:
           nextAction,
         due_date:
@@ -52,11 +50,10 @@ export default function TaskPanel({
         notes,
         source:
           source || null,
-      })
-      .eq("id", deal.id);
+      });
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert(
         "Error saving"
       );

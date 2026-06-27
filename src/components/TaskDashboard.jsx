@@ -1,12 +1,7 @@
+import { formatSafeDate } from "../utils/dates";
+
 function isSameDate(a, b) {
   return a === b;
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-
-  return new Date(value + "T00:00:00")
-    .toLocaleDateString();
 }
 
 function TaskCard({
@@ -139,9 +134,7 @@ export default function TaskDashboard({
                 {deal.next_action ||
                   "No action"}{" "}
                 • Due{" "}
-                {formatDate(
-                  deal.due_date
-                )}
+                {formatSafeDate(deal.due_date, "-")}
               </div>
             </div>
           ))

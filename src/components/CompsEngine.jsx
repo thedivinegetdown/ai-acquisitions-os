@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { createComp, listCompsByDeal } from "../services/repositories";
 
 function money(value) {
   return Number(value || 0).toLocaleString("en-US", {
@@ -25,17 +25,13 @@ export default function CompsEngine({ deal, refresh }) {
   }, [deal.id]);
 
   async function loadComps() {
-    const { data, error } = await supabase
-      .from("comps")
-      .select("*")
-      .eq("deal_id", deal.id)
-      .order("created_at", { ascending: false });
+    const result = await listCompsByDeal(deal.id);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       setRows([]);
     } else {
-      setRows(data || []);
+      setRows(result.data || []);
     }
   }
 
@@ -50,10 +46,7 @@ export default function CompsEngine({ deal, refresh }) {
     e.preventDefault();
     setSaving(true);
 
-    const { error } = await supabase
-      .from("comps")
-      .insert([
-        {
+    const result = await createComp({
           deal_id: deal.id,
           address: form.address,
           sale_price:
@@ -72,11 +65,10 @@ export default function CompsEngine({ deal, refresh }) {
             form.baths === ""
               ? null
               : Number(form.baths),
-        },
-      ]);
+        });
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Error saving comp");
     } else {
       setForm({

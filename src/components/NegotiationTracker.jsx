@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { updateDeal } from "../services/repositories";
 
 function money(value) {
   const num = Number(value || 0);
@@ -55,9 +55,7 @@ export default function NegotiationTracker({
   async function save() {
     setSaving(true);
 
-    const { error } = await supabase
-      .from("deals")
-      .update({
+    const result = await updateDeal(deal.id, {
         seller_ask:
           sellerAsk === ""
             ? null
@@ -79,11 +77,10 @@ export default function NegotiationTracker({
         objection,
         negotiation_status:
           status,
-      })
-      .eq("id", deal.id);
+      });
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Error saving");
     } else {
       refresh();

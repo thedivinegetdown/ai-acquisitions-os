@@ -1,166 +1,170 @@
-import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { useEffect, useMemo, useState } from "react";
+import {
+buildSmsTimelineEvent,
+loadThreadMessages,
+} from "../services/conversations";
+import { logger } from "../services/logging";
 
-const TYPES = [
-  "Called Seller",
-  "Text Sent",
-  "Voicemail Left",
-  "Offer Made",
-  "Follow-up",
-  "Custom Note",
-];
+export default function ActivityTimeline({
+selectedPhone,
+deal,
+refreshKey,
+}) {
+const phone = selectedPhone || deal?.phone || "";
+const [events, setEvents] = useState([]);
+const [loading, setLoading] = useState(false);
 
-function formatDate(value) {
-  return new Date(value).toLocaleString();
+const sortedEvents = useMemo(
+() =>
+  [...events].sort(
+    (a, b) =>
+      new Date(a.created_at || 0) -
+      new Date(b.created_at || 0)
+  ),
+[events]
+);
+
+useEffect(() => {
+if (!phone) {
+  setEvents([]);
+  return;
 }
 
-export default function ActivityTimeline({ deal }) {
-  const [items, setItems] = useState([]);
-  const [type, setType] = useState(TYPES[0]);
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
+loadTimeline();
+}, [phone, refreshKey]);
 
-  async function loadActivities() {
-    const { data, error } = await supabase
-      .from("activities")
-      .select("*")
-      .eq("deal_id", deal.id)
-      .order("created_at", { ascending: false });
+async function loadTimeline() {
+setLoading(true);
+logger.debug("[ActivityTimeline] Loading timeline", { phone });
 
-    if (error) {
-      console.error(error);
-      setItems([]);
-    } else {
-      setItems(data || []);
-    }
-  }
+const result = await loadThreadMessages(phone);
 
-  useEffect(() => {
-    if (deal?.id) {
-      loadActivities();
-    }
-  }, [deal?.id]);
+if (!result.success) {
+  logger.error("[ActivityTimeline] Timeline load failed", result.error);
+  setEvents([]);
+  setLoading(false);
+  return;
+}
 
-  async function addActivity() {
-    setSaving(true);
+setEvents(result.data.map(buildSmsTimelineEvent));
+setLoading(false);
+}
 
-    const { error } = await supabase
-      .from("activities")
-      .insert([
-        {
-          deal_id: deal.id,
-          type,
-          note,
-        },
-      ]);
+if (!phone) {
+return <p>Select a conversation</p>;
+}
 
-    if (error) {
-      console.error(error);
-      alert("Error saving activity");
-    } else {
-      setNote("");
-      loadActivities();
-    }
+return (
+<div
+style={{
+borderTop: "1px solid #e5e7eb",
+paddingTop: 16,
+}}
+>
+<h3
+style={{
+marginTop: 0,
+marginBottom: 12,
+}}
+>
+Seller Activity Timeline
+</h3>
 
-    setSaving(false);
-  }
+{loading ? (
+  <p>Loading timeline...</p>
+) : sortedEvents.length === 0 ? (
+  <p>No activity yet.</p>
+) : (
+  <div
+    style={{
+    display: "grid",
+    gap: 12,
+    }}
+  >
+    {sortedEvents.map((event) => {
+      const isOutbound = event.direction === "outbound";
 
-  return (
-    <div
-      style={{
-        marginTop: 24,
-        paddingTop: 20,
-        borderTop: "1px solid #e5e7eb",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>
-        Activity Timeline
-      </h3>
-
-      <div
-        style={{
+      return (
+        <div
+          key={event.id}
+          style={{
           display: "grid",
+          gridTemplateColumns: "32px 1fr",
           gap: 10,
-          marginBottom: 16,
-        }}
-      >
-        <select
-          value={type}
-          onChange={(e) =>
-            setType(e.target.value)
-          }
+          alignItems: "start",
+          }}
         >
-          {TYPES.map((item) => (
-            <option
-              key={item}
-              value={item}
-            >
-              {item}
-            </option>
-          ))}
-        </select>
+          <div
+            style={{
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            background: isOutbound ? "#dbeafe" : "#f1f5f9",
+            color: isOutbound ? "#1d4ed8" : "#475569",
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 800,
+            }}
+            title="SMS"
+          >
+            {event.icon}
+          </div>
 
-        <textarea
-          rows="3"
-          placeholder="Add note..."
-          value={note}
-          onChange={(e) =>
-            setNote(e.target.value)
-          }
-        />
-
-        <button
-          onClick={addActivity}
-        >
-          {saving
-            ? "Saving..."
-            : "Add Activity"}
-        </button>
-      </div>
-
-      <div>
-        {items.length === 0 ? (
-          <p>No activity yet.</p>
-        ) : (
-          items.map((item) => (
+          <div
+            style={{
+            display: "flex",
+            justifyContent: isOutbound ? "flex-end" : "flex-start",
+            }}
+          >
             <div
-              key={item.id}
               style={{
-                padding: "10px 0",
-                borderBottom:
-                  "1px solid #f1f5f9",
+              maxWidth: "78%",
+              background: isOutbound ? "#dbeafe" : "#f1f5f9",
+              border: isOutbound
+                ? "1px solid #bfdbfe"
+                : "1px solid #e2e8f0",
+              borderRadius: 12,
+              padding: 12,
               }}
             >
-              <strong>
-                {item.type}
-              </strong>
-
               <div
                 style={{
-                  fontSize: 14,
-                  color: "#475569",
-                  marginTop: 4,
+                display: "flex",
+                gap: 8,
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                marginBottom: 6,
                 }}
               >
-                {item.note ||
-                  "No note"}
+                <strong>{event.actor}</strong>
+                <span
+                  style={{
+                  color: "#64748b",
+                  fontSize: 12,
+                  }}
+                >
+                  {event.directionLabel} SMS
+                </span>
               </div>
 
+              <div>{event.preview}</div>
+
               <div
                 style={{
-                  fontSize: 12,
-                  color: "#94a3b8",
-                  marginTop: 4,
+                color: "#64748b",
+                fontSize: 12,
+                marginTop: 6,
                 }}
               >
-                {formatDate(
-                  item.created_at
-                )}
+                {event.formattedDate}
               </div>
             </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
+          </div>
+        </div>
+      );
+    })}
+  </div>
+)}
+</div>
+);
 }

@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import {
+  createSequenceSteps,
+  listSequencesByDeal,
+  updateSequenceStep,
+} from "../services/repositories";
 
 const STEPS = [
   { day: 0, type: "Call" },
@@ -32,20 +36,13 @@ export default function SequenceEngine({
   async function loadRows() {
     setLoading(true);
 
-    const { data, error } =
-      await supabase
-        .from("sequences")
-        .select("*")
-        .eq("deal_id", deal.id)
-        .order("step_day", {
-          ascending: true,
-        });
+    const result = await listSequencesByDeal(deal.id);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       setRows([]);
     } else {
-      setRows(data || []);
+      setRows(result.data || []);
     }
 
     setLoading(false);
@@ -65,13 +62,10 @@ export default function SequenceEngine({
         ),
       }));
 
-    const { error } =
-      await supabase
-        .from("sequences")
-        .insert(payload);
+    const result = await createSequenceSteps(payload);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Could not create sequence");
     } else {
       loadRows();
@@ -81,16 +75,11 @@ export default function SequenceEngine({
   }
 
   async function markDone(id) {
-    const { error } =
-      await supabase
-        .from("sequences")
-        .update({
-          status:
-            "Completed",
-        })
-        .eq("id", id);
+    const result = await updateSequenceStep(id, {
+      status: "Completed",
+    });
 
-    if (!error) {
+    if (result.success) {
       loadRows();
     }
   }

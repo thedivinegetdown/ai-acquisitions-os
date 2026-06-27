@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import {
+  createDocument,
+  listDocumentsByDeal,
+} from "../services/repositories";
 
 const TYPES = [
   "Purchase Agreement",
@@ -34,20 +37,13 @@ export default function DocumentVault({
   }, [deal.id]);
 
   async function loadDocs() {
-    const { data, error } =
-      await supabase
-        .from("documents")
-        .select("*")
-        .eq("deal_id", deal.id)
-        .order("created_at", {
-          ascending: false,
-        });
+    const result = await listDocumentsByDeal(deal.id);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       setDocs([]);
     } else {
-      setDocs(data || []);
+      setDocs(result.data || []);
     }
   }
 
@@ -62,18 +58,13 @@ export default function DocumentVault({
     e.preventDefault();
     setSaving(true);
 
-    const { error } =
-      await supabase
-        .from("documents")
-        .insert([
-          {
-            deal_id: deal.id,
-            ...form,
-          },
-        ]);
+    const result = await createDocument({
+      deal_id: deal.id,
+      ...form,
+    });
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Error saving doc");
     } else {
       setForm({

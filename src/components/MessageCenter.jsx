@@ -1,19 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../supabaseClient";
-
-async function safeJsonResponse(response) {
-  const textContent = await response.text();
-
-  if (!textContent || textContent.trim() === "") {
-    return {};
-  }
-
-  try {
-    return JSON.parse(textContent);
-  } catch (error) {
-    throw new Error(`Invalid JSON response: ${textContent}`);
-  }
-}
+import { loadMessageLogs } from "../services/conversations";
+import { sendOutboundSms } from "../services/sms";
 
 export default function MessageCenter({ deal }) {
   const property = deal?.property_address || "your property";
@@ -58,20 +45,18 @@ export default function MessageCenter({ deal }) {
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .from("message_logs")
-        .select("*")
-        .eq("deal_id", currentDealId)
-        .order("created_at", { ascending: false });
+    const result = await loadMessageLogs({
+      dealId: currentDealId,
+      ascending: false,
+    });
 
-      if (error) throw error;
-
-      setLogs(data || []);
-    } catch (err) {
-      console.error("[SMS] Load logs error:", err);
+    if (!result.success) {
+      console.error("[SMS] Load logs error:", result.error);
       setError("Could not load message history.");
+      return;
     }
+
+    setLogs(result.data);
   }
 
   async function sendSMS() {
@@ -96,30 +81,20 @@ export default function MessageCenter({ deal }) {
     setSending(true);
 
     try {
-      const payload = {
+      const result = await sendOutboundSms({
         to: phone.trim(),
         message: message.trim(),
-        deal_id: currentDealId,
-      };
-
-      const response = await fetch("/.netlify/functions/send-sms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        dealId: currentDealId,
       });
 
-      const result = await safeJsonResponse(response);
-
-      if (!response.ok || result.success === false) {
-        throw new Error(result.error || "Send failed");
+      if (!result.success) {
+        throw new Error(result.error.message || "Send failed");
       }
 
       await loadLogs();
 
       setSuccess(
-        result.mode === "live"
+        result.data.mode === "live"
           ? "SMS sent successfully."
           : "Message saved in test mode."
       );

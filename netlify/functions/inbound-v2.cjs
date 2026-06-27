@@ -1,42 +1,59 @@
-// 🚀 THIS MUST APPEAR IN LOGS (confirms latest deploy)
-console.log("🚀 INBOUND V2 ACTIVE");
-
 const { createClient } = require("@supabase/supabase-js");
 const querystring = require("querystring");
+const {
+  logError,
+  logInfo,
+  normalizeUsPhoneDigits,
+  safeTrim,
+  text,
+  truncate,
+} = require("./_shared/security.cjs");
+
+const MAX_SMS_CHARS = 1600;
+
+function parseFormBody(event) {
+  return querystring.parse(event.body || "");
+}
 
 exports.handler = async (event) => {
-  console.log("🔥 FUNCTION HIT");
-  console.log("METHOD:", event.httpMethod);
-  console.log("RAW BODY:", event.body);
+  logInfo("[Inbound SMS] Function hit", { method: event.httpMethod });
 
   try {
-    // Parse Twilio form-encoded body
-    const parsed = querystring.parse(event.body || "");
-
-    console.log("PARSED BODY:", parsed);
-
-    const from = parsed.From;
-    const body = parsed.Body;
-
-    if (!from) {
-      console.log("❌ No sender found");
-      return {
-        statusCode: 200,
-        body: "No sender",
-      };
+    if (event.httpMethod !== "POST") {
+      return text(405, "Method not allowed");
     }
 
-    // Initialize Supabase client
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      logError("[Inbound SMS] Missing Supabase server configuration");
+      return text(500, "Server configuration error");
+    }
+
+    const parsed = parseFormBody(event);
+    const from = safeTrim(parsed.From);
+    const body = truncate(parsed.Body, MAX_SMS_CHARS);
+
+    if (!from) {
+      logInfo("[Inbound SMS] No sender found");
+      return text(200, "No sender");
+    }
+
+    if (!body) {
+      logInfo("[Inbound SMS] Empty message ignored", { hasFrom: true });
+      return text(200, "No message");
+    }
+
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    const normalized = from.replace("+1", "");
+    const normalized = normalizeUsPhoneDigits(from);
 
-    console.log("📩 INCOMING SMS:", { from, body });
+    logInfo("[Inbound SMS] Incoming message", {
+      hasFrom: true,
+      messageLength: body.length,
+    });
 
-    // Find matching deal
     const { data: deals, error: dealError } = await supabase
       .from("deals")
       .select("*")
@@ -44,46 +61,34 @@ exports.handler = async (event) => {
       .limit(1);
 
     if (dealError) {
-      console.error("❌ Deal lookup error:", dealError);
+      logError("[Inbound SMS] Deal lookup error", dealError);
     }
 
     const deal = deals?.[0];
 
     if (!deal) {
-      console.log("⚠️ No deal matched for:", normalized);
-      return {
-        statusCode: 200,
-        body: "No deal matched",
-      };
+      logInfo("[Inbound SMS] No deal matched", { hasPhone: !!normalized });
+      return text(200, "No deal matched");
     }
 
-    // Insert message into Supabase
-    const { error: insertError } = await supabase
-      .from("message_logs")
-      .insert({
-        deal_id: deal.id,
-        phone: from,
-        message: body,
-        status: "received",
-        created_at: new Date().toISOString(),
-      });
+    const { error: insertError } = await supabase.from("message_logs").insert({
+      deal_id: deal.id,
+      phone: from,
+      message: body,
+      direction: "inbound",
+      status: "received",
+      created_at: new Date().toISOString(),
+    });
 
     if (insertError) {
-      console.error("❌ Insert error:", insertError);
+      logError("[Inbound SMS] Insert error", insertError);
     } else {
-      console.log("✅ Message saved to Supabase");
+      logInfo("[Inbound SMS] Message saved to Supabase");
     }
 
-    return {
-      statusCode: 200,
-      body: "OK",
-    };
-  } catch (err) {
-    console.error("💥 FUNCTION ERROR:", err);
-
-    return {
-      statusCode: 500,
-      body: "Error",
-    };
+    return text(200, "OK");
+  } catch (error) {
+    logError("[Inbound SMS] Function error", error);
+    return text(500, "Error");
   }
 };

@@ -166,6 +166,9 @@ export default function CommandPalette({
         onClick={(e) =>
           e.stopPropagation()
         }
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
         style={{
           width: "100%",
           maxWidth: 720,
@@ -178,6 +181,7 @@ export default function CommandPalette({
       >
         <input
           autoFocus
+          aria-label="Search commands"
           placeholder="Type a command..."
           value={query}
           onChange={(e) =>
@@ -221,8 +225,9 @@ export default function CommandPalette({
                 item,
                 index
               ) => (
-                <div
+                <button
                   key={index}
+                  type="button"
                   onClick={() => {
                     item.run();
                     setOpen(
@@ -233,16 +238,20 @@ export default function CommandPalette({
                     );
                   }}
                   style={{
+                    width: "100%",
                     padding: 16,
+                    textAlign: "left",
                     cursor:
                       "pointer",
                     borderBottom:
                       "1px solid #f1f5f9",
                     fontWeight: 600,
+                    background: "none",
+                    border: "none",
                   }}
                 >
                   {item.label}
-                </div>
+                </button>
               )
             )
           )}

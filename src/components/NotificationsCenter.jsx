@@ -110,8 +110,9 @@ export default function NotificationsCenter({
             item,
             index
           ) => (
-            <div
+            <button
               key={item.id}
+              type="button"
               onClick={() =>
                 openDeal(
                   item.deal
@@ -133,10 +134,14 @@ export default function NotificationsCenter({
                     item.level
                   ),
                 fontWeight: 700,
+                background: "none",
+                border: "none",
+                width: "100%",
+                textAlign: "left",
               }}
             >
               {item.text}
-            </div>
+            </button>
           )
         )
       )}

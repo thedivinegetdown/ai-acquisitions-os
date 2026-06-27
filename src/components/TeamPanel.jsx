@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { updateDeal } from "../services/repositories";
 
 export default function TeamPanel({
   deal,
@@ -28,20 +28,17 @@ export default function TeamPanel({
   async function save() {
     setSaving(true);
 
-    const { error } = await supabase
-      .from("deals")
-      .update({
+    const result = await updateDeal(deal.id, {
         owner_name:
           owner || null,
         acquisitions_rep:
           acq || null,
         dispositions_rep:
           dispo || null,
-      })
-      .eq("id", deal.id);
+      });
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Error saving team");
     } else {
       refresh();

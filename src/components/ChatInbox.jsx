@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../supabaseClient";
+import {
+loadAllMessageLogs,
+subscribeToMessageInserts,
+} from "../services/conversations";
+import { logger } from "../services/logging";
 
 export default function ChatInbox() {
 const [messages, setMessages] = useState([]);
@@ -7,49 +11,29 @@ const [messages, setMessages] = useState([]);
 useEffect(() => {
 loadMessages();
 
-const subscription = supabase
-  .channel("sms-inbox")
-  .on(
-    "postgres_changes",
-    {
-      event: "INSERT",
-      schema: "public",
-      table: "message_logs",
-    },
-    (payload) => {
-      console.log("NEW MESSAGE:", payload.new);
+return subscribeToMessageInserts((message) => {
+  logger.debug("[ChatInbox] New message received", {
+    id: message.id,
+    phone: message.phone,
+  });
 
-      setMessages((current) => [
-        payload.new,
-        ...current,
-      ]);
-    }
-  )
-  .subscribe();
-
-return () => {
-  supabase.removeChannel(subscription);
-};
+  setMessages((current) => [
+    message,
+    ...current,
+  ]);
+});
 
 }, []);
 
 async function loadMessages() {
-const { data, error } = await supabase
-.from("message_logs")
-.select("*")
-.order("created_at", {
-ascending: false,
-});
+const result = await loadAllMessageLogs({ ascending: false });
 
-console.log("MESSAGES:", data);
-console.log("ERROR:", error);
-
-if (error) {
-  console.error(error);
+if (!result.success) {
+  logger.error("[ChatInbox] Message load failed", result.error);
   return;
 }
 
-setMessages(data || []);
+setMessages(result.data);
 
 }
 

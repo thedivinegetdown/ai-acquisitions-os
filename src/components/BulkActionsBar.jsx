@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { updateDeals } from "../services/repositories";
 
 const STAGES = [
   "New Lead",
@@ -38,14 +38,10 @@ export default function BulkActionsBar({
   ) {
     setSaving(true);
 
-    const { error } =
-      await supabase
-        .from("deals")
-        .update(payload)
-        .in("id", selectedIds);
+    const result = await updateDeals(selectedIds, payload);
 
-    if (error) {
-      console.error(error);
+    if (!result.success) {
+      console.error(result.error);
       alert("Bulk update failed");
     } else {
       clearSelection();

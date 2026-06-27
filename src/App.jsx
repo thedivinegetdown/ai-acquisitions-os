@@ -1,19 +1,21 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useDealData } from "./hooks/useDealData";
 import PipelineBoard from "./components/PipelineBoard";
-import DealModal from "./components/DealModal";
 import CommandPalette from "./components/CommandPalette";
 import ThemeToggle from "./components/ThemeToggle";
 import ChatInbox from "./components/ChatInbox";
 import ConversationInbox from "./components/ConversationInbox";
-import ConversationThread from "./components/ConversationThread";
+import LazyPanelFallback from "./components/LazyPanelFallback";
+import AuthStatus from "./components/AuthStatus";
 import { pageStyleBase, headerStyle } from "./AppLayout";
 import { getPageSections, SectionRenderer } from "./AppSections";
+
+const ConversationThread = lazy(() => import("./components/ConversationThread"));
+const DealModal = lazy(() => import("./components/DealModal"));
 
 export default function App() {
 const {
 deals,
-setDeals,
 filteredDeals,
 setFilteredDeals,
 loading,
@@ -34,31 +36,40 @@ if (localStorage.getItem("ai-theme") === "dark") {
 
 }, []);
 
-function toggleSelect(id) {
+const toggleSelect = useCallback((id) => {
 setSelectedIds((current) =>
 current.includes(id)
 ? current.filter((x) => x !== id)
 : [...current, id]
 );
-}
+}, []);
 
-function clearSelection() {
+const clearSelection = useCallback(() => {
 setSelectedIds([]);
-}
+}, []);
 
 const isLoaded = !loading;
 
 const pageBg = dark ? "#020617" : "#ffffff";
 const text = dark ? "#ffffff" : "#0f172a";
 
-const pageSections = getPageSections({
+const pageSections = useMemo(() => getPageSections({
 deals,
 loadDeals,
 setFilteredDeals,
 setSelectedDeal,
+setSelectedPhone,
 selectedIds,
 clearSelection,
-});
+}), [
+deals,
+loadDeals,
+setFilteredDeals,
+setSelectedDeal,
+setSelectedPhone,
+selectedIds,
+clearSelection,
+]);
 
 return (
 <div
@@ -83,10 +94,13 @@ color: text,
       AI Acquisitions OS
     </h1>
 
-    <ThemeToggle
-      dark={dark}
-      setDark={setDark}
-    />
+    <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+      <AuthStatus />
+      <ThemeToggle
+        dark={dark}
+        setDark={setDark}
+      />
+    </div>
   </div>
 
   <ChatInbox />
@@ -96,9 +110,11 @@ color: text,
     setSelectedPhone={setSelectedPhone}
   />
 
-  <ConversationThread
-    selectedPhone={selectedPhone}
-  />
+  <Suspense fallback={<LazyPanelFallback label="Loading seller workspace..." />}>
+    <ConversationThread
+      selectedPhone={selectedPhone}
+    />
+  </Suspense>
 
   {isLoaded && (
     <SectionRenderer
@@ -118,11 +134,15 @@ color: text,
     />
   )}
 
-  <DealModal
-    deal={selectedDeal}
-    close={() => setSelectedDeal(null)}
-    refresh={loadDeals}
-  />
+  {selectedDeal && (
+    <Suspense fallback={<LazyPanelFallback label="Loading deal modal..." />}>
+      <DealModal
+        deal={selectedDeal}
+        close={() => setSelectedDeal(null)}
+        refresh={loadDeals}
+      />
+    </Suspense>
+  )}
 </div>
 
 );
