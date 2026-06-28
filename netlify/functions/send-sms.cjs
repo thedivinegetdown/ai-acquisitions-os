@@ -159,14 +159,22 @@ async function saveLog(logData) {
   }
 
   try {
-    const { error } = await supabase.from("message_logs").insert({
+    const payload = {
       deal_id: logData.deal_id,
       phone: logData.phone,
       message: logData.message,
       status: logData.status,
       direction: logData.direction,
       created_at: new Date().toISOString(),
-    });
+    };
+
+    let { error } = await supabase.from("message_logs").insert(payload);
+
+    if (isMissingDirectionColumnError(error)) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.direction;
+      ({ error } = await supabase.from("message_logs").insert(legacyPayload));
+    }
 
     if (error) {
       logError("[SMS] Message log insert failed", error);
@@ -174,4 +182,13 @@ async function saveLog(logData) {
   } catch (error) {
     logError("[SMS] Message log write failed", error);
   }
+}
+
+function isMissingDirectionColumnError(error) {
+  return (
+    error?.code === "42703" ||
+    String(error?.message || "")
+      .toLowerCase()
+      .includes("message_logs.direction")
+  );
 }

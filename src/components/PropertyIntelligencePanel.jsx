@@ -24,6 +24,8 @@ const cardStyle = {
   padding: 12,
 };
 
+const EMPTY_DEAL = {};
+
 function Field({ label, children }) {
   return (
     <label>
@@ -82,8 +84,16 @@ function ValueLine({ label, value }) {
 }
 
 export default function PropertyIntelligencePanel({ deal }) {
-  const initialInputs = useMemo(() => buildInitialPropertyInputs(deal), [deal]);
-  const initialAddress = useMemo(() => getPropertyAddressFromDeal(deal), [deal]);
+  const hasDeal = Boolean(deal);
+  const safeDeal = deal || EMPTY_DEAL;
+  const initialInputs = useMemo(
+    () => buildInitialPropertyInputs(safeDeal),
+    [safeDeal]
+  );
+  const initialAddress = useMemo(
+    () => getPropertyAddressFromDeal(safeDeal),
+    [safeDeal]
+  );
   const [inputs, setInputs] = useState(initialInputs);
   const [propertyLookup, setPropertyLookup] = useState({
     address: initialAddress,
@@ -104,8 +114,8 @@ export default function PropertyIntelligencePanel({ deal }) {
   }, [initialAddress, initialInputs]);
 
   const analysis = useMemo(
-    () => analyzePropertyIntelligence({ deal, inputs }),
-    [deal, inputs]
+    () => (hasDeal ? analyzePropertyIntelligence({ deal: safeDeal, inputs }) : null),
+    [hasDeal, safeDeal, inputs]
   );
 
   function updateInput(field, value) {
@@ -125,7 +135,7 @@ export default function PropertyIntelligencePanel({ deal }) {
 
     const result = await lookupPropertyData({
       address: propertyLookup.address,
-      deal,
+      deal: safeDeal,
       providerId: propertyLookup.providerId,
     });
 
@@ -164,6 +174,39 @@ export default function PropertyIntelligencePanel({ deal }) {
         .filter(Boolean)
         .join("\n"),
     }));
+  }
+
+  if (!hasDeal) {
+    return (
+      <div
+        style={{
+          background: "#f8fafc",
+          border: "1px solid #dbe3ef",
+          borderRadius: 14,
+          padding: 18,
+          marginBottom: 18,
+          boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
+        }}
+      >
+        <div
+          style={{
+            color: "#64748b",
+            fontSize: 13,
+            fontWeight: 700,
+            marginBottom: 4,
+            textTransform: "uppercase",
+          }}
+        >
+          Comps + Property Intelligence
+        </div>
+        <strong style={{ color: "#0f172a", fontSize: 22 }}>
+          No Linked Property
+        </strong>
+        <p style={{ color: "#475569", marginBottom: 0 }}>
+          Link a deal to this conversation before running property intelligence.
+        </p>
+      </div>
+    );
   }
 
   return (

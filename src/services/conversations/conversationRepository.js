@@ -1,19 +1,37 @@
 import { supabase } from "../../supabaseClient";
 import { toUserSafeError } from "../../utils/errors";
 import { getOrSetCachedValue } from "../cache";
-import { loadMessageLogs, normalizeMessageRecord } from "./messageRepository";
+import {
+  isMissingDirectionColumnError,
+  loadMessageLogs,
+  normalizeMessageRecord,
+} from "./messageRepository";
+
+async function loadConversationSummaryRows() {
+  const withDirection = await supabase
+    .from("message_logs")
+    .select("phone, created_at, message, direction")
+    .order("created_at", {
+      ascending: false,
+    });
+
+  if (!isMissingDirectionColumnError(withDirection.error)) {
+    return withDirection;
+  }
+
+  return supabase
+    .from("message_logs")
+    .select("phone, created_at, message, status")
+    .order("created_at", {
+      ascending: false,
+    });
+}
 
 export async function loadConversationSummaries() {
   try {
     const { data, error } = await getOrSetCachedValue(
       "conversation-summaries",
-      () =>
-        supabase
-          .from("message_logs")
-          .select("phone, created_at, message, direction")
-          .order("created_at", {
-            ascending: false,
-          }),
+      loadConversationSummaryRows,
       10000
     );
 

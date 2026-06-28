@@ -71,14 +71,24 @@ exports.handler = async (event) => {
       return text(200, "No deal matched");
     }
 
-    const { error: insertError } = await supabase.from("message_logs").insert({
+    const payload = {
       deal_id: deal.id,
       phone: from,
       message: body,
       direction: "inbound",
       status: "received",
       created_at: new Date().toISOString(),
-    });
+    };
+
+    let { error: insertError } = await supabase.from("message_logs").insert(payload);
+
+    if (isMissingDirectionColumnError(insertError)) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.direction;
+      ({ error: insertError } = await supabase
+        .from("message_logs")
+        .insert(legacyPayload));
+    }
 
     if (insertError) {
       logError("[Inbound SMS] Insert error", insertError);
@@ -92,3 +102,12 @@ exports.handler = async (event) => {
     return text(500, "Error");
   }
 };
+
+function isMissingDirectionColumnError(error) {
+  return (
+    error?.code === "42703" ||
+    String(error?.message || "")
+      .toLowerCase()
+      .includes("message_logs.direction")
+  );
+}

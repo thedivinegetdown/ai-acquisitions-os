@@ -10,9 +10,38 @@ import {
 
 const MESSAGE_LOG_CACHE_PREFIX = "message_logs";
 const MESSAGE_LOG_CACHE_TTL_MS = 5000;
+const OUTBOUND_STATUSES = new Set([
+  "accepted",
+  "delivered",
+  "failed",
+  "queued",
+  "sending",
+  "sent",
+  "test",
+  "undelivered",
+]);
+
+export function isMissingDirectionColumnError(error = {}) {
+  return (
+    error?.code === "42703" ||
+    String(error?.message || "")
+      .toLowerCase()
+      .includes("message_logs.direction")
+  );
+}
+
+function deriveMessageDirection(record = {}) {
+  if (record.direction === "outbound" || record.direction === "inbound") {
+    return record.direction;
+  }
+
+  return OUTBOUND_STATUSES.has(String(record.status || "").toLowerCase())
+    ? "outbound"
+    : "inbound";
+}
 
 export function normalizeMessageRecord(record = {}) {
-  const direction = record.direction === "outbound" ? "outbound" : "inbound";
+  const direction = deriveMessageDirection(record);
 
   return {
     ...record,
@@ -106,11 +135,21 @@ export async function insertOutboundMessageLog({
       payload.deal_id = dealId;
     }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("message_logs")
       .insert(payload)
       .select()
       .limit(1);
+
+    if (error && isMissingDirectionColumnError(error)) {
+      const legacyPayload = { ...payload };
+      delete legacyPayload.direction;
+      ({ data, error } = await supabase
+        .from("message_logs")
+        .insert(legacyPayload)
+        .select()
+        .limit(1));
+    }
 
     if (error) throw error;
     clearCacheByPrefix(MESSAGE_LOG_CACHE_PREFIX);

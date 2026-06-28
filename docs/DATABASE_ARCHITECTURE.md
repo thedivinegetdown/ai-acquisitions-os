@@ -14,11 +14,14 @@ The application currently reads or writes these tables by convention:
 - `comps`: comparable sale records.
 - `sequences`: follow-up sequence steps.
 
-Only `seller_tasks` currently has a migration in this repository:
+These tables currently have migrations in this repository:
 
 - `supabase/migrations/202606250001_create_seller_tasks.sql`
+- `supabase/migrations/202606270001_add_message_logs_direction.sql`
 
 The other tables appear to exist in the Supabase project or are expected by the UI, but their schema is not versioned in this repo yet.
+
+`message_logs.direction` is expected by conversation loading and SMS timeline rendering. It is an additive text column with allowed values `inbound` and `outbound`; application inserts populate it directly, and legacy rows are backfilled from `status` where possible.
 
 ## Persistence Boundaries
 

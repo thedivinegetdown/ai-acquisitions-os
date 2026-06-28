@@ -10,19 +10,23 @@ export function normalizeAddress(value = "") {
 }
 
 export function getPropertyAddressFromDeal(deal = {}) {
+  const safeDeal = deal || {};
+
   return (
-    getDealAliasText(deal, "address") ||
-    safeTrim(deal.property_address) ||
-    safeTrim(deal.propertyAddress) ||
-    safeTrim(deal.address) ||
+    getDealAliasText(safeDeal, "address") ||
+    safeTrim(safeDeal.property_address) ||
+    safeTrim(safeDeal.propertyAddress) ||
+    safeTrim(safeDeal.address) ||
     ""
   );
 }
 
 export function buildPropertyDataInput({ address = "", deal = {}, manualData = {} } = {}) {
+  const safeDeal = deal || {};
+
   return {
-    address: normalizeAddress(address || getPropertyAddressFromDeal(deal)),
-    deal: deal || {},
+    address: normalizeAddress(address || getPropertyAddressFromDeal(safeDeal)),
+    deal: safeDeal,
     manualData: manualData || {},
   };
 }
@@ -52,11 +56,13 @@ export function normalizePropertyDataResult({
   source = "manual",
   missingData = [],
 } = {}) {
-  const normalizedAddress = normalizeAddress(address || getPropertyAddressFromDeal(deal));
-  const propertyType = getDealAliasText(deal, "propertyType") || safeTrim(deal.property_type);
-  const propertyId = deal.property_id ?? deal.id ?? "";
-  const dealArv = getDealAliasPositiveNumber(deal, "arv");
-  const dealRent = getDealAliasPositiveNumber(deal, "rent");
+  const safeDeal = deal || {};
+  const normalizedAddress = normalizeAddress(address || getPropertyAddressFromDeal(safeDeal));
+  const propertyType =
+    getDealAliasText(safeDeal, "propertyType") || safeTrim(safeDeal.property_type);
+  const propertyId = safeDeal.property_id ?? safeDeal.id ?? "";
+  const dealArv = getDealAliasPositiveNumber(safeDeal, "arv");
+  const dealRent = getDealAliasPositiveNumber(safeDeal, "rent");
   const normalizedValuation = valuation
     ? {
         estimatedValue: parseSafeNumber(
@@ -88,15 +94,15 @@ export function normalizePropertyDataResult({
       id: safeTrim(String(propertyId)),
       address: normalizedAddress,
       normalizedAddress,
-      city: safeTrim(deal.city),
-      state: safeTrim(deal.state),
-      zip: safeTrim(deal.zip ?? deal.postal_code),
+      city: safeTrim(safeDeal.city),
+      state: safeTrim(safeDeal.state),
+      zip: safeTrim(safeDeal.zip ?? safeDeal.postal_code),
       propertyType: propertyType || "Unknown",
-      beds: parseSafeNumber(deal.beds ?? deal.bedrooms),
-      baths: parseSafeNumber(deal.baths ?? deal.bathrooms),
-      squareFeet: parseSafeNumber(deal.square_feet ?? deal.squareFeet),
-      yearBuilt: parseSafeNumber(deal.year_built ?? deal.yearBuilt),
-      lotSize: parseSafeNumber(deal.lot_size ?? deal.lotSize),
+      beds: parseSafeNumber(safeDeal.beds ?? safeDeal.bedrooms),
+      baths: parseSafeNumber(safeDeal.baths ?? safeDeal.bathrooms),
+      squareFeet: parseSafeNumber(safeDeal.square_feet ?? safeDeal.squareFeet),
+      yearBuilt: parseSafeNumber(safeDeal.year_built ?? safeDeal.yearBuilt),
+      lotSize: parseSafeNumber(safeDeal.lot_size ?? safeDeal.lotSize),
       source,
     },
     owner,
