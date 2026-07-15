@@ -1,487 +1,305 @@
 # AI Acquisitions OS
 
-A production-focused Real Estate Acquisition CRM built with React, Vite, Supabase, Netlify Functions, and AI-powered workflows.
+> A production-focused, AI-powered Real Estate Acquisition CRM built with React, Supabase, PostgreSQL, Netlify Functions, and modern cloud technologies.
 
 ---
 
-# Vision
+## Overview
 
-AI Acquisitions OS is designed to become a complete acquisitions platform for real estate investors.
+AI Acquisitions OS is a full-stack Customer Relationship Management (CRM) platform designed specifically for real estate acquisition teams.
 
-The goal is to eliminate the need for multiple software subscriptions by combining:
+The platform centralizes every stage of the acquisition process, from managing leads and communicating with sellers to analyzing deals and leveraging AI-assisted workflows, all within a single application.
 
-- CRM
-- Lead Management
-- Deal Analysis
-- AI Decision Making
-- Seller Communication
-- Buyer Management
-- Automation
-- Analytics
+The long-term vision is to replace multiple disconnected software tools with one scalable, enterprise-ready operating system.
 
-into one unified operating system.
+---
+
+## Key Features
+
+### Lead & Deal Management
+
+- Pipeline board
+- Lead stages
+- Search & filtering
+- Deal cards
+- Seller profiles
+
+### Seller Workspace
+
+- Complete seller information
+- Activity timeline
+- Notes
+- Follow-up tracking
+- Deal history
+
+### AI-Assisted Workflows
+
+- AI seller summaries
+- Lead motivation analysis
+- Next Best Action recommendations
+- Conversation intelligence
+- AI workflow foundation for future automation
+
+### Communication Center
+
+- SMS messaging
+- Twilio integration
+- Message history
+- Personalized message templates
+- Test mode for local development
+
+### Deal Analysis
+
+- Maximum Allowable Offer (MAO)
+- Wholesale offer calculations
+- Flip value estimation
+- Cash flow analysis
+- Comparable sales support
+
+### Team Collaboration
+
+- Acquisition representative assignments
+- Team ownership
+- Buyer management
+- Activity tracking
 
 ---
 
 # Technology Stack
 
-Frontend
+## Frontend
+
 - React
 - Vite
+- JavaScript (ES6+)
+- HTML5
+- CSS3
 
-Backend
+## Backend
+
 - Netlify Functions
+- Node.js
+- REST APIs
 
-Database
-- Supabase (PostgreSQL)
+## Database
 
-Authentication
-- Supabase Auth (future)
+- Supabase
+- PostgreSQL
 
-Deployment
-- Netlify
+## Integrations
 
-Communication
-- Twilio (SMS)
-- Resend (Email - planned)
+- Twilio
+- OpenAI (foundation)
+- Stripe (planned)
+- Resend (planned)
 
-AI
-- OpenAI integration (planned)
+## Development Tools
+
+- Git
+- GitHub
+- VS Code
+- Vitest
+- ESLint
 
 ---
 
-# Current Architecture
+# Architecture
 
-## Refactor Completed
-
-The project was refactored from a large monolithic App.jsx into a modular architecture.
-
-Created:
+The application follows a modular architecture designed for scalability and maintainability.
 
 ```
 src/
-│
-├── components/
-├── hooks/
-├── layouts/
-├── pages/
-└── utils/
+
+components/
+pages/
+hooks/
+layouts/
+services/
+utils/
 ```
 
----
+Core design principles include:
 
-## App Refactor
-
-Previous
-
-- 500+ line App.jsx
-
-Current
-
-App.jsx now delegates rendering through modular architecture.
-
-Created:
-
-- AppLayout.jsx
-- AppSections.jsx
-- useDealData.js
-
-Benefits
-
-- cleaner architecture
-- reusable components
-- easier testing
-- scalable
+- Reusable React components
+- Separation of concerns
+- Custom hooks
+- Modular architecture
+- Scalable folder organization
 
 ---
 
-# Features Completed
+# Project Status
 
-## Dashboard
+Current Version
 
-- Deal Cards
-- Pipeline
-- Filters
-- Search
-- Lead Stages
+**v1.0.0**
 
----
+Status
 
-## AI Insights
+**Actively under development**
 
-Displays
+Completed
 
-- Lead Score
-- Motivation
-- AI Summary
-- Next Best Action
-
----
-
-## Deal Analyzer
-
-Calculates
-
-- MAO
-- Wholesale Offer
-- Flip Value
-- Cashflow
-
----
-
-## Offer Engine
-
-Supports
-
-- Cash Offer
-- Wholesale Offer
-- Seller Finance
-
----
-
-## Negotiation Tracker
-
-Tracks
-
-- Asking Price
-- Offer
-- Counter Offer
-- Status
-
----
-
-## Comps Engine
-
-Stores
-
-- Comparable Sales
-- Average Value
-- Suggested ARV
-
----
-
-## Team Panel
-
-Assigns
-
-- Owner
-- Acquisition Rep
-- Disposition Rep
-
----
-
-## Follow-Up Tasks
-
-Stores
-
-- Notes
-- Due Dates
-- Task Type
-
----
-
-## Follow-Up Sequence
-
-Sequence generator
-
-(Currently placeholder)
-
----
-
-## Buyer Matches
-
-Buyer matching engine
-
-(Currently placeholder)
-
----
-
-## Buyer Blast
-
-Generates buyer blast messages
-
-Example
-
-- Address
-- ARV
-- Repairs
-- Strategy
-
----
-
-## Document Vault
-
-Stores
-
-- Purchase Agreements
-- Title Docs
-- Notes
-- URLs
-
----
-
-## Activity Timeline
-
-Tracks
-
-- Calls
-- Notes
-- Activities
-
----
-
-# Message Center
-
-The old Seller Communications Hub has been removed.
-
-New Message Center now supports
-
-- SMS drafting
-- Character count
-- Send button
-- Send history
-- Deal-specific personalization
-
-Future
-
-- Email
-- MMS
-- Attachments
-- AI-generated messages
-
----
-
-# Netlify Functions
-
-Created
-
-```
-netlify/functions/send-sms.js
-```
-
-Purpose
-
-Handles
-
-- SMS sending
-- Test Mode
+- Full React application
+- Modular architecture
+- Seller workspace
+- Deal pipeline
+- Message Center
+- AI seller summaries
+- Netlify Functions
+- Supabase integration
+- PostgreSQL database
+- SMS logging
 - Twilio integration
-- Message logging
+- Responsive UI
 
-Current behavior
+Currently In Progress
 
-If Twilio Number exists
+- Live production SMS
+- Two-way messaging
+- Persistent conversations
+- AI Copilot enhancements
 
-- sends real SMS
+Planned
 
-If Twilio Number missing
-
-- runs in Test Mode
-- still logs message
+- Email integration
+- Workflow automation
+- AI negotiation assistant
+- Mobile application
+- Team permissions
+- Analytics dashboard
+- Enterprise features
 
 ---
 
-# Supabase
+# Screenshots
 
-Created table
+> Screenshots coming soon.
 
+Recommended screenshots:
+
+- Dashboard
+- Pipeline Board
+- Seller Workspace
+- AI Summary
+- Conversation Inbox
+- Message Center
+- Mobile View
+
+---
+
+# Getting Started
+
+Clone the repository
+
+```bash
+git clone https://github.com/thedivinegetdown/ai-acquisitions-os.git
 ```
-message_logs
+
+Install dependencies
+
+```bash
+npm install
 ```
 
-Columns
+Copy environment variables
 
-- id
-- deal_id
-- phone
-- message
-- channel
-- status
-- created_at
+```bash
+cp .env.example .env
+```
 
-Purpose
+Run locally
 
-Stores permanent communication history.
+```bash
+netlify dev
+```
 
 ---
 
 # Environment Variables
 
-Required
+Required variables include:
 
 ```
+VITE_SUPABASE_URL=
+
+VITE_SUPABASE_ANON_KEY=
+
+SUPABASE_URL=
+
+SUPABASE_SERVICE_ROLE_KEY=
+
 TWILIO_ACCOUNT_SID=
 
 TWILIO_AUTH_TOKEN=
 
-TWILIO_PHONE=
+TWILIO_PHONE_NUMBER=
 
-VITE_SUPABASE_URL=
-
-SUPABASE_SERVICE_ROLE_KEY=
+OPENAI_API_KEY=
 ```
 
----
-
-# Twilio Status
-
-Completed
-
-- Account Created
-- SID obtained
-- Auth Token obtained
-
-Pending
-
-- Purchase Twilio Number
-
-Until purchased
-
-SMS runs in Test Mode.
-
----
-
-# Current Development Status
-
-Completed
-
-✅ Refactor
-
-✅ Modular Architecture
-
-✅ Deal Modal
-
-✅ AI Insights
-
-✅ Offer Engine
-
-✅ Negotiation Tracker
-
-✅ Team Panel
-
-✅ Comps
-
-✅ Buyer Blast
-
-✅ Message Center
-
-✅ Netlify Function
-
-✅ Supabase Logging
-
-In Progress
-
-⚠ Live Twilio SMS
-
-⚠ Persistent Message History
-
-Planned
-
-- Resend Email
-- Two-way Messaging
-- Auto Follow-Up
-- AI Seller Assistant
-- Workflow Automation
+Never commit real API keys or `.env` files to source control.
 
 ---
 
 # Future Roadmap
 
-Phase 1
+## Phase 1
 
 Communication
 
 - Live SMS
 - Email
-- Inbox
-- History
+- Unified Inbox
+- Attachments
 
-Phase 2
+## Phase 2
 
 Automation
 
-- Follow-up campaigns
+- AI follow-up campaigns
 - Appointment reminders
-- AI reminders
+- Workflow automation
 
-Phase 3
+## Phase 3
 
-AI
+Artificial Intelligence
 
-- Seller Analysis
-- Offer Suggestions
-- Objection Handling
 - AI Copilot
+- Seller insights
+- Offer recommendations
+- Conversation analysis
 
-Phase 4
-
-CRM
-
-- Multi-user
-- Permissions
-- Roles
-- Teams
-
-Phase 5
-
-Analytics
-
-- KPIs
-- Conversion Rates
-- Revenue Dashboard
-- Pipeline Metrics
-
-Phase 6
+## Phase 4
 
 Enterprise
 
-- Mobile
-- Notifications
-- Calling
-- Documents
-- Integrations
+- Multi-user support
+- Team permissions
+- Role management
+- Mobile application
 
 ---
 
-# Project Goals
+# Why This Project?
 
-Build the best AI-powered Real Estate Acquisition Operating System capable of replacing multiple CRM and acquisitions tools while providing a modern, scalable, enterprise-grade experience.
+This project was built to demonstrate modern full-stack software engineering principles while solving a real-world business problem.
 
----
+It showcases:
 
-# Development Principles
-
-Every new feature should be
-
-- Modular
-- Reusable
-- Tested
-- Production Ready
-- Mobile Friendly
-- Scalable
-- Secure
-
-Avoid
-
-- Large monolithic components
-- Duplicate logic
-- Hardcoded values
-- Tight coupling
-
-Always prefer
-
-- Composition
-- Custom Hooks
-- Reusable Components
-- Separation of Concerns
+- React application architecture
+- Backend API development
+- Database design
+- Cloud deployment
+- AI-assisted workflows
+- Third-party API integration
+- Serverless architecture
+- Scalable software design
 
 ---
 
-# Current Version
+# License
 
-v0.7.0
+This project is currently maintained as a private commercial software project.
 
-Status
-
-Actively under development.
-Communication engine and automation system currently being implemented.
+© Adam Bermudez. All rights reserved.
