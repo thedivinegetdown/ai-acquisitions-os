@@ -1,14 +1,12 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import { useDealData } from "./hooks/useDealData";
-import PipelineBoard from "./components/PipelineBoard";
 import CommandPalette from "./components/CommandPalette";
-import ChatInbox from "./components/ChatInbox";
-import ConversationInbox from "./components/ConversationInbox";
 import LazyPanelFallback from "./components/LazyPanelFallback";
-import { getPageSections, SectionRenderer } from "./AppSections";
-import { AppShell, PageHeader } from "./design-system";
+import { AppShell } from "./design-system";
+import { workspaceDefinitions } from "./navigation/workspaces";
+import { useWorkspaceRouter } from "./navigation/useWorkspaceRouter";
+import WorkspaceRoutes from "./workspaces/WorkspaceRoutes";
 
-const ConversationThread = lazy(() => import("./components/ConversationThread"));
 const DealModal = lazy(() => import("./components/DealModal"));
 
 export default function App() {
@@ -26,6 +24,11 @@ const [selectedPhone, setSelectedPhone] = useState(null);
 const [dark, setDark] = useState(
 () => typeof window !== "undefined" && localStorage.getItem("ai-theme") === "dark"
 );
+const {
+currentWorkspaceId,
+isUnknownRoute,
+navigateToWorkspace,
+} = useWorkspaceRouter();
 
 const toggleSelect = useCallback((id) => {
 setSelectedIds((current) =>
@@ -39,66 +42,36 @@ const clearSelection = useCallback(() => {
 setSelectedIds([]);
 }, []);
 
-const isLoaded = !loading;
-
-const pageSections = useMemo(() => getPageSections({
-deals,
-loadDeals,
-setFilteredDeals,
-setSelectedDeal,
-setSelectedPhone,
-selectedIds,
-clearSelection,
-}), [
-deals,
-loadDeals,
-setFilteredDeals,
-setSelectedDeal,
-setSelectedPhone,
-selectedIds,
-clearSelection,
-]);
-
 return (
-<AppShell dark={dark} setDark={setDark}>
+<AppShell
+  currentWorkspaceId={currentWorkspaceId}
+  dark={dark}
+  navigationItems={workspaceDefinitions}
+  onNavigate={navigateToWorkspace}
+  setDark={setDark}
+>
   <CommandPalette
      deals={deals}
      openDeal={setSelectedDeal}
      setFilteredDeals={setFilteredDeals}
    />
 
-  <PageHeader title="AI Acquisitions OS" />
-
-  <ChatInbox />
-
-  <ConversationInbox
+  <WorkspaceRoutes
+    clearSelection={clearSelection}
+    deals={deals}
+    filteredDeals={filteredDeals}
+    isUnknownRoute={isUnknownRoute}
+    loading={loading}
+    onNavigateHome={() => navigateToWorkspace("today")}
+    openDeal={setSelectedDeal}
+    refresh={loadDeals}
+    selectedIds={selectedIds}
     selectedPhone={selectedPhone}
+    setFilteredDeals={setFilteredDeals}
     setSelectedPhone={setSelectedPhone}
+    toggleSelect={toggleSelect}
+    workspaceId={currentWorkspaceId}
   />
-
-  <Suspense fallback={<LazyPanelFallback label="Loading seller workspace..." />}>
-    <ConversationThread
-      selectedPhone={selectedPhone}
-    />
-  </Suspense>
-
-  {isLoaded && (
-    <SectionRenderer
-      sections={pageSections}
-    />
-  )}
-
-  {loading ? (
-    <p>Loading deals...</p>
-  ) : (
-    <PipelineBoard
-      deals={filteredDeals}
-      openDeal={setSelectedDeal}
-      selectedIds={selectedIds}
-      toggleSelect={toggleSelect}
-      refresh={loadDeals}
-    />
-  )}
 
   {selectedDeal && (
     <Suspense fallback={<LazyPanelFallback label="Loading deal modal..." />}>
