@@ -1,14 +1,5 @@
 import { useAuth } from "../hooks/useAuth";
-
-const buttonStyle = {
-  background: "transparent",
-  border: "1px solid currentColor",
-  borderRadius: 6,
-  color: "inherit",
-  cursor: "pointer",
-  fontWeight: 700,
-  padding: "9px 12px",
-};
+import { Button } from "../design-system/components";
 
 export default function AuthStatus() {
   const { loading, signOut, user } = useAuth();
@@ -24,9 +15,9 @@ export default function AuthStatus() {
       }}
     >
       <span style={{ fontSize: 14, opacity: 0.75 }}>{label}</span>
-      <button disabled={loading} onClick={signOut} style={buttonStyle}>
+      <Button disabled={loading} onClick={signOut} size="sm" variant="ghost">
         Sign out
-      </button>
+      </Button>
     </div>
   );
 }

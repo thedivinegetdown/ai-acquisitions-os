@@ -1,54 +1,20 @@
 import { useEffect } from "react";
+import { Button } from "../design-system/components";
 
-export default function ThemeToggle({
-  dark,
-  setDark,
-}) {
+export default function ThemeToggle({ dark, setDark }) {
   useEffect(() => {
-    document.body.style.background =
-      dark
-        ? "#0f172a"
-        : "#f8fafc";
-
-    document.body.style.color =
-      dark
-        ? "#ffffff"
-        : "#0f172a";
-
-    localStorage.setItem(
-      "ai-theme",
-      dark
-        ? "dark"
-        : "light"
-    );
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    localStorage.setItem("ai-theme", dark ? "dark" : "light");
   }, [dark]);
 
   return (
-    <button
-      onClick={() =>
-        setDark(
-          !dark
-        )
-      }
-      style={{
-        padding:
-          "10px 14px",
-        borderRadius: 999,
-        border: "none",
-        cursor:
-          "pointer",
-        fontWeight: 700,
-        background: dark
-          ? "#fff"
-          : "#0f172a",
-        color: dark
-          ? "#0f172a"
-          : "#fff",
-      }}
+    <Button
+      aria-pressed={dark}
+      onClick={() => setDark(!dark)}
+      size="sm"
+      variant="secondary"
     >
-      {dark
-        ? "☀️ Light Mode"
-        : "🌙 Dark Mode"}
-    </button>
+      {dark ? "Light Mode" : "Dark Mode"}
+    </Button>
   );
 }
