@@ -1,5 +1,11 @@
 # Roadmap
 
+## Enterprise Roadmap Governance
+
+Future implementation sequencing is governed by `docs/enterprise/AI_ACQUISITIONS_OS_ENTERPRISE_ENGINEERING_V1.md`.
+
+This legacy roadmap remains useful as an inventory of product areas, but it is superseded for prioritization by the enterprise Decision-First Product Model, Today Workspace, Universal Approval Inbox, Deal Decision Room, Asset Strategy Layer, Product Experience and Design System, and Simplicity Guardrail.
+
 ## SaaS Platform
 
 - Multi-tenancy and organization switching.

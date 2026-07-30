@@ -1847,3 +1847,594 @@ This document completes the requested architecture phase by establishing:
 - Engineering Operating Process v1.0.
 
 No new product functionality is authorized or implemented by this phase. Future work begins only through a compact three-phase Execution Order referencing this baseline.
+
+---
+
+# 7. Decision-First Product and UX Architecture Amendment
+
+## Status
+
+Architecture amendment accepted for future implementation planning. This document governs product architecture, user experience architecture, roadmap sequencing, and ADR alignment for the next evolution of AI Acquisitions OS.
+
+This amendment is documentation-only. It does not authorize immediate production code, database, API, dependency, or workflow changes.
+
+## Architectural Assessment
+
+### Existing Support
+
+- `docs/PRODUCT_OVERVIEW.md` already identifies the current platform as an AI-assisted acquisitions CRM with Seller Workspace, Conversation Hub, AI Copilot, Offer System, Property Intelligence, Buyer CRM, and Transaction Management.
+- `docs/AI_COPILOT_ARCHITECTURE.md` already supports server-side AI calls, rule-based fallback behavior, structured deal context, safe response parsing, and review-only AI guidance.
+- `docs/ACTION_INBOX_PLAN.md` already introduces reviewable action concepts, local action states, shortcuts, and future workflow approval queue integration.
+- `docs/PROPERTY_DATA_INTEGRATION.md` already establishes provider abstraction, normalized property data, confidence, missing data, and server-side provider-key requirements.
+- `docs/SAAS_ARCHITECTURE.md` already defines tenant context, role placeholders, and the safety boundary for delayed tenant enforcement.
+- `docs/ARCHITECTURE_OVERVIEW.md` already separates UI, services, serverless functions, provider abstractions, and cross-cutting services.
+
+### Required Amendments
+
+- The product model must move from tool-heavy CRM navigation to the **Decision-First Product Model**.
+- The Seller Workspace pattern must evolve into the **Deal Decision Room** with contextual tabs rather than many unrelated mounted panels.
+- Action Inbox concepts must be elevated into the **Universal Approval Inbox** with tenant-aware, role-aware, auditable, resumable approvals.
+- Property analysis must become part of the **Asset Strategy Layer**, and land must be explicitly separated from residential house analysis.
+- AI and rule-based outputs must use formal, explainable decision metrics including **Pursuit Score**, **Recommendation Confidence**, **Data Reliability**, **Offer Readiness**, and **Evidence and Provenance**.
+- Data gaps must be handled by the **Missing Information Autopilot** and **Research Workbench**, not scattered UI warnings.
+- UX must be governed by the **Product Experience and Design System** instead of ad hoc component styling.
+- The roadmap must be reorganized into decision intelligence, asset strategy, product experience, research/data intelligence, and productivity automation programs.
+
+### Roadmap Conflicts Resolved
+
+- Current roadmap items list many feature areas without a governing decision flow. This document reorders future work around decision quality, time saved, and background automation.
+- Existing AI roadmap language includes automation and briefings but does not define approval boundaries. This document requires human approval for canonical CRM mutations and high-risk actions.
+- Existing property-data roadmap treats property intelligence generically. This document requires asset type identification before analysis and prohibits analyzing vacant land as a house.
+- Existing UI roadmap is implicit. This document establishes explicit Product Experience and Design System governance before major workspace rebuilds.
+
+### Duplicate Concepts Consolidated
+
+- Action Inbox, notification center, workflow approvals, drafted communications, and AI recommendations are consolidated under the **Universal Approval Inbox**.
+- Seller Workspace, AI Intelligence Dashboard, Offer panels, Property Intelligence, Documents, Closing, Activity, and Communication panels are consolidated under the **Deal Decision Room**.
+- Data confidence, missing data, source freshness, and external verification are consolidated under **Evidence and Provenance**, **Data Reliability**, and **Missing Information Autopilot**.
+
+### Terminology Standardization
+
+The following terms are canonical and must be used consistently in future architecture, roadmap, ADR, product, and implementation documents:
+
+- **Decision-First Product Model**
+- **Today Workspace**
+- **Universal Approval Inbox**
+- **Deal Decision Room**
+- **Asset Strategy Layer**
+- **Pursuit Score**
+- **Recommendation Confidence**
+- **Data Reliability**
+- **Offer Readiness**
+- **Missing Information Autopilot**
+- **Research Workbench**
+- **Evidence and Provenance**
+- **Product Experience and Design System**
+- **Simplicity Guardrail**
+
+## Governing Product Model
+
+### Decision-First Product Model
+
+AI Acquisitions OS is **decision-first, not tool-first**.
+
+The platform must feel like one intelligent acquisition assistant rather than many disconnected dashboards and tools. Users should primarily review prioritized opportunities, approve important actions, communicate with sellers, make acquisition decisions, and handle exceptions.
+
+The platform should automatically organize data, identify missing information, calculate deal potential, verify data reliability, prioritize opportunities, recommend next actions, prepare communication and workflow actions, reduce duplicate work, and surface only meaningful exceptions.
+
+### Core Decision Flow
+
+```text
+Identify
+  ↓
+Verify
+  ↓
+Decide
+  ↓
+Act
+  ↓
+Learn
+```
+
+- **Identify:** Ingest or discover opportunities, classify asset type, deduplicate records, detect seller situations, and rank initial potential.
+- **Verify:** Check decision-critical facts, assess Data Reliability, resolve conflicts, assign source provenance, and create research tasks.
+- **Decide:** Present a recommendation, Pursuit Score, Recommendation Confidence, risk, readiness, action window, and supporting evidence.
+- **Act:** Prepare approved communications, offers, workflow actions, stage changes, buyer campaigns, and follow-up tasks.
+- **Learn:** Capture outcomes, overrides, seller responses, stale assumptions, conversion results, and team feedback to improve future recommendations.
+
+### Tool-to-Capability Model
+
+Current tools become background capabilities or contextual parts of guided workspaces:
+
+- Pipeline Board becomes a prioritized pipeline view plus source for Today Workspace queues.
+- Conversation Inbox becomes part of Inbox and Deal Decision Room communication context.
+- Seller Workspace becomes the Deal Decision Room.
+- Offer panels become contextual decision and numbers capabilities.
+- Property Intelligence becomes asset-strategy-specific verification and underwriting support.
+- Buyer CRM becomes buyer matching and disposition readiness support.
+- Transaction Management becomes Closing or Disposition workflow context.
+- AI Copilot becomes embedded decision assistance, exception explanation, and communication preparation.
+- Workflow Engine becomes background orchestration with Universal Approval Inbox checkpoints.
+
+Independent dashboard panels should be retained only when they support a clear decision or action. Otherwise they must be combined, hidden, or converted into background services.
+
+## Simplified Product Navigation
+
+### Target Primary Navigation
+
+- **Today**
+- **Pipeline**
+- **Inbox**
+- **Deals or Properties**
+- **Buyers**
+- **Reports**
+- **Settings**
+
+### Role-Aware Visibility
+
+- Acquisition users see Today, Pipeline, Inbox, Deals or Properties, Reports, and Settings scoped to their permissions.
+- Disposition users see Today, Buyers, Deals or Properties, Inbox, Reports, and disposition-specific approval queues.
+- Operators and admins see Settings, Reports, Universal Approval Inbox configuration, team capacity, workflow health, and tenant controls.
+- Read-only or limited users see only assigned queues, assigned opportunities, permitted reports, and approved communication surfaces.
+
+Navigation visibility must not be the only security boundary. Backend, repository, workflow, and approval enforcement must remain tenant-aware and role-aware.
+
+### Today Workspace
+
+The **Today Workspace** is the primary operating screen. It is not a dashboard of charts; it is the daily decision and action queue.
+
+Required Today sections:
+
+- **Act Now:** highest-priority opportunities and actions requiring immediate user response.
+- **Approvals:** pending Universal Approval Inbox items assigned to or permitted for the user.
+- **Waiting:** opportunities awaiting seller reply, external data, teammate input, or scheduled follow-up.
+- **At Risk:** contracts, hot leads, stale deals, conflicting facts, expiring action windows, or workflow exceptions.
+- **Completed:** decisions and actions completed today, with links to underlying evidence and activity.
+
+The Today Workspace must support filtering by role, market, asset type, queue ownership, urgency, risk, and approval type.
+
+## Daily Acquisition Briefing
+
+The Daily Acquisition Briefing is a generated, reviewable summary for the Today Workspace and optional notification channels.
+
+It must summarize:
+
+- urgent new leads
+- seller replies
+- deals ready for decisions
+- missing information
+- overdue follow-ups
+- contracts at risk
+- important opportunity changes
+- system or workflow exceptions
+
+Briefings must be explainable and link to source records, evidence, approvals, and Deal Decision Rooms. Briefings must distinguish facts, recommendations, assumptions, and stale or unverified information.
+
+## Universal Approval Inbox
+
+The **Universal Approval Inbox** is the single approval system for:
+
+- offers
+- drafted communications
+- workflow actions
+- stage changes
+- AI-extracted CRM updates
+- buyer campaigns
+- recommendation overrides
+- high-risk decisions
+
+Approval records must be:
+
+- tenant-aware
+- role-aware
+- auditable
+- resumable by workflows
+- linked to Evidence and Provenance
+- assignable to users or roles
+- stateful across draft, pending, approved, rejected, expired, canceled, and completed states
+
+Workflow systems may prepare actions, but must pause at approval checkpoints when configured by tenant policy, risk level, role, or action type. Approval decisions must capture who approved, what changed, why, when, and which evidence was available.
+
+## Deal Decision Room
+
+The **Deal Decision Room** is one guided workspace per opportunity. It replaces the current pattern of opening many unrelated panels.
+
+### Residential Tabs
+
+- **Decision**
+- **Seller**
+- **Property**
+- **Numbers**
+- **Communication**
+- **Activity**
+- **Documents**
+- **Closing**
+
+### Land Tabs
+
+- **Decision**
+- **Seller**
+- **Parcel**
+- **Buildability**
+- **Numbers**
+- **Communication**
+- **Documents**
+- **Disposition**
+
+### Decision Tab Requirements
+
+The Decision tab is the first view and must show:
+
+- recommendation
+- Pursuit Score
+- Recommendation Confidence
+- Data Completeness
+- Data Reliability
+- Offer Readiness
+- risk level
+- financial resilience
+- deal effort score
+- cost of delay
+- recommended action window
+- missing decision-critical facts
+- active approvals
+- next recommended action
+- evidence summary
+
+Each tab must support contextual actions without forcing users to navigate through unrelated dashboards.
+
+## Asset Strategy Layer
+
+### Strategy Hierarchy
+
+```text
+Common Acquisition Core
+│
+├── Residential Acquisition Strategy
+├── Vacant Land Acquisition Strategy
+├── Small Multifamily Strategy
+├── Manufactured Home Strategy
+└── Commercial Strategy, deferred
+```
+
+### Supported Priority
+
+1. Residential homes
+2. Vacant residential land
+3. Small multifamily
+4. Manufactured homes later
+5. Commercial later
+
+The platform must identify asset type before analysis and must never analyze land as though it were a house.
+
+### Common Acquisition Core
+
+The Common Acquisition Core defines shared concepts:
+
+- seller identity and authority
+- communication history
+- opportunity source
+- acquisition intent
+- timeline
+- asking price
+- decision state
+- approvals
+- Evidence and Provenance
+- Data Reliability
+- Data Completeness
+- Pursuit Score
+- Recommendation Confidence
+- activity history
+- ownership and tenant context
+
+### Strategy Contract
+
+Each asset strategy must define:
+
+- required facts
+- data-completeness rules
+- underwriting model
+- risk rules
+- pursuit scoring
+- readiness gates
+- offer logic
+- exit strategies
+- buyer matching rules
+- verification requirements
+
+### Residential Acquisition Strategy
+
+Residential analysis must focus on ARV, repairs, occupancy, condition, comparable sales, rent potential, mortgage context, seller motivation, timeline, title/closing readiness, and exit strategies such as wholesale, fix-and-flip, buy-and-hold, seller finance, and subject-to.
+
+### Vacant Land Acquisition Strategy
+
+Vacant land analysis must focus on parcel identity, legal access, road frontage, zoning, permitted use, utilities, water/sewer/septic feasibility, flood zones, wetlands, topography, deed restrictions, subdivision potential, taxes and liens, comparable land sales, builder demand, entitlement friction, and disposition path.
+
+### Small Multifamily Strategy
+
+Small multifamily analysis must focus on unit count, rent roll, vacancy, expenses, NOI, cap rate, DSCR-like resilience, rent upside, repair scope, tenant risk, local rental demand, financing assumptions, and investor buyer fit.
+
+### Manufactured Home Strategy
+
+Manufactured home strategy is deferred. When activated, it must separate land-owned from park-owned homes, title type, age, HUD status, transportability, park rules, lot rent, financing constraints, and buyer pool.
+
+### Commercial Strategy
+
+Commercial strategy is deferred. It must not be implemented until tenant needs, data-provider coverage, underwriting requirements, and compliance boundaries are separately approved.
+
+## Decision Intelligence Model
+
+Decision Intelligence outputs must be explainable, evidence-backed, tenant-aware, and asset-strategy-specific.
+
+### Metric Definitions
+
+- **Pursuit Score:** A 0-100 assessment of whether the opportunity deserves continued acquisition effort, based on strategy-specific economics, motivation, timing, risk, data quality, and execution capacity.
+- **Recommendation:** The system’s current suggested decision or action, such as pursue, verify, negotiate, make offer, wait, revisit, assign, disposition, or pass.
+- **Recommendation Confidence:** The confidence that the current Recommendation is appropriate, based on data completeness, data reliability, model fit, evidence freshness, conflicts, and historical outcomes.
+- **Data Completeness:** The percentage and criticality-weighted status of required facts for the applicable Asset Strategy Layer.
+- **Data Reliability:** A grade representing source trust, recency, conflict status, verification level, and provenance quality.
+- **Financial Resilience:** Strategy-specific tolerance for adverse changes, including repair overruns, lower ARV, delayed closing, title risk, entitlement friction, vacancy, rent variance, or buyer demand softness.
+- **Deal Effort Score:** Estimated operational effort required to reach a decision or close, including research, seller follow-up, negotiation, approvals, underwriting, and coordination.
+- **Risk Level:** Current risk severity across financial, legal, data, seller, asset, timeline, workflow, and execution dimensions.
+- **Offer Readiness:** Whether the opportunity has enough verified facts, financial inputs, approvals, and strategy-specific gates to prepare or present an offer.
+- **Cost of Delay:** Estimated loss or risk increase from waiting, including seller urgency, competition, contract deadlines, stale follow-up, price changes, or expiring approvals.
+- **Recommended Action Window:** The time window in which the recommended action should occur.
+- **Deal Expiration and Revalidation:** Rules that expire stale recommendations and require revalidation when facts age, conflict, or materially change.
+- **Automatic Priority Recalculation:** Background recalculation triggered by new messages, imported facts, verification results, approval decisions, stage changes, buyer changes, deadlines, or manual overrides.
+
+### Explainability Requirements
+
+Every metric must retain:
+
+- input facts
+- source record identifiers
+- source type
+- source timestamp
+- source trust level
+- verification status
+- model version or ruleset version
+- user overrides
+- prior recommendation state
+- explanation text suitable for operators
+
+## Missing Information Autopilot and Research Workbench
+
+### Missing Information Autopilot
+
+The **Missing Information Autopilot** detects missing decision-critical information, identifies conflicting values, creates verification tasks, obtains permitted external data, prepares seller questions, tracks research status, and reduces confidence when facts are stale or unverified.
+
+It must not silently mutate canonical CRM records. It may propose facts and actions through the Universal Approval Inbox.
+
+### Research Workbench
+
+The **Research Workbench** is the operator-facing workspace for verification, source review, conflict resolution, seller authority checks, and external-data status.
+
+Research status values should include needed, requested, in progress, blocked, conflicting, verified, rejected, stale, and expired.
+
+### Land-Specific Verification
+
+Vacant land verification must include:
+
+- parcel identity
+- legal access
+- road frontage
+- zoning
+- permitted use
+- utilities
+- water/sewer/septic feasibility
+- flood zones
+- wetlands
+- topography
+- deed restrictions
+- subdivision potential
+- taxes and liens
+- comparable land sales
+- builder demand
+
+Land recommendations must degrade when any critical land-specific verification item is missing, stale, conflicting, or unverified.
+
+## Automatic CRM Updating
+
+AI Acquisitions OS may propose CRM updates from:
+
+- calls
+- messages
+- notes
+- uploaded documents
+- imported records
+
+The system may propose:
+
+- asking price changes
+- motivation changes
+- timeline changes
+- property-condition facts
+- occupancy
+- follow-up tasks
+- stage changes
+
+AI must not silently mutate canonical CRM records. Proposed mutations must go through human review, show Evidence and Provenance, identify conflicting current values, and record approval or rejection decisions.
+
+## Opportunity Discovery and List Intelligence
+
+Future roadmap support must include:
+
+- opportunity discovery
+- list stacking
+- seller situation recognition
+- target-market rules
+- acquisition buy boxes
+- prospect ranking
+- revisit automation
+
+This architecture amendment does not authorize data-provider integrations. Provider selection, contracts, security review, schema impact, and cost controls require separate implementation planning.
+
+## Product Experience and Design System
+
+### Governing UI Principle
+
+Every interface element must belong to the shared design system, reinforce clear hierarchy, and help the user complete a decision or action with minimal navigation.
+
+The interface must feel calm, focused, consistent, immediate, and professional.
+
+### Design System Scope
+
+The **Product Experience and Design System** program must define:
+
+- professional application shell
+- collapsible sidebar
+- clean top navigation
+- global command/search bar
+- consistent tabs
+- one icon library
+- standardized icon sizes
+- typography scale
+- spacing scale
+- color and status system
+- reusable UI components
+- responsive behavior
+- accessibility requirements
+- loading skeletons
+- optimistic interactions
+- reduced-motion support
+- keyboard navigation
+- route-level workspaces
+- consistent drawers, modals, tables, cards, badges, inputs, and empty states
+
+### Route-Level Workspaces
+
+Primary workspaces must be route-level concepts:
+
+- Today Workspace
+- Pipeline
+- Inbox
+- Deal Decision Room
+- Buyers
+- Reports
+- Settings
+- Research Workbench where permissioned
+
+Route-level workspaces must support direct links, browser navigation, loading states, permission states, empty states, and error states.
+
+## Simplicity Guardrail
+
+Every proposed feature must answer:
+
+1. Does it save meaningful time?
+2. Does it improve decision accuracy?
+3. Can it operate in the background or inside an existing workflow?
+
+Features that fail this test must be removed, combined, hidden, or rejected.
+
+This guardrail applies to product roadmap, design reviews, architecture reviews, implementation planning, and release readiness.
+
+## Implementation Roadmap
+
+Each roadmap phase below includes objective, dependencies, implementation scope, acceptance criteria, validation requirements, definition of done, and regression scope. Phase order is dependency-aware; teams must not implement downstream UX automation before the required decision, evidence, approval, and asset-strategy contracts exist.
+
+### Program: Decision Intelligence
+
+| Phase | Objective | Dependencies | Implementation Scope | Acceptance Criteria | Validation Requirements | Definition of Done | Regression Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| DI-01 Decision Model Foundation | Establish canonical decision entities, states, evidence links, and output contracts. | Tenant context foundation; existing service-result patterns. | Define decision state, recommendation state, metric contracts, evidence references, and override records. | Decisions can represent identify, verify, decide, act, and learn states without UI-specific coupling. | Contract review, sample fixtures, architecture review. | Contracts documented, ADR linked, migration plan deferred. | Existing CRM reads, conversation summaries, AI fallback outputs. |
+| DI-02 Pursuit Scoring | Add asset-strategy-aware Pursuit Score definitions. | DI-01; AS-01. | Define score inputs, weights, explanations, and strategy hooks. | Pursuit Score can be explained by input categories and evidence. | Rule fixtures for residential and land examples. | Scoring spec accepted for implementation. | Existing lead priority and deal intelligence semantics. |
+| DI-03 Confidence and Reliability | Separate Recommendation Confidence from Data Reliability. | DI-01; RDI-03. | Define reliability grades, confidence calculation factors, conflict impact, freshness impact. | Confidence never substitutes for verified data quality. | Review stale/conflicting examples. | Reliability and confidence contracts documented. | Existing confidence labels in AI and property data docs. |
+| DI-04 Readiness Gates | Define Offer Readiness and action readiness gates by asset strategy. | DI-02; AS-02; AS-03. | Specify gate categories, blocking vs advisory gaps, approval triggers. | Offer readiness cannot pass with critical missing facts. | Residential and land readiness scenario review. | Gate definitions ready for implementation. | Existing offer readiness behavior and property intelligence messaging. |
+| DI-05 Cost-of-Delay Prioritization | Introduce cost of delay and Recommended Action Window. | DI-02; DI-03. | Define urgency, expiration, risk escalation, and queue ordering rules. | Today Workspace can sort urgent work by transparent logic. | Scenario validation for replies, deadlines, and stale follow-ups. | Prioritization model approved. | Notification priority and follow-up planner outputs. |
+| DI-06 Recommendation Recalculation | Define automatic priority recalculation triggers. | DI-01 through DI-05; RDI-04. | Identify events that expire or recalculate recommendations. | New facts, seller replies, approvals, and stale data can trigger recalculation. | Event matrix review. | Recalculation trigger contract approved. | Existing cache, workflow, notification, and AI summary assumptions. |
+| DI-07 Decision Memory and Overrides | Preserve user overrides and learning signals. | DI-01; UAI approval model. | Define override reasons, outcome capture, feedback loops, and audit requirements. | Overrides are auditable and affect future recommendations only through approved learning rules. | Audit review and sample override lifecycle. | Decision memory architecture accepted. | Existing manual statuses, local notification state, and AI recommendation language. |
+
+### Program: Asset Strategy
+
+| Phase | Objective | Dependencies | Implementation Scope | Acceptance Criteria | Validation Requirements | Definition of Done | Regression Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AS-01 Shared Asset Strategy Contracts | Create common strategy interface and asset classification requirements. | DI-01. | Define required facts, completeness rules, underwriting hooks, risk rules, readiness gates, offer logic, exit strategies, buyer matching, verification. | Every opportunity must have asset type before strategy analysis. | Contract review with residential and land examples. | Strategy contract documented and ADR accepted. | Existing deal analysis, property intelligence, offer, buyer matching concepts. |
+| AS-02 Residential Strategy | Formalize residential acquisition strategy. | AS-01; DI-02. | Define residential required facts, ARV/repair/rent assumptions, exits, readiness, risks, buyer fit. | Residential recommendations are explainable and evidence-backed. | Scenario review for wholesale, flip, rental, subject-to. | Residential spec accepted. | Existing residential offer and property analysis assumptions. |
+| AS-03 Vacant Land Strategy | Formalize land strategy and prevent house-style analysis. | AS-01; RDI-01. | Define parcel, buildability, zoning, utility, access, environmental, lien, comps, and builder-demand requirements. | Land cannot pass readiness if critical parcel/buildability facts are missing. | Land scenario review including missing legal access and wetlands. | Land separation ADR accepted and strategy documented. | Existing property intelligence, comps, and buyer matching references. |
+| AS-04 Small Multifamily Strategy | Formalize small multifamily strategy. | AS-01; DI-03. | Define unit, rent roll, NOI, vacancy, expenses, repair, financing, and investor-buyer rules. | Small multifamily is distinct from residential single-family and land. | Scenario review for rent roll gaps and NOI sensitivity. | Small multifamily spec accepted. | Existing residential analysis language and buyer matching assumptions. |
+| AS-05 Future Manufactured Home Strategy | Define deferred manufactured-home architecture boundary. | AS-01; future provider research. | Document title type, land-owned vs park-owned, HUD status, lot rent, transportability, financing, buyer constraints. | Manufactured homes are not analyzed under residential strategy until activated. | Deferral review and future-readiness checklist. | Deferred strategy boundary documented. | Asset classification and unsupported-asset handling. |
+
+### Program: Product Experience and Design System
+
+| Phase | Objective | Dependencies | Implementation Scope | Acceptance Criteria | Validation Requirements | Definition of Done | Regression Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| UX-01 Design System Foundation | Establish shared tokens, components, icon rules, states, and accessibility baseline. | Product Experience and Design System ADR. | Typography, spacing, colors, status semantics, icons, tabs, cards, tables, drawers, modals, forms, empty states, skeletons. | New UI cannot use ad hoc styling outside approved patterns. | Design review, accessibility checklist, component inventory. | Foundation documented before UI rebuilds. | Existing visual consistency, responsive behavior, keyboard access. |
+| UX-02 Professional Application Shell | Define shell with sidebar, top navigation, search, route states, and role-aware nav. | UX-01; role-aware interface ADR. | Route hierarchy, collapsible sidebar, global command/search, loading/error/empty states, responsive shell. | Navigation matches Today, Pipeline, Inbox, Deals or Properties, Buyers, Reports, Settings. | Navigation matrix and role visibility review. | Shell spec accepted. | Existing route entry, lazy loading, auth state, current navigation. |
+| UX-03 Today and Universal Approval Inbox | Make Today Workspace and approvals the primary operating surface. | UX-01; UX-02; UAI model; DI-05. | Act Now, Approvals, Waiting, At Risk, Completed; approval cards and queues. | Users can start the day from prioritized decisions and approvals. | Queue scenario validation and approval lifecycle review. | Today/approval UX spec accepted. | Existing Action Inbox, notifications, workflow approvals, conversation reply flow. |
+| UX-04 Decision Room and Contextual Workspaces | Replace panel-heavy Seller Workspace with Deal Decision Room. | UX-01 through UX-03; AS-02; AS-03. | Residential and land tabs, Decision tab, contextual actions, evidence summary, communication context. | One opportunity opens one guided workspace with strategy-specific tabs. | Residential and land task-flow review. | Decision Room spec accepted. | Existing Seller Workspace, AI dashboard, offers, property intelligence, documents, closing. |
+| UX-05 Interaction, Accessibility, Responsiveness, and Performance Polish | Standardize interaction quality and performance expectations. | UX-01 through UX-04. | Reduced motion, keyboard navigation, focus states, optimistic interactions, skeletons, responsiveness, route performance budgets. | Workspaces are usable on supported screen sizes and accessible by keyboard. | Accessibility audit, responsive QA, performance budget review. | Interaction standards documented. | Existing keyboard flows, modals, drawers, async states. |
+| UX-06 Legacy UI Consistency Migration and Cleanup | Plan migration from legacy panels to design-system components. | UX-01 through UX-05. | Inventory, migration order, deprecation plan, component replacements, duplicate panel removal. | Legacy UI debt is scheduled without breaking current workflows. | Diff risk review and regression plan. | Migration backlog accepted. | Existing dashboards, panels, cards, forms, tables, and empty states. |
+
+### Program: Research and Data Intelligence
+
+| Phase | Objective | Dependencies | Implementation Scope | Acceptance Criteria | Validation Requirements | Definition of Done | Regression Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| RDI-01 Missing-Information Detection | Identify missing decision-critical facts by asset strategy. | AS-01. | Required fact matrix, criticality, blocking/advisory gaps, seller-question generation hooks. | Missing Information Autopilot can state what is missing and why it matters. | Residential and land missing-fact scenarios. | Detection spec accepted. | Existing missing-data labels in AI, offers, property, and action inbox. |
+| RDI-02 Conflicting-Data Resolution | Detect and route conflicting values. | RDI-01; Evidence and Provenance ADR. | Conflict models, source ranking, review states, approval routing. | Conflicts reduce confidence and create reviewable work. | Conflict examples for price, timeline, parcel, occupancy. | Conflict-resolution spec accepted. | Existing CRM field reads and AI extraction proposals. |
+| RDI-03 Evidence and Provenance | Own source references, trust levels, timestamps, and verification state. | DI-01. | Evidence records, provenance references, freshness, source trust, lineage. | Every recommendation can cite supporting and conflicting evidence. | Provenance lifecycle review. | Evidence model documented and ADR accepted. | Existing property data, AI responses, imported records, messages. |
+| RDI-04 Freshness and Revalidation | Expire stale facts and recommendations. | RDI-03; DI-06. | Freshness rules by fact type, revalidation triggers, stale-data confidence impact. | Stale facts cannot support high-confidence recommendations without review. | Staleness scenarios for ARV, zoning, seller timeline, buyer demand. | Revalidation rules accepted. | Existing cache TTLs, follow-up dates, recommendation summaries. |
+| RDI-05 Research Workbench | Define operator surface for verification and research status. | RDI-01 through RDI-04; UX-02. | Verification tasks, source review, conflict resolution, seller questions, external-data status. | Operators can resolve missing or conflicting facts without mutating records silently. | Research task lifecycle review. | Workbench UX and service boundaries accepted. | Existing task, property lookup, document, and notes workflows. |
+| RDI-06 Seller Authority Verification | Verify whether the communicating party can transact. | RDI-03; UAI model. | Authority facts, ownership relationship, document evidence, exception routing. | High-risk actions are blocked or routed when seller authority is unverified. | Scenarios for owner, relative, tenant, agent, unknown contact. | Authority verification spec accepted. | Existing seller records, phone matching, communication assumptions. |
+
+### Program: Productivity Automation
+
+| Phase | Objective | Dependencies | Implementation Scope | Acceptance Criteria | Validation Requirements | Definition of Done | Regression Scope |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| PA-01 Automatic CRM Update Suggestions | Propose CRM mutations from communications, notes, docs, and imports. | Human approval ADR; RDI-03. | Extraction proposals, diff view, approval routing, rejection reasons. | AI never silently mutates canonical CRM records. | Extraction review examples. | Proposal workflow spec accepted. | Existing deal update paths, imported records, AI summaries. |
+| PA-02 Duplicate-Work Prevention | Reduce duplicate tasks, follow-ups, approvals, and research work. | DI-01; RDI-01; UX-03. | Duplicate detection rules, merge suggestions, task suppression, queue consolidation. | Users are not asked to do the same work in multiple places. | Duplicate scenario review. | Duplicate-work rules accepted. | Existing tasks, notifications, action inbox, follow-up planner. |
+| PA-03 What Changed Summary | Summarize meaningful opportunity changes since last review. | RDI-03; DI-06. | Change detection, materiality rules, evidence links, Today and Decision Room summaries. | Users can understand why priority or recommendation changed. | Change examples for seller reply, price change, verification result. | Summary contract accepted. | Existing activity timeline, AI briefing, notification center. |
+| PA-04 Automatic Pipeline Cleanup | Identify stale, duplicate, invalid, or completed pipeline items. | DI-06; PA-02. | Cleanup suggestions, approval routing, safe archival states, no destructive deletion. | Cleanup actions are reviewable and reversible where possible. | Pipeline cleanup scenarios. | Cleanup spec accepted. | Existing pipeline stages, deal records, activity history. |
+| PA-05 Revisit Engine | Schedule and reprioritize future opportunities. | DI-05; RDI-04. | Revisit criteria, timing, reason tracking, seller situation triggers, expiration. | Passed or waiting deals can return when conditions change. | Revisit lifecycle scenarios. | Revisit rules accepted. | Existing follow-up planner, due dates, pipeline stages. |
+| PA-06 Team-Capacity-Aware Assignment | Route work based on role, capacity, market, and urgency. | UX-03; role-aware interface ADR; SaaS tenant context. | Assignment rules, capacity signals, escalation paths, permission checks. | Work is assigned to eligible users without hiding critical exceptions. | Assignment matrix review. | Assignment architecture accepted. | Existing role, team, task, and action inbox concepts. |
+| PA-07 Voice and Mobile Quick Capture | Capture field notes, seller updates, and quick tasks from mobile/voice. | PA-01; UX-05. | Capture schema, transcription review, extraction proposals, approval routing. | Quick capture creates reviewable suggestions, not silent CRM mutations. | Mobile/voice capture scenarios. | Capture architecture accepted. | Existing notes, tasks, messages, AI extraction proposals. |
+
+## ADR Index
+
+- [ADR-001: Version 1.0 Release Candidate Readiness](../ADR-001-VERSION-1-0-RELEASE-CANDIDATE.md)
+- [ADR-016: Decision-First Product Architecture](adrs/ADR-016-DECISION-FIRST-PRODUCT-ARCHITECTURE.md)
+- [ADR-017: Asset Strategy Architecture](adrs/ADR-017-ASSET-STRATEGY-ARCHITECTURE.md)
+- [ADR-018: Explainable Scoring and Recommendation Architecture](adrs/ADR-018-EXPLAINABLE-SCORING-AND-RECOMMENDATION-ARCHITECTURE.md)
+- [ADR-019: Evidence and Provenance Ownership](adrs/ADR-019-EVIDENCE-AND-PROVENANCE-OWNERSHIP.md)
+- [ADR-020: Professional Design System Governance](adrs/ADR-020-PROFESSIONAL-DESIGN-SYSTEM-GOVERNANCE.md)
+- [ADR-021: Route-Level Workspace Architecture](adrs/ADR-021-ROUTE-LEVEL-WORKSPACE-ARCHITECTURE.md)
+- [ADR-022: Human Approval for AI-Proposed Mutations](adrs/ADR-022-HUMAN-APPROVAL-FOR-AI-PROPOSED-MUTATIONS.md)
+- [ADR-023: Simplicity Guardrail](adrs/ADR-023-SIMPLICITY-GUARDRAIL.md)
+- [ADR-024: Land Acquisition Analysis Separation](adrs/ADR-024-LAND-ACQUISITION-ANALYSIS-SEPARATION.md)
+- [ADR-025: Role-Aware Interface Strategy](adrs/ADR-025-ROLE-AWARE-INTERFACE-STRATEGY.md)
+
+## Recommended First Compact Execution Order
+
+### Phase 1: Decision Foundation and Guardrails
+
+- DI-01 Decision Model Foundation
+- RDI-03 Evidence and Provenance
+- ADR-008 human approval boundary
+- UX-01 Product Experience and Design System foundation
+
+### Phase 2: Strategy Separation and Today Operating Model
+
+- AS-01 Shared Asset Strategy Contracts
+- AS-02 Residential Strategy
+- AS-03 Vacant Land Strategy
+- DI-02 Pursuit Scoring
+- UX-02 Professional Application Shell
+- UX-03 Today Workspace and Universal Approval Inbox
+
+### Phase 3: Guided Decision Execution
+
+- UX-04 Deal Decision Room
+- RDI-01 Missing-Information Detection
+- RDI-02 Conflicting-Data Resolution
+- DI-04 Readiness Gates
+- PA-01 Automatic CRM Update Suggestions
+- PA-03 What Changed Summary
+
+## Validation Checklist
+
+- Markdown structure must retain one top-level title and stable section anchors.
+- ADR numbering must not conflict with existing ADR-001.
+- Roadmap dependencies must flow from contracts and evidence models before automation and UX rebuilds.
+- Every roadmap phase must include objective, dependencies, implementation scope, acceptance criteria, validation requirements, definition of done, and regression scope.
+- No production source files should be modified by architecture amendments.
+- No database migrations, API changes, Netlify Functions, dependency updates, or tests should be modified by architecture amendments.
+- Links in the ADR index must resolve before completion.
