@@ -56,9 +56,25 @@ export const workspaceDefinitions = [
 export const mobileWorkspaceIds = ["today", "pipeline", "inbox"];
 
 export const DEAL_DECISION_ROOM_WORKSPACE_ID = "deal-decision-room";
+export const APPROVAL_INBOX_WORKSPACE_ID = "approvals";
+
+const contextualWorkspaceDefinitions = [
+  {
+    id: APPROVAL_INBOX_WORKSPACE_ID,
+    label: "Approvals",
+    route: "/approvals",
+    icon: "inbox",
+    ariaLabel: "Open Universal Approval Inbox",
+    parentId: "today",
+  },
+];
 
 export function getWorkspaceById(id) {
-  return workspaceDefinitions.find((workspace) => workspace.id === id) || null;
+  return (
+    [...workspaceDefinitions, ...contextualWorkspaceDefinitions].find(
+      (workspace) => workspace.id === id
+    ) || null
+  );
 }
 
 export function getWorkspaceByRoute(route) {
@@ -74,7 +90,11 @@ export function getWorkspaceByRoute(route) {
     };
   }
 
-  return workspaceDefinitions.find((workspace) => workspace.route === normalizedRoute) || null;
+  return (
+    [...workspaceDefinitions, ...contextualWorkspaceDefinitions].find(
+      (workspace) => workspace.route === normalizedRoute
+    ) || null
+  );
 }
 
 export function normalizeWorkspaceRoute(route) {

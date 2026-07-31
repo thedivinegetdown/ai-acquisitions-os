@@ -24,6 +24,7 @@ const [dark, setDark] = useState(
 );
 const {
 currentPath,
+currentWorkspace,
 currentWorkspaceId,
 isUnknownRoute,
 navigateToDeal,
@@ -44,7 +45,7 @@ setSelectedIds([]);
 
 return (
 <AppShell
-  currentWorkspaceId={currentWorkspaceId}
+  currentWorkspaceId={currentWorkspace?.parentId || currentWorkspaceId}
   dark={dark}
   navigationItems={workspaceDefinitions}
   onNavigate={navigateToWorkspace}

@@ -88,12 +88,35 @@ describe("buildTodayReadModel", () => {
     });
 
     expect(model.sourceStatus).toEqual(expect.any(String));
+    expect(model.approvals.items).toHaveLength(1);
     expect(model.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           category: "approvals",
           type: "approval",
           title: "Workflow approval pending: 123 Main Street",
+        }),
+      ])
+    );
+  });
+
+  it("uses the normalized approval model for offer reviews", () => {
+    const model = buildTodayReadModel({
+      deals: [deal({ offer_ready: true, next_action: "Call seller" })],
+      now: NOW,
+    });
+
+    expect(model.approvals.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ approvalType: "offer-review" }),
+      ])
+    );
+    expect(model.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "approvals",
+          targetWorkspace: "approvals",
+          type: "approval",
         }),
       ])
     );

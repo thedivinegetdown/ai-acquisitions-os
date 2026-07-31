@@ -1,5 +1,6 @@
 import { buildActionInbox } from "../notifications";
 import { getPriorityWeight } from "../notifications/notificationPriorityService";
+import { buildApprovalReadModel, isApprovalNotification } from "../approvals";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 
@@ -151,6 +152,60 @@ function normalizeNotificationItem(notification = {}, { now = Date.now() } = {})
     sortSignals: {
       priorityWeight: getPriorityWeight(notification.priority),
       dueDate: notification.deal?.due_date || notification.deal?.follow_up_date || "",
+    },
+  };
+}
+
+function approvalTodayCategory(status) {
+  if (status === "deferred") return "waiting";
+  if (status === "expired") return "at-risk";
+  if (["approved", "rejected", "cancelled"].includes(status)) return "completed";
+  return "approvals";
+}
+
+function normalizeApprovalTodayItem(approval = {}) {
+  const category = approvalTodayCategory(approval.status);
+  const dealId = approval.relatedDeal?.id || null;
+  const phone = approval.relatedSeller?.phone || approval.relatedConversation?.phone || "";
+
+  return {
+    id: `today:${approval.id}`,
+    tenantId: approval.tenantId,
+    type: "approval",
+    category,
+    title: approval.title,
+    summary: approval.summary,
+    relatedSeller: approval.relatedSeller?.name || "Unknown seller",
+    relatedDeal:
+      approval.relatedProperty?.address || approval.relatedDeal?.label || "Unknown property",
+    priority: approval.riskLevel || "Medium",
+    urgency: approval.urgency || approval.riskLevel || "Normal",
+    reason: approval.reason,
+    recommendedNextAction: approval.requestedAction,
+    dueDate: approval.expirationTimestamp || approval.actionDueAt || "",
+    actionWindow: approval.expirationTimestamp
+      ? formatSafeDate(approval.expirationTimestamp, "")
+      : "",
+    source: approval.sourceSystem || "Universal Approval Inbox",
+    createdAt: approval.requestedTimestamp,
+    updatedAt: approval.decisionMetadata?.decidedAt || approval.requestedTimestamp,
+    status: approval.status,
+    availableActions: [
+      {
+        id: "open-approval-inbox",
+        label: "Review approval",
+        targetWorkspace: "approvals",
+        dealId,
+        phone,
+      },
+    ],
+    evidence: approval.evidence,
+    targetWorkspace: "approvals",
+    target: { dealId, phone, approvalId: approval.id },
+    dataConfidence: "Derived from the normalized approval read model",
+    sortSignals: {
+      priorityWeight: getPriorityWeight(approval.riskLevel),
+      dueDate: approval.expirationTimestamp || approval.actionDueAt || "",
     },
   };
 }
@@ -317,12 +372,21 @@ export function buildTodayReadModel({
   const operatorNotifications = (inbox.notifications || []).filter(
     (notification) => notification.category !== "System health warnings"
   );
-  const notificationItems = operatorNotifications.map((notification) =>
-    normalizeNotificationItem(notification, { now })
-  );
+  const approvalReadModel = buildApprovalReadModel({
+    dealNotifications: operatorNotifications,
+    deals: safeDeals,
+    limit,
+    now,
+    role,
+  });
+  const notificationItems = operatorNotifications
+    .filter((notification) => !isApprovalNotification(notification))
+    .map((notification) => normalizeNotificationItem(notification, { now }));
+  const approvalItems = approvalReadModel.items.map(normalizeApprovalTodayItem);
 
   const items = dedupeTodayItems([
     ...notificationItems,
+    ...approvalItems,
     ...buildSellerReplyItems(safeConversations, { now }),
     ...buildWaitingItems(safeDeals, { now }),
     ...buildCompletedItems(safeDeals, { now }),
@@ -339,6 +403,13 @@ export function buildTodayReadModel({
     role,
     sourceWarnings,
     sourceStatus: sourceWarnings.length ? "partial" : "complete",
-    sources: ["Action Inbox", "Notification Rules", "Deal Data", "Conversation summaries when supplied"],
+    sources: [
+      "Action Inbox",
+      "Notification Rules",
+      "Universal Approval Inbox",
+      "Deal Data",
+      "Conversation summaries when supplied",
+    ],
+    approvals: approvalReadModel,
   };
 }

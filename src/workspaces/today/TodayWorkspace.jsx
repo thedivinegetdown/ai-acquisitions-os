@@ -239,8 +239,14 @@ export default function TodayWorkspace({
   }
 
   function handleCategoryChange(categoryId) {
-    setSelectedCategory(categoryId);
     persistSelectedCategory(categoryId);
+
+    if (categoryId === "approvals" && onNavigateWorkspace) {
+      onNavigateWorkspace("approvals");
+      return;
+    }
+
+    setSelectedCategory(categoryId);
   }
 
   function handleOpenItem(item) {

@@ -1,0 +1,201 @@
+.approval-workspace__refresh-note,
+.approval-workspace__announcement {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.approval-workspace__refresh-note {
+  margin-top: calc(var(--space-4) * -1);
+}
+
+.approval-workspace__announcement:empty {
+  display: none;
+}
+
+.approval-workspace__compatibility,
+.approval-loading,
+.approval-summary,
+.approval-filters,
+.approval-list,
+.approval-details,
+.approval-defer-dialog {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.approval-workspace__compatibility p {
+  color: var(--color-text-muted);
+}
+
+.approval-summary__metrics,
+.approval-item__meta,
+.approval-details__facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.approval-summary__metrics {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
+.approval-summary__metrics div,
+.approval-item__meta div,
+.approval-details__facts div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.approval-summary__metrics dt,
+.approval-item__meta dt,
+.approval-details__facts dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+}
+
+.approval-summary__metrics dd,
+.approval-item__meta dd,
+.approval-details__facts dd {
+  color: var(--color-text);
+  font-weight: var(--weight-bold);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.approval-item {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.approval-item--selected {
+  box-shadow: inset 3px 0 0 var(--color-primary), var(--shadow-sm);
+}
+
+.approval-item__summary {
+  background: transparent;
+  border: 0;
+  color: var(--color-text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5);
+  text-align: left;
+  width: 100%;
+}
+
+.approval-item__summary:hover {
+  background: var(--color-surface-muted);
+}
+
+.approval-item__summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.approval-item__heading {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.approval-item__heading h3,
+.approval-details h3 {
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  margin: 0;
+}
+
+.approval-item__heading p,
+.approval-item__reason,
+.approval-details p {
+  color: var(--color-text-muted);
+  line-height: var(--leading-relaxed);
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.approval-item__badges,
+.approval-item__source,
+.approval-item__actions,
+.approval-details__badges,
+.approval-dialog__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.approval-item__meta,
+.approval-details__facts {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.approval-item__footer {
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-5);
+}
+
+.approval-item__manual-note {
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-3) var(--space-5);
+}
+
+.approval-details {
+  padding-bottom: var(--space-5);
+}
+
+.approval-details section {
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+}
+
+.approval-details__evidence {
+  color: var(--color-text-muted);
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.approval-dialog__actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .approval-item__heading,
+  .approval-item__footer {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .approval-item__actions .ds-button {
+    min-height: 2.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .approval-item__summary {
+    scroll-behavior: auto;
+  }
+}

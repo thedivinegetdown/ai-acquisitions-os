@@ -21,6 +21,9 @@ vi.mock("../../components/NotificationsCenter", () => ({
 }));
 vi.mock("../../components/TaskDashboard", () => ({ default: () => <div>Task Dashboard Mock</div> }));
 vi.mock("../deals/DealDecisionRoom", () => ({ default: () => <div>Decision Room Mock</div> }));
+vi.mock("../approvals/ApprovalInboxWorkspace", () => ({
+  default: () => <div>Approval Inbox Mock</div>,
+}));
 
 const baseProps = {
   clearSelection: vi.fn(),
@@ -60,6 +63,13 @@ describe("WorkspaceRoutes", () => {
     render(<WorkspaceRoutes {...baseProps} workspaceId="deal-decision-room" />);
 
     await waitFor(() => expect(screen.getByText("Decision Room Mock")).toBeInTheDocument());
+  });
+
+  it("lazy loads the contextual Universal Approval Inbox workspace", async () => {
+    render(<WorkspaceRoutes {...baseProps} workspaceId="approvals" />);
+
+    await waitFor(() => expect(screen.getByText("Approval Inbox Mock")).toBeInTheDocument());
+    expect(screen.queryByText("Pipeline Board Mock")).not.toBeInTheDocument();
   });
 
   it("renders a safe unknown-route fallback", () => {

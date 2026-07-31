@@ -55,6 +55,21 @@ describe("TodayWorkspace", () => {
     expect(localStorage.getItem("ai-today-category")).toBe("approvals");
   });
 
+  it("routes the Approvals category to the Universal Approval Inbox", () => {
+    const onNavigateWorkspace = vi.fn();
+    render(
+      <TodayWorkspace
+        deals={[{ ...deal, next_action: "" }]}
+        onNavigateWorkspace={onNavigateWorkspace}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /Approvals/ }));
+
+    expect(onNavigateWorkspace).toHaveBeenCalledWith("approvals");
+    expect(localStorage.getItem("ai-today-category")).toBe("approvals");
+  });
+
   it("navigates to existing deal context for item actions", () => {
     const openDeal = vi.fn();
     render(<TodayWorkspace deals={[deal]} openDeal={openDeal} />);

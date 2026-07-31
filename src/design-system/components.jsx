@@ -197,7 +197,13 @@ export function Modal({ children, isOpen, onClose, title }) {
 
 export function Drawer({ children, isOpen, onClose, side = "right", title }) {
   const titleId = useId();
+  const closeRef = useRef(null);
   useEscape(onClose, isOpen);
+
+  useEffect(() => {
+    if (isOpen) closeRef.current?.focus();
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -213,7 +219,7 @@ export function Drawer({ children, isOpen, onClose, side = "right", title }) {
           <h2 className="ds-section-header__title" id={titleId}>
             {title}
           </h2>
-          <IconButton icon="close" label="Close drawer" onClick={onClose} />
+          <IconButton icon="close" label="Close drawer" onClick={onClose} ref={closeRef} />
         </div>
         {children}
       </aside>

@@ -47,6 +47,19 @@ describe("workspaceDefinitions", () => {
     expect(getWorkspaceByRoute("/deals")?.id).toBe("deals");
   });
 
+  it("maps the Approval Inbox as a contextual Today route without changing primary navigation", () => {
+    const approvalWorkspace = getWorkspaceByRoute("/approvals");
+
+    expect(approvalWorkspace).toEqual(
+      expect.objectContaining({
+        id: "approvals",
+        parentId: "today",
+        route: "/approvals",
+      })
+    );
+    expect(workspaceDefinitions.map((workspace) => workspace.id)).not.toContain("approvals");
+  });
+
   it("keeps mobile navigation focused on Today, Pipeline, Inbox, and More", () => {
     expect(mobileWorkspaceIds).toEqual(["today", "pipeline", "inbox"]);
   });

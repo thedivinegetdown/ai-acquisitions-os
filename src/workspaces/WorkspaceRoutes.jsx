@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-s
 import TodayWorkspace from "./today/TodayWorkspace";
 
 const DealDecisionRoom = lazy(() => import("./deals/DealDecisionRoom"));
+const ApprovalInboxWorkspace = lazy(() => import("./approvals/ApprovalInboxWorkspace"));
 const ConversationThread = lazy(() => import("../components/ConversationThread"));
 const ExecutiveDashboard = lazy(() =>
   import("../features/dashboard").then((module) => ({ default: module.ExecutiveDashboard }))
@@ -204,6 +205,12 @@ export default function WorkspaceRoutes({ workspaceId, isUnknownRoute, onNavigat
   switch (workspaceId) {
     case "today":
       return <TodayWorkspace {...props} />;
+    case "approvals":
+      return (
+        <LazyCompatibility label="Loading Universal Approval Inbox...">
+          <ApprovalInboxWorkspace {...props} />
+        </LazyCompatibility>
+      );
     case "pipeline":
       return <PipelineWorkspace {...props} />;
     case "inbox":

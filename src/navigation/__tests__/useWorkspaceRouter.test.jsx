@@ -18,6 +18,9 @@ function RouterHarness() {
       <button onClick={() => router.navigateToDeal("deal-123")} type="button">
         Deal
       </button>
+      <button onClick={() => router.navigateToWorkspace("approvals")} type="button">
+        Approvals
+      </button>
     </div>
   );
 }
@@ -70,6 +73,16 @@ describe("useWorkspaceRouter", () => {
 
     expect(screen.getByTestId("workspace-id")).toHaveTextContent("deal-decision-room");
     expect(window.location.pathname).toBe("/deals/deal-123");
+  });
+
+  it("navigates to the contextual Approval Inbox route", () => {
+    setPath("/today");
+    render(<RouterHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Approvals" }));
+
+    expect(screen.getByTestId("workspace-id")).toHaveTextContent("approvals");
+    expect(window.location.pathname).toBe("/approvals");
   });
 
   it("reports unknown routes without redirecting", () => {
