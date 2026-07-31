@@ -4,6 +4,7 @@ import ConversationInbox from "../components/ConversationInbox";
 import LazyPanelFallback from "../components/LazyPanelFallback";
 import PipelineBoard from "../components/PipelineBoard";
 import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system";
+import TodayWorkspace from "./today/TodayWorkspace";
 
 const ConversationThread = lazy(() => import("../components/ConversationThread"));
 const ExecutiveDashboard = lazy(() =>
@@ -16,15 +17,12 @@ const BillingSubscriptionPanel = lazy(() => import("../components/BillingSubscri
 const AdminHealthCenter = lazy(() => import("../components/AdminHealthCenter"));
 const CampaignTrackingPanel = lazy(() => import("../components/CampaignTrackingPanel"));
 const SearchCommandCenter = lazy(() => import("../components/SearchCommandCenter"));
-const ActionInboxPanel = lazy(() => import("../components/ActionInboxPanel"));
 const LeadImporter = lazy(() => import("../components/LeadImporter"));
 const DuplicateDetector = lazy(() => import("../components/DuplicateDetector"));
 const DataHealthCenter = lazy(() => import("../components/DataHealthCenter"));
 const AutoLeadScoring = lazy(() => import("../components/AutoLeadScoring"));
-const MorningBriefing = lazy(() => import("../components/MorningBriefing"));
 const BulkActionsBar = lazy(() => import("../components/BulkActionsBar"));
 const SavedViewsBar = lazy(() => import("../components/SavedViewsBar"));
-const NotificationsCenter = lazy(() => import("../components/NotificationsCenter"));
 const ExecutiveScorecard = lazy(() => import("../components/ExecutiveScorecard"));
 const RevenueBoard = lazy(() => import("../components/RevenueBoard"));
 const AnalyticsBoard = lazy(() => import("../components/AnalyticsBoard"));
@@ -32,7 +30,6 @@ const DashboardStats = lazy(() => import("../components/DashboardStats"));
 const KPIBoard = lazy(() => import("../components/KPIBoard"));
 const SourceBoard = lazy(() => import("../components/SourceBoard"));
 const BuyersBoard = lazy(() => import("../components/BuyersBoard"));
-const TaskDashboard = lazy(() => import("../components/TaskDashboard"));
 const SearchFilters = lazy(() => import("../components/SearchFilters"));
 
 function WorkspaceContainer({ children, description, title }) {
@@ -58,24 +55,6 @@ function CompatibilityGroup({ children, title }) {
 
 function LazyCompatibility({ children, label }) {
   return <Suspense fallback={<LazyPanelFallback label={label} />}>{children}</Suspense>;
-}
-
-function TodayWorkspace({ deals, openDeal, setSelectedPhone }) {
-  return (
-    <WorkspaceContainer
-      description="A structural workspace for current priority and activity panels."
-      title="Today"
-    >
-      <CompatibilityGroup title="Today compatibility panels">
-        <LazyCompatibility label="Loading Today panels...">
-          <MorningBriefing deals={deals} />
-          <ActionInboxPanel deals={deals} openDeal={openDeal} setSelectedPhone={setSelectedPhone} />
-          <NotificationsCenter deals={deals} openDeal={openDeal} />
-          <TaskDashboard deals={deals} openDeal={openDeal} />
-        </LazyCompatibility>
-      </CompatibilityGroup>
-    </WorkspaceContainer>
-  );
 }
 
 function PipelineWorkspace({

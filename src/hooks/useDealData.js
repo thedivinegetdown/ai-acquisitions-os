@@ -5,6 +5,7 @@ export const useDealData = () => {
   const [deals, setDeals] = useState([]);
   const [filteredDeals, setFilteredDeals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const loadDeals = useCallback(async () => {
     setLoading(true);
@@ -13,10 +14,12 @@ export const useDealData = () => {
 
     if (!result.success) {
       console.error("Failed to load deals:", result.error);
+      setError(result.error?.message || "Could not load deals.");
       setDeals([]);
       setFilteredDeals([]);
     } else {
       const rows = result.data || [];
+      setError("");
       setDeals(rows);
       setFilteredDeals(rows);
     }
@@ -34,6 +37,7 @@ export const useDealData = () => {
     filteredDeals,
     setFilteredDeals,
     loading,
+    error,
     loadDeals,
   };
 };

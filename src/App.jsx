@@ -15,6 +15,7 @@ deals,
 filteredDeals,
 setFilteredDeals,
 loading,
+error,
 loadDeals,
 } = useDealData();
 
@@ -59,10 +60,12 @@ return (
   <WorkspaceRoutes
     clearSelection={clearSelection}
     deals={deals}
+    dealLoadError={error}
     filteredDeals={filteredDeals}
     isUnknownRoute={isUnknownRoute}
     loading={loading}
     onNavigateHome={() => navigateToWorkspace("today")}
+    onNavigateWorkspace={navigateToWorkspace}
     openDeal={setSelectedDeal}
     refresh={loadDeals}
     selectedIds={selectedIds}
