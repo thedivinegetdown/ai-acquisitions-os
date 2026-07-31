@@ -129,6 +129,19 @@ The platform must help teams:
 13. **No implementation phase may redesign architecture.**
 14. **Backward compatibility is preserved unless an ADR explicitly approves a break.**
 15. **Security, accessibility, observability, and testability are product requirements.**
+16. **Free-First and vendor-neutral architecture is mandatory.**
+
+AI Acquisitions OS uses a Free-First architecture. Core functionality must operate without required paid third-party services during development and basic single-user use. External paid services must remain optional, replaceable, and isolated behind provider adapters.
+
+Free-First means:
+
+- build internally when practical;
+- prefer existing platform capabilities;
+- prefer open-source libraries with appropriate licenses;
+- prefer standards-based integrations;
+- do not introduce a paid dependency when the requirement can be met safely using PostgreSQL, Supabase, Netlify, browser capabilities, local processing, or existing project code;
+- do not sacrifice security, legal compliance, correctness, or reliability merely to avoid costs;
+- usage-based services that inherently cost money must be opt-in and disabled safely when unconfigured.
 
 ## 1.3 System context
 
@@ -155,6 +168,166 @@ The platform must help teams:
 - Stripe billing
 - File/object storage
 - Optional calendar, calling, e-signature, title, and accounting integrations
+
+### Free-First provider tiers
+
+Provider selection follows three tiers. The architecture must tolerate plan, pricing, quota, and availability changes; no vendor is assumed to remain free forever.
+
+#### Tier 1 - Core and Free-First
+
+Tier 1 capabilities are the default baseline for development and basic single-user use:
+
+- PostgreSQL;
+- Supabase capabilities already used by the project;
+- Netlify capabilities already used by the project;
+- browser APIs;
+- local storage where appropriate;
+- open-source libraries;
+- internal deterministic engines;
+- manual data entry and CSV import.
+
+Tier 1 is preferred whenever it can satisfy the requirement without weakening security, legal compliance, correctness, or reliability.
+
+#### Tier 2 - Optional usage-based integrations
+
+Tier 2 providers may be supported when the business value justifies configuration and cost exposure:
+
+- Twilio;
+- OpenAI;
+- email delivery providers;
+- Stripe;
+- property-data providers;
+- geocoding or mapping providers;
+- electronic signature providers.
+
+Tier 2 integrations must:
+
+- be disabled safely when unconfigured;
+- keep provider secrets out of client code;
+- use an adapter boundary;
+- require explicit configuration;
+- expose visible usage and cost implications;
+- provide deterministic or manual fallback where practical.
+
+#### Tier 3 - Optional enterprise integrations
+
+Tier 3 providers are optional enterprise extensions and must never be required for the core single-user product:
+
+- premium monitoring;
+- data warehouses;
+- enterprise identity providers;
+- commercial GIS;
+- external CRMs;
+- advanced compliance services.
+
+### Zero-cost core capability baseline
+
+The following product capabilities must have a no-paid-service baseline:
+
+| Capability | Required no-paid-service baseline |
+| --- | --- |
+| CRM | Sellers, leads, properties, deals, stages, tasks, notes, activities, and assignments operate through internal data models, PostgreSQL/Supabase, and existing project code. |
+| Decision experience | Today Workspace, deterministic prioritization, Deal Decision Room, missing-information checks, deterministic recommendations, readiness rules, and decision memory operate without AI or paid providers. |
+| Communication foundation | Message drafts, communication history, templates, test mode, and manual logging operate without real SMS delivery. Real SMS may use an optional paid provider, but CRM workflows must not require it. |
+| AI foundation | Deterministic and rule-based fallback, manually entered insights, optional external AI provider support, and future local-model adapter support. The application must not fail because an AI provider is absent. |
+| Workflow foundation | Internally implemented workflow definitions, tasks, schedules where supported by the existing platform, approval state, and execution history. Zapier, Make, or a paid workflow platform must not be required. |
+| Search | PostgreSQL search and browser/client filtering where appropriate. No required paid hosted-search provider. |
+| Analytics | PostgreSQL queries, internal read models, and internal reports. No required paid product-analytics platform. |
+| Notifications | Internal notification records and UI, with optional external delivery channels. |
+| Documents | Database metadata, approved storage abstraction, local/test compatibility, and no required document-management SaaS. |
+| Maps | Maps remain optional. Initial geographic functionality may use open standards or open-source components. No mandatory commercial map provider. |
+| Monitoring | Structured logs, health endpoints, and internal operational records, with optional monitoring adapter. |
+| Property data | Manual entry, CSV import, public-record research workflow, and provider-neutral adapters for optional paid enrichment. |
+
+### Vendor-neutral adapter rule
+
+Every external provider must be accessed through a documented interface or adapter. Application and domain code must not depend directly on provider-specific response formats, and UI components must not import external provider SDKs.
+
+Required provider boundaries include:
+
+- `AIProvider`;
+- `MessagingProvider`;
+- `EmailProvider`;
+- `PropertyDataProvider`;
+- `MapProvider`;
+- `StorageProvider`;
+- `BillingProvider`;
+- `MonitoringProvider`;
+- `ElectronicSignatureProvider`.
+
+Provider adapters normalize:
+
+- requests;
+- responses;
+- errors;
+- health status;
+- usage metadata;
+- provider identifiers.
+
+### Required fallback behavior
+
+| Provider unavailable | Required behavior |
+| --- | --- |
+| AI provider | Use deterministic rules or clearly show that AI assistance is unavailable; preserve CRM and decision workflows. |
+| SMS provider | Retain drafts, allow manual communication logging, show safe delivery-unavailable state, and never pretend a message was sent. |
+| Email provider | Retain drafts and templates; provide safe unavailable state. |
+| Property-data provider | Support manual facts, CSV imports, research tasks, and mark data unverified. |
+| Map provider | Preserve address and parcel information without a map. |
+| Monitoring provider | Preserve structured logs and internal health status. |
+| Payment provider | Core development and single-user functionality remains usable; paid subscription enforcement may remain disabled in development/test modes. |
+
+### Cost and dependency governance
+
+Every roadmap phase and Execution Order must identify:
+
+- new third-party services;
+- new dependencies;
+- whether they are free, optional, usage-based, or paid;
+- expected data transfer;
+- expected operational cost exposure;
+- available fallback;
+- provider lock-in risk;
+- self-hosted or internal alternative;
+- reason the integration is necessary.
+
+No new paid service may be added silently. A new paid or usage-based dependency requires:
+
+1. explicit architecture review;
+2. documented justification;
+3. adapter design;
+4. fallback behavior;
+5. user approval before configuration or spending;
+6. an ADR when it materially affects architecture.
+
+Software dependency governance:
+
+- prefer existing dependencies before adding new packages;
+- prefer small, maintained, permissively licensed packages;
+- avoid dependencies that require paid hosted services;
+- avoid packages that duplicate platform or existing project capabilities;
+- record the purpose of every new production dependency;
+- evaluate maintenance health, bundle impact, security history, and license;
+- do not add dependencies only for minor visual convenience when the existing design system can provide the capability.
+
+### UX requirements for optional integrations
+
+The interface must clearly distinguish:
+
+- available core functionality;
+- optional integration features;
+- disconnected integrations;
+- test mode;
+- live mode;
+- features that may incur usage costs.
+
+Disconnected paid integrations must not appear as broken core functionality. Acceptable states include:
+
+- "SMS provider not connected";
+- "Using rule-based analysis";
+- "Property enrichment unavailable; manual research is available";
+- "Map view optional".
+
+Upgrade prompts must not be manipulative.
 
 ## 1.4 Logical architecture layers
 
@@ -896,6 +1069,10 @@ Logs must exclude secrets and minimize PII.
 - Each Execution Order may contain exactly three compact implementation phases.
 - An Execution Order references this roadmap, the Enterprise Architecture, and ADRs rather than restating architecture.
 - Every phase ends in the single validation cycle defined in Section 4.
+- Every roadmap phase and Execution Order must include a Free-First cost and dependency review covering provider tier, licensing, data transfer, cost exposure, fallback, lock-in risk, and internal or self-hosted alternatives.
+- Relevant phases must verify that core workflows operate with optional providers disabled, provider absence does not crash a workspace, test mode is clearly labeled, provider code remains behind an adapter, and no external side effect is reported as successful when it did not occur.
+- Usage-based actions require explicit configuration and user approval before spending; no phase may make a Tier 2 or Tier 3 provider a hidden prerequisite for the zero-cost core baseline.
+- Provider and dependency decisions must preserve the listed roadmap dependency order unless Architecture Review records an approved change.
 
 ## Program 1 — CRM Runtime
 
@@ -1634,6 +1811,9 @@ Next Sprint
 8. A failed validation cycle returns to implementation; it does not create partial commits.
 9. A push occurs only after validation passes or an explicitly approved known-warning exception is documented.
 10. Architecture Review decides whether the roadmap or ADR index needs adjustment before the next sprint.
+11. No paid or usage-based service may be added silently; configuration and spending require explicit user approval.
+12. Every external integration requires an adapter boundary, safe fallback, cost-exposure review, and no-vendor-lock-in validation.
+13. Existing infrastructure, internal implementation, and appropriate open-source alternatives must be evaluated before adding a service or production dependency.
 
 ## 4.3 Compact three-phase Execution Order format
 
@@ -1650,6 +1830,11 @@ Every future Execution Order contains exactly three implementation phases.
 - Explicit out-of-scope items
 - Dependency confirmation
 - Risk level
+- Free-First and cost-governance review
+- New third-party services and production dependencies, including license and provider tier
+- Data-transfer and operational-cost exposure
+- Fallback, lock-in risk, and internal or self-hosted alternative
+- User approval requirement for configuration or spending
 
 ### Phase A — Contracts and Persistence
 
@@ -1768,6 +1953,21 @@ After the push, perform one review answering:
 5. Did security, observability, performance, or tenant isolation change?
 6. Does the roadmap order remain correct?
 7. Is the system ready for the next Execution Order?
+
+### Free-First Architecture Review Checklist
+
+Before approving an Execution Order, answer:
+
+- Does it require a new service?
+- Does that service require payment or a payment method?
+- Can existing infrastructure satisfy the need?
+- Can the capability be implemented internally?
+- Is an open-source alternative appropriate?
+- Is the integration optional?
+- Is there a safe fallback?
+- Is provider-specific code isolated?
+- Is user approval required before spending?
+- Does disabling the provider preserve core workflows?
 
 Possible outcomes:
 
@@ -2401,6 +2601,7 @@ Each roadmap phase below includes objective, dependencies, implementation scope,
 - [ADR-023: Simplicity Guardrail](adrs/ADR-023-SIMPLICITY-GUARDRAIL.md)
 - [ADR-024: Land Acquisition Analysis Separation](adrs/ADR-024-LAND-ACQUISITION-ANALYSIS-SEPARATION.md)
 - [ADR-025: Role-Aware Interface Strategy](adrs/ADR-025-ROLE-AWARE-INTERFACE-STRATEGY.md)
+- [ADR-026: Free-First and Vendor-Neutral Architecture](adrs/ADR-026-FREE-FIRST-AND-VENDOR-NEUTRAL-ARCHITECTURE.md)
 
 ## Recommended First Compact Execution Order
 
@@ -2438,3 +2639,6 @@ Each roadmap phase below includes objective, dependencies, implementation scope,
 - No production source files should be modified by architecture amendments.
 - No database migrations, API changes, Netlify Functions, dependency updates, or tests should be modified by architecture amendments.
 - Links in the ADR index must resolve before completion.
+- ADR-026 must remain unique and its index link must resolve.
+- Free-First terminology, provider tiers, adapter boundaries, fallback rules, and cost-governance requirements must remain consistent across architecture, roadmap governance, and ADR-026.
+- Architecture amendments must verify that no production source, dependency manifest, lockfile, database, API, function, or test file changed.
