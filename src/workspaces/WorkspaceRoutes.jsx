@@ -6,6 +6,7 @@ import PipelineBoard from "../components/PipelineBoard";
 import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system";
 import TodayWorkspace from "./today/TodayWorkspace";
 
+const DealDecisionRoom = lazy(() => import("./deals/DealDecisionRoom"));
 const ConversationThread = lazy(() => import("../components/ConversationThread"));
 const ExecutiveDashboard = lazy(() =>
   import("../features/dashboard").then((module) => ({ default: module.ExecutiveDashboard }))
@@ -209,6 +210,12 @@ export default function WorkspaceRoutes({ workspaceId, isUnknownRoute, onNavigat
       return <InboxWorkspace {...props} />;
     case "deals":
       return <DealsWorkspace {...props} />;
+    case "deal-decision-room":
+      return (
+        <LazyCompatibility label="Loading Deal Decision Room...">
+          <DealDecisionRoom {...props} />
+        </LazyCompatibility>
+      );
     case "buyers":
       return <BuyersWorkspace {...props} />;
     case "reports":

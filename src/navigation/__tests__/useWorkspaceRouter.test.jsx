@@ -15,6 +15,9 @@ function RouterHarness() {
       <button onClick={() => router.navigateToWorkspace("inbox")} type="button">
         Inbox
       </button>
+      <button onClick={() => router.navigateToDeal("deal-123")} type="button">
+        Deal
+      </button>
     </div>
   );
 }
@@ -57,6 +60,16 @@ describe("useWorkspaceRouter", () => {
       window.history.forward();
     });
     await waitFor(() => expect(screen.getByTestId("workspace-id")).toHaveTextContent("inbox"));
+  });
+
+  it("navigates directly to a Deal Decision Room route", () => {
+    setPath("/today");
+    render(<RouterHarness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deal" }));
+
+    expect(screen.getByTestId("workspace-id")).toHaveTextContent("deal-decision-room");
+    expect(window.location.pathname).toBe("/deals/deal-123");
   });
 
   it("reports unknown routes without redirecting", () => {

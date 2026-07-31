@@ -1,13 +1,11 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { useDealData } from "./hooks/useDealData";
 import CommandPalette from "./components/CommandPalette";
-import LazyPanelFallback from "./components/LazyPanelFallback";
 import { AppShell } from "./design-system";
 import { workspaceDefinitions } from "./navigation/workspaces";
 import { useWorkspaceRouter } from "./navigation/useWorkspaceRouter";
 import WorkspaceRoutes from "./workspaces/WorkspaceRoutes";
-
-const DealModal = lazy(() => import("./components/DealModal"));
+import { getDealAliasText } from "./utils/dealFields";
 
 export default function App() {
 const {
@@ -19,15 +17,16 @@ error,
 loadDeals,
 } = useDealData();
 
-const [selectedDeal, setSelectedDeal] = useState(null);
 const [selectedIds, setSelectedIds] = useState([]);
 const [selectedPhone, setSelectedPhone] = useState(null);
 const [dark, setDark] = useState(
 () => typeof window !== "undefined" && localStorage.getItem("ai-theme") === "dark"
 );
 const {
+currentPath,
 currentWorkspaceId,
 isUnknownRoute,
+navigateToDeal,
 navigateToWorkspace,
 } = useWorkspaceRouter();
 
@@ -53,7 +52,7 @@ return (
 >
   <CommandPalette
      deals={deals}
-     openDeal={setSelectedDeal}
+     openDeal={(deal) => navigateToDeal(getDealAliasText(deal, "id"))}
      setFilteredDeals={setFilteredDeals}
    />
 
@@ -64,9 +63,11 @@ return (
     filteredDeals={filteredDeals}
     isUnknownRoute={isUnknownRoute}
     loading={loading}
+    currentPath={currentPath}
+    navigateToDeal={navigateToDeal}
     onNavigateHome={() => navigateToWorkspace("today")}
     onNavigateWorkspace={navigateToWorkspace}
-    openDeal={setSelectedDeal}
+    openDeal={(deal) => navigateToDeal(getDealAliasText(deal, "id"))}
     refresh={loadDeals}
     selectedIds={selectedIds}
     selectedPhone={selectedPhone}
@@ -75,16 +76,6 @@ return (
     toggleSelect={toggleSelect}
     workspaceId={currentWorkspaceId}
   />
-
-  {selectedDeal && (
-    <Suspense fallback={<LazyPanelFallback label="Loading deal modal..." />}>
-      <DealModal
-        deal={selectedDeal}
-        close={() => setSelectedDeal(null)}
-        refresh={loadDeals}
-      />
-    </Suspense>
-  )}
 </AppShell>
 
 );

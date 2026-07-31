@@ -55,12 +55,25 @@ export const workspaceDefinitions = [
 
 export const mobileWorkspaceIds = ["today", "pipeline", "inbox"];
 
+export const DEAL_DECISION_ROOM_WORKSPACE_ID = "deal-decision-room";
+
 export function getWorkspaceById(id) {
   return workspaceDefinitions.find((workspace) => workspace.id === id) || null;
 }
 
 export function getWorkspaceByRoute(route) {
   const normalizedRoute = normalizeWorkspaceRoute(route);
+  if (isDealDecisionRoomRoute(normalizedRoute)) {
+    return {
+      id: DEAL_DECISION_ROOM_WORKSPACE_ID,
+      label: "Deal Decision Room",
+      route: normalizedRoute,
+      icon: "deals",
+      ariaLabel: "Open Deal Decision Room",
+      parentId: "deals",
+    };
+  }
+
   return workspaceDefinitions.find((workspace) => workspace.route === normalizedRoute) || null;
 }
 
@@ -68,4 +81,18 @@ export function normalizeWorkspaceRoute(route) {
   const cleanRoute = `/${String(route || "").replace(/^\/+/, "").split("?")[0].split("#")[0]}`;
   if (cleanRoute === "/" || cleanRoute === "") return "/today";
   return cleanRoute.replace(/\/+$/, "") || "/today";
+}
+
+export function getDealRoute(dealId) {
+  return `/deals/${encodeURIComponent(String(dealId || ""))}`;
+}
+
+export function getDealIdFromRoute(route) {
+  const normalizedRoute = normalizeWorkspaceRoute(route);
+  const match = normalizedRoute.match(/^\/deals\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+export function isDealDecisionRoomRoute(route) {
+  return Boolean(getDealIdFromRoute(route));
 }

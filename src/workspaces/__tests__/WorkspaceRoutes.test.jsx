@@ -20,6 +20,7 @@ vi.mock("../../components/NotificationsCenter", () => ({
   default: () => <div>Notifications Mock</div>,
 }));
 vi.mock("../../components/TaskDashboard", () => ({ default: () => <div>Task Dashboard Mock</div> }));
+vi.mock("../deals/DealDecisionRoom", () => ({ default: () => <div>Decision Room Mock</div> }));
 
 const baseProps = {
   clearSelection: vi.fn(),
@@ -53,6 +54,12 @@ describe("WorkspaceRoutes", () => {
     expect(screen.getByText("Chat Inbox Mock")).toBeInTheDocument();
     expect(screen.getByText("Conversation Inbox Mock")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Conversation Thread Mock")).toBeInTheDocument());
+  });
+
+  it("renders the route-level Deal Decision Room workspace", async () => {
+    render(<WorkspaceRoutes {...baseProps} workspaceId="deal-decision-room" />);
+
+    await waitFor(() => expect(screen.getByText("Decision Room Mock")).toBeInTheDocument());
   });
 
   it("renders a safe unknown-route fallback", () => {

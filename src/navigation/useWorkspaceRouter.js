@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getWorkspaceById, getWorkspaceByRoute, normalizeWorkspaceRoute } from "./workspaces";
+import { getDealRoute, getWorkspaceById, getWorkspaceByRoute, normalizeWorkspaceRoute } from "./workspaces";
 
 function readLocationPath() {
   if (typeof window === "undefined") return "/today";
@@ -31,11 +31,22 @@ export function useWorkspaceRouter() {
     setCurrentPath(nextPath);
   }, []);
 
+  const navigateToDeal = useCallback((dealId) => {
+    if (!dealId || typeof window === "undefined") return;
+
+    const nextPath = getDealRoute(dealId);
+    if (normalizeWorkspaceRoute(window.location.pathname) !== nextPath) {
+      window.history.pushState({}, "", nextPath);
+    }
+    setCurrentPath(nextPath);
+  }, []);
+
   return {
     currentPath,
     currentWorkspace,
     currentWorkspaceId: currentWorkspace?.id || "unknown",
     isUnknownRoute: !currentWorkspace,
+    navigateToDeal,
     navigateToWorkspace,
   };
 }
