@@ -224,7 +224,7 @@ function PipelineControls({
             {readModel.supportedFilters.unreadResponse ? (
               <FilterCheckbox
                 checked={filters.unreadResponse}
-                label="Unread seller response"
+                label="Unread conversation"
                 onChange={(value) => onFilterChange("unreadResponse", value)}
               />
             ) : null}
@@ -310,6 +310,7 @@ function PipelineListRow({ item, onOpenDeal, onToggleSelect }) {
             Urgency: {item.urgency || "Not signaled"}
           </StatusBadge>
           {item.atRisk ? <StatusBadge status="danger">Risk: {item.riskLevel}</StatusBadge> : null}
+          {item.needsReply ? <StatusBadge status="info">Needs Reply</StatusBadge> : null}
           {item.approvalRequired ? <StatusBadge status="warning">Approval</StatusBadge> : null}
         </div>
         <div data-label="Last activity">
@@ -369,6 +370,8 @@ function PipelineLoadingState() {
 // Distinct responsibility: own route-level Pipeline state and compose the shared read model into views.
 export default function PipelineWorkspace({
   clearSelection,
+  conversationLoadError = null,
+  conversations = [],
   dealLoadError = null,
   deals = [],
   loading = false,
@@ -377,6 +380,7 @@ export default function PipelineWorkspace({
   openDeal,
   organizationId = "",
   refresh,
+  refreshConversations,
   role = "Owner",
   selectedIds = [],
   sourceErrors = [],
@@ -414,8 +418,9 @@ export default function PipelineWorkspace({
   const readModel = useMemo(
     () =>
       buildPipelineReadModel({
+        conversations,
         deals,
-        errors: [dealLoadError, refreshError, ...sourceErrors].filter(Boolean),
+        errors: [conversationLoadError, dealLoadError, refreshError, ...sourceErrors].filter(Boolean),
         now: evaluationNow,
         organizationId,
         role,
@@ -423,6 +428,8 @@ export default function PipelineWorkspace({
         tenantId,
       }),
     [
+      conversationLoadError,
+      conversations,
       dealLoadError,
       deals,
       evaluationNow,
@@ -490,11 +497,14 @@ export default function PipelineWorkspace({
   }
 
   async function handleRefresh() {
-    if (typeof refresh !== "function" || refreshing) return;
+    const callbacks = [refresh, refreshConversations].filter(
+      (callback) => typeof callback === "function"
+    );
+    if (!callbacks.length || refreshing) return;
     setRefreshing(true);
     setRefreshError("");
     try {
-      await refresh();
+      await Promise.all(callbacks.map((callback) => callback()));
       const refreshedAt = new Date().toISOString();
       setLastRefreshAt(refreshedAt);
       setAnnouncement("Pipeline refresh request completed.");
@@ -515,7 +525,7 @@ export default function PipelineWorkspace({
         actions={
           <div className="pipeline-header-actions">
             <Badge>{visibleItems.length} visible</Badge>
-            {typeof refresh === "function" ? (
+            {typeof refresh === "function" || typeof refreshConversations === "function" ? (
               <Button disabled={loading || refreshing} onClick={handleRefresh} variant="secondary">
                 {refreshing ? "Refreshing..." : "Refresh"}
               </Button>

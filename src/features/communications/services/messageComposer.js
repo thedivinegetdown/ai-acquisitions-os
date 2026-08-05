@@ -1,4 +1,3 @@
-import { insertOutboundMessageLog } from "../../../services/conversations";
 import {
   buildEmailTimelineEvent,
   getEmailProviderStatus,
@@ -109,7 +108,6 @@ export async function sendSmsFromComposer({
   to,
   body,
   dealId = null,
-  logLocally = true,
 } = {}) {
   const trimmedBody = safeTrim(body);
 
@@ -129,16 +127,6 @@ export async function sendSmsFromComposer({
     });
 
     if (!sendResult.success) return sendResult;
-
-    if (logLocally) {
-      const logResult = await insertOutboundMessageLog({
-        phone: to,
-        message: trimmedBody,
-        dealId,
-      });
-
-      if (!logResult.success) return logResult;
-    }
 
     return sendResult;
   } catch (error) {

@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { loadMessageLogs } from "../services/conversations";
+import { buildSmsTemplates, loadMessageLogs } from "../services/conversations";
 import { sendOutboundSms } from "../services/sms";
 
 export default function MessageCenter({ deal }) {
   const property = deal?.property_address || "your property";
 
-  // 🔥 MESSAGE TEMPLATES
-  const templates = {
-    initial: `Hi, I'm reaching out about ${property}. Would you consider an offer?`,
-    followup: `Just following up on ${property}. Would you be open to discussing an offer?`,
-    offer: `I can make a cash offer on ${property}. Would you like to hear the numbers?`,
-    checkin: `Hey just checking in on ${property}. Let me know if you're still interested in selling.`,
-  };
-
-  const defaultMessage = useMemo(() => templates.initial, [property]);
+  const templates = useMemo(
+    () => buildSmsTemplates({ propertyAddress: property }),
+    [property]
+  );
+  const defaultMessage = templates.initial;
 
   const [message, setMessage] = useState(defaultMessage);
   const [phone, setPhone] = useState(deal?.phone || "");

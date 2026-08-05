@@ -13,9 +13,11 @@ describe("messageRepository", () => {
   });
 
   it("derives outbound direction from legacy outbound statuses", () => {
-    expect(normalizeMessageRecord({ status: "sent" }).direction).toBe(
-      "outbound"
-    );
+    expect(normalizeMessageRecord({ status: "sent" })).toMatchObject({
+      direction: "outbound",
+      directionSource: "legacy-status",
+      statusWasExplicit: true,
+    });
     expect(normalizeMessageRecord({ status: "test" }).direction).toBe(
       "outbound"
     );
@@ -25,6 +27,10 @@ describe("messageRepository", () => {
     expect(normalizeMessageRecord({ status: "received" }).direction).toBe(
       "inbound"
     );
-    expect(normalizeMessageRecord({}).direction).toBe("inbound");
+    expect(normalizeMessageRecord({})).toMatchObject({
+      direction: "inbound",
+      directionSource: "legacy-default",
+      statusWasExplicit: false,
+    });
   });
 });

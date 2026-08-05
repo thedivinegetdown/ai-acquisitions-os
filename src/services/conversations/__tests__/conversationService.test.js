@@ -56,7 +56,34 @@ describe("conversationService", () => {
 
     await loadThreadMessages("555");
 
-    expect(loadMessageLogs).toHaveBeenCalledWith({ phone: "555", ascending: true });
+    expect(loadMessageLogs).toHaveBeenCalledWith({
+      phone: "555",
+      dealId: undefined,
+      ascending: true,
+      force: false,
+      limit: undefined,
+      offset: 0,
+    });
+  });
+
+  it("keeps conversation history available when linked deal context fails", async () => {
+    findDealByPhone.mockResolvedValue({
+      success: false,
+      error: { message: "raw database detail" },
+    });
+    findConversationByPhone.mockResolvedValue({
+      success: true,
+      data: { phone: "555", messages: [{ id: "m1" }] },
+    });
+
+    const result = await loadConversationThread("555");
+
+    expect(result.success).toBe(true);
+    expect(result.data.deal).toBeNull();
+    expect(result.data.conversation.messages).toHaveLength(1);
+    expect(result.data.sourceWarnings).toEqual([
+      "Linked deal context could not be loaded.",
+    ]);
   });
 
   it("builds stable SMS timeline events", () => {

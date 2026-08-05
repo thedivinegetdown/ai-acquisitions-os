@@ -6,6 +6,11 @@ import {
 } from "../../utils/dealFields";
 import { getPriorityWeight } from "../notifications/notificationPriorityService";
 import { buildTodayReadModel } from "../today";
+import { normalizePhone } from "../../utils/phone";
+import {
+  conversationNeedsReply,
+  getConversationCompatibilityKey,
+} from "../conversations";
 
 export const PIPELINE_RESULT_LIMIT = 250;
 
@@ -227,11 +232,12 @@ function getRiskFlags({ todayItems, stale, staleDays, missingNextAction }) {
   return dedupeSignals(flags);
 }
 
-function highestUrgency(todayItems, approvals, unreadConversation) {
+function highestUrgency(todayItems, approvals, unreadConversation, needsReply) {
   const priorities = [
     ...todayItems.map((item) => item.priority),
     ...approvals.map((item) => item.riskLevel),
     unreadConversation ? "High" : null,
+    needsReply ? "High" : null,
   ].filter(Boolean);
 
   return priorities.reduce(
@@ -268,6 +274,7 @@ export function normalizePipelineItem(
     now = Date.now(),
     selectedIds = [],
     todayItems = [],
+    conversationSignals = [],
   } = {}
 ) {
   const dealId = getDealAliasText(deal, "id");
@@ -281,18 +288,29 @@ export function normalizePipelineItem(
   const stale = !stage.terminal && staleDays !== null && staleDays >= STALE_AFTER_DAYS;
   const missingNextAction = !stage.terminal && !nextAction;
   const unreadConversation = explicitUnreadIndicator(deal);
+  const needsReply = conversationSignals.some(conversationNeedsReply);
   const pendingApprovals = approvalItems.filter((item) => item.status === "pending");
   const riskFlags = getRiskFlags({ todayItems, stale, staleDays, missingNextAction });
   const atRisk = riskFlags.length > 0;
   const approvalRequired = pendingApprovals.length > 0;
-  const urgency = highestUrgency(todayItems, pendingApprovals, unreadConversation);
+  const urgency = highestUrgency(
+    todayItems,
+    pendingApprovals,
+    unreadConversation,
+    needsReply
+  );
   const activeAttentionSignal = todayItems.some((item) =>
     ["act-now", "at-risk", "approvals"].includes(item.category)
   );
   const followUpDue = !stage.terminal && Boolean(dueDateKey) && dueDateKey <= today;
   const futureFollowUp = !stage.terminal && Boolean(dueDateKey) && dueDateKey > today;
   const needsAttention = Boolean(
-    activeAttentionSignal || atRisk || approvalRequired || unreadConversation || missingNextAction
+    activeAttentionSignal ||
+      atRisk ||
+      approvalRequired ||
+      unreadConversation ||
+      needsReply ||
+      missingNextAction
   );
   const isWaiting = futureFollowUp && !needsAttention;
   const missingInformation = getMissingInformation(deal, stage, nextAction);
@@ -329,6 +347,9 @@ export function normalizePipelineItem(
     missingInformation,
     missingInformationCount: missingInformation.length,
     unreadConversation,
+    needsReply,
+    conversationCompatibilityKey:
+      conversationSignals.find(conversationNeedsReply)?.compatibilityKey || null,
     approvalRequired,
     approvalCount: pendingApprovals.length,
     approvalIds: pendingApprovals.map((item) => item.id),
@@ -340,14 +361,24 @@ export function normalizePipelineItem(
     isWaiting,
     atRisk,
     needsAttention,
-    attentionReasons: dedupeSignals(
-      todayItems.map((item) => ({
+    attentionReasons: dedupeSignals([
+      ...todayItems.map((item) => ({
         id: item.id,
         label: item.title,
         reason: item.reason,
         source: item.source,
-      }))
-    ),
+      })),
+      needsReply
+        ? {
+            id: `conversation:${getConversationCompatibilityKey(
+              conversationSignals.find(conversationNeedsReply)
+            )}`,
+            label: "Seller response needs reply",
+            reason: "The latest valid message in the shared conversation summary is inbound.",
+            source: "Unified Inbox",
+          }
+        : null,
+    ].filter(Boolean)),
     targetRoute: dealId ? getDealRoute(dealId) : null,
     selected,
     dataConfidence:
@@ -381,6 +412,34 @@ function indexApprovalItems(items = []) {
   return byDealId;
 }
 
+function indexConversationSignals(conversations = []) {
+  const byDealId = new Map();
+  const byPhone = new Map();
+
+  (Array.isArray(conversations) ? conversations : []).slice(0, 250).forEach((conversation) => {
+    if (!conversation || typeof conversation !== "object") return;
+    const dealId = safeText(conversation.linkedDealId || conversation.dealId);
+    const phone = normalizePhone(
+      conversation.phone || conversation.participantIdentifier
+    );
+    const key = getConversationCompatibilityKey(conversation);
+
+    const add = (map, mapKey) => {
+      if (!mapKey) return;
+      const existing = map.get(mapKey) || [];
+      if (!existing.some((item) => getConversationCompatibilityKey(item) === key)) {
+        existing.push(conversation);
+      }
+      map.set(mapKey, existing);
+    };
+
+    add(byDealId, dealId);
+    add(byPhone, phone);
+  });
+
+  return { byDealId, byPhone };
+}
+
 function buildPipelineSignals(deals, now, role) {
   const todayItems = [];
   const approvalItems = [];
@@ -400,8 +459,9 @@ function buildPipelineSignals(deals, now, role) {
 }
 
 function attentionRank(item) {
-  if (item.atRisk) return 8;
-  if (item.followUpDue) return 7;
+  if (item.atRisk) return 9;
+  if (item.followUpDue) return 8;
+  if (item.needsReply) return 7;
   if (item.unreadConversation) return 6;
   if (item.approvalRequired) return 5;
   if (item.missingNextAction) return 4;
@@ -483,6 +543,7 @@ function normalizeWarnings(errors = []) {
 }
 
 export function buildPipelineReadModel({
+  conversations = [],
   deals = [],
   errors = [],
   limit = PIPELINE_RESULT_LIMIT,
@@ -507,10 +568,17 @@ export function buildPipelineReadModel({
   const sharedSignals = buildPipelineSignals(boundedDeals, now, role);
   const todayByDealId = indexTodayItems(sharedSignals.todayItems);
   const approvalsByDealId = indexApprovalItems(sharedSignals.approvalItems);
+  const conversationIndex = indexConversationSignals(conversations);
   const normalized = boundedDeals.map((deal, index) => {
     const dealId = getDealAliasText(deal, "id");
+    const phone = normalizePhone(getDealAliasText(deal, "phone"));
+    const conversationSignals = dedupeSignals([
+      ...(conversationIndex.byDealId.get(dealId) || []),
+      ...(conversationIndex.byPhone.get(phone) || []),
+    ]);
     return normalizePipelineItem(deal, {
       approvalItems: approvalsByDealId.get(dealId) || [],
+      conversationSignals,
       index,
       now,
       selectedIds,
@@ -564,6 +632,7 @@ export function buildPipelineReadModel({
       "Today deterministic read model",
       "Action Inbox and Notification Rules",
       "Universal Approval Inbox read model",
+      "Unified Inbox normalized communication signals",
       "Existing 14-day stale convention",
     ],
     freeFirst: {

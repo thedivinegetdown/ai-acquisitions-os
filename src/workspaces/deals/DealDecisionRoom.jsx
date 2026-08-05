@@ -336,7 +336,11 @@ export default function DealDecisionRoom({
     if (action === "conversation") {
       const phone = getPhone(deal);
       if (phone) setSelectedPhone?.(phone);
-      setActiveSection("communication");
+      if (onNavigateWorkspace) {
+        onNavigateWorkspace("inbox");
+      } else {
+        setActiveSection("communication");
+      }
       return;
     }
 

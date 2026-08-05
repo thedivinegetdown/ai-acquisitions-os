@@ -9,7 +9,10 @@ import {
 } from "../cache";
 
 const MESSAGE_LOG_CACHE_PREFIX = "message_logs";
+const CONVERSATION_SUMMARY_CACHE_PREFIX = "conversation-summaries";
 const MESSAGE_LOG_CACHE_TTL_MS = 5000;
+export const MESSAGE_LOG_DEFAULT_LIMIT = 100;
+export const MESSAGE_LOG_MAX_LIMIT = 500;
 const OUTBOUND_STATUSES = new Set([
   "accepted",
   "delivered",
@@ -42,6 +45,9 @@ function deriveMessageDirection(record = {}) {
 
 export function normalizeMessageRecord(record = {}) {
   const direction = deriveMessageDirection(record);
+  const explicitDirection =
+    record.direction === "outbound" || record.direction === "inbound";
+  const explicitStatus = safeTrim(record.status);
 
   return {
     ...record,
@@ -49,19 +55,51 @@ export function normalizeMessageRecord(record = {}) {
     normalizedPhone: normalizePhone(record.phone),
     message: record.message || record.body || "",
     direction,
-    status: record.status || (direction === "outbound" ? "sent" : "received"),
+    directionSource:
+      record.directionSource ||
+      (explicitDirection
+        ? "direction-column"
+        : explicitStatus
+          ? "legacy-status"
+          : "legacy-default"),
+    status: explicitStatus || (direction === "outbound" ? "sent" : "received"),
+    statusWasExplicit:
+      typeof record.statusWasExplicit === "boolean"
+        ? record.statusWasExplicit
+        : Boolean(explicitStatus),
     created_at: record.created_at || null,
   };
+}
+
+function normalizeLimit(value, fallback = MESSAGE_LOG_DEFAULT_LIMIT) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(MESSAGE_LOG_MAX_LIMIT, Math.max(1, Math.floor(parsed)));
+}
+
+function normalizeOffset(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+export function invalidateConversationCaches() {
+  clearCacheByPrefix(MESSAGE_LOG_CACHE_PREFIX);
+  clearCacheByPrefix(CONVERSATION_SUMMARY_CACHE_PREFIX);
 }
 
 export async function loadMessageLogs({
   phone,
   dealId,
   ascending = true,
+  force = false,
+  limit = MESSAGE_LOG_DEFAULT_LIMIT,
+  offset = 0,
 } = {}) {
   try {
-    const cacheKey = `${MESSAGE_LOG_CACHE_PREFIX}:${phone || "all"}:${dealId || "all"}:${ascending ? "asc" : "desc"}`;
-    const cached = getCachedValue(cacheKey);
+    const safeLimit = normalizeLimit(limit);
+    const safeOffset = normalizeOffset(offset);
+    const cacheKey = `${MESSAGE_LOG_CACHE_PREFIX}:${phone || "all"}:${dealId || "all"}:${ascending ? "asc" : "desc"}:${safeOffset}:${safeLimit}`;
+    const cached = force ? null : getCachedValue(cacheKey);
 
     if (cached) return cached;
 
@@ -75,6 +113,7 @@ export async function loadMessageLogs({
       query = query.eq("deal_id", dealId);
     }
 
+    query = query.range(safeOffset, safeOffset + safeLimit - 1);
     const { data, error } = await query.order("created_at", { ascending });
 
     if (error) throw error;
@@ -82,6 +121,11 @@ export async function loadMessageLogs({
     const result = {
       success: true,
       data: (data || []).map(normalizeMessageRecord),
+      metadata: {
+        limit: safeLimit,
+        offset: safeOffset,
+        returned: (data || []).length,
+      },
     };
 
     setCachedValue(cacheKey, result, MESSAGE_LOG_CACHE_TTL_MS);
@@ -97,8 +141,13 @@ export async function loadMessageLogs({
   }
 }
 
-export async function loadAllMessageLogs({ ascending = false } = {}) {
-  return loadMessageLogs({ ascending });
+export async function loadAllMessageLogs({
+  ascending = false,
+  force = false,
+  limit = MESSAGE_LOG_MAX_LIMIT,
+  offset = 0,
+} = {}) {
+  return loadMessageLogs({ ascending, force, limit, offset });
 }
 
 export async function insertOutboundMessageLog({
@@ -152,7 +201,7 @@ export async function insertOutboundMessageLog({
     }
 
     if (error) throw error;
-    clearCacheByPrefix(MESSAGE_LOG_CACHE_PREFIX);
+    invalidateConversationCaches();
 
     return {
       success: true,
@@ -169,7 +218,7 @@ export async function insertOutboundMessageLog({
   }
 }
 
-export function subscribeToMessageInserts(onMessage) {
+export function subscribeToMessageInserts(onMessage, onStatus) {
   const subscription = supabase
     .channel("sms-inbox")
     .on(
@@ -180,11 +229,11 @@ export function subscribeToMessageInserts(onMessage) {
         table: "message_logs",
       },
       (payload) => {
-        clearCacheByPrefix(MESSAGE_LOG_CACHE_PREFIX);
+        invalidateConversationCaches();
         onMessage?.(normalizeMessageRecord(payload.new));
       }
     )
-    .subscribe();
+    .subscribe((status) => onStatus?.(status));
 
   return () => {
     supabase.removeChannel(subscription);

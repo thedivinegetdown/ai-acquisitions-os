@@ -80,6 +80,32 @@ describe("TodayWorkspace", () => {
     expect(openDeal).toHaveBeenCalledWith(deal);
   });
 
+  it("opens the normalized seller conversation selected by Today", () => {
+    const onNavigateWorkspace = vi.fn();
+    const setSelectedPhone = vi.fn();
+    render(
+      <TodayWorkspace
+        conversations={[
+          {
+            compatibilityKey: "phone:5555550100",
+            phone: "+15555550100",
+            lastMessageDirection: "inbound",
+            lastMessagePreview: "Please call me",
+            lastMessageTimestamp: "2026-07-30T11:00:00.000Z",
+          },
+        ]}
+        deals={[]}
+        onNavigateWorkspace={onNavigateWorkspace}
+        setSelectedPhone={setSelectedPhone}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open inbox" }));
+
+    expect(setSelectedPhone).toHaveBeenCalledWith("+15555550100");
+    expect(onNavigateWorkspace).toHaveBeenCalledWith("inbox");
+  });
+
   it("uses safe empty states for selected empty categories", () => {
     render(<TodayWorkspace deals={[deal]} />);
 

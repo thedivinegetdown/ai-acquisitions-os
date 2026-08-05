@@ -71,6 +71,27 @@ describe("PipelineWorkspace", () => {
     expect(screen.queryByText(/change stage/i)).not.toBeInTheDocument();
   });
 
+  it("shows shared Needs Reply signals separately from unread state", () => {
+    render(
+      <PipelineWorkspace
+        conversations={[
+          {
+            compatibilityKey: "phone:5555550100",
+            phone: "+15555550100",
+            lastMessageDirection: "inbound",
+            lastMessagePreview: "Please call me",
+            lastMessageTimestamp: "2026-08-04T11:00:00.000Z",
+          },
+        ]}
+        deals={deals}
+        now={NOW}
+      />
+    );
+
+    expect(screen.getAllByText("Needs Reply").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Unread conversation")).not.toBeInTheDocument();
+  });
+
   it("switches both views over the same normalized items and stores the preference", () => {
     render(<PipelineWorkspace deals={deals} now={NOW} />);
 

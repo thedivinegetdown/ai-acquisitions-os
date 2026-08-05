@@ -133,6 +133,34 @@ describe("pipelineService", () => {
     ).toBe(false);
   });
 
+  it("reuses normalized Inbox Needs Reply signals without treating them as unread", () => {
+    const model = buildPipelineReadModel({
+      conversations: [
+        {
+          compatibilityKey: "phone:5555550100",
+          phone: "+15555550100",
+          lastMessageDirection: "inbound",
+          lastMessagePreview: "Can you call me?",
+          lastMessageTimestamp: "2026-08-04T11:00:00.000Z",
+          needsReply: true,
+        },
+      ],
+      deals: [deal()],
+      now: NOW,
+    });
+
+    expect(model.items[0]).toMatchObject({
+      needsReply: true,
+      unreadConversation: null,
+      needsAttention: true,
+    });
+    expect(model.items[0].attentionReasons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "Unified Inbox" }),
+      ])
+    );
+  });
+
   it("reuses the normalized approval model for approval indicators", () => {
     const model = buildPipelineReadModel({
       deals: [deal({ offer_ready: true })],

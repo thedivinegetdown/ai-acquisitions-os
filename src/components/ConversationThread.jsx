@@ -14,10 +14,7 @@ import SellerIntelligence from "./SellerIntelligence";
 import SellerTasks from "./SellerTasks";
 import LazyPanelFallback from "./LazyPanelFallback";
 import { logger } from "../services/logging";
-import {
-insertOutboundMessageLog,
-loadConversationThread,
-} from "../services/conversations";
+import { loadConversationThread } from "../services/conversations";
 import { sendOutboundSms } from "../services/sms";
 
 const AIIntelligenceDashboard = lazy(() => import("./AIIntelligenceDashboard"));
@@ -112,6 +109,7 @@ try {
   const sendResult = await sendOutboundSms({
     to: selectedPhone,
     message: trimmedReply,
+    dealId: deal?.id || deal?.deal_id || deal?.lead_id || null,
   });
 
   logger.debug("[ConversationThread] send-sms response", {
@@ -123,19 +121,6 @@ try {
     throw new Error(sendResult.error.message || "Could not send SMS");
   }
 
-  logger.debug("[ConversationThread] Inserting outbound message log");
-
-  const logResult = await insertOutboundMessageLog({
-    phone: selectedPhone,
-    message: trimmedReply,
-  });
-
-  if (!logResult.success) {
-    logger.error("[ConversationThread] Outbound log insert failed", logResult.error);
-    throw new Error(logResult.error.message || "Could not log outbound message");
-  }
-
-  logger.info("[ConversationThread] Outbound log inserted successfully");
   setReply("");
   setTimelineRefreshKey((current) => current + 1);
 } catch (error) {

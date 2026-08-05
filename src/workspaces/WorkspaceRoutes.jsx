@@ -1,6 +1,4 @@
 import { lazy, Suspense } from "react";
-import ChatInbox from "../components/ChatInbox";
-import ConversationInbox from "../components/ConversationInbox";
 import LazyPanelFallback from "../components/LazyPanelFallback";
 import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system";
 import TodayWorkspace from "./today/TodayWorkspace";
@@ -8,7 +6,7 @@ import TodayWorkspace from "./today/TodayWorkspace";
 const DealDecisionRoom = lazy(() => import("./deals/DealDecisionRoom"));
 const ApprovalInboxWorkspace = lazy(() => import("./approvals/ApprovalInboxWorkspace"));
 const PipelineWorkspace = lazy(() => import("./pipeline/PipelineWorkspace"));
-const ConversationThread = lazy(() => import("../components/ConversationThread"));
+const InboxWorkspace = lazy(() => import("./inbox/InboxWorkspace"));
 const ExecutiveDashboard = lazy(() =>
   import("../features/dashboard").then((module) => ({ default: module.ExecutiveDashboard }))
 );
@@ -54,21 +52,6 @@ function CompatibilityGroup({ children, title }) {
 
 function LazyCompatibility({ children, label }) {
   return <Suspense fallback={<LazyPanelFallback label={label} />}>{children}</Suspense>;
-}
-
-function InboxWorkspace({ selectedPhone, setSelectedPhone }) {
-  return (
-    <WorkspaceContainer
-      description="Existing seller communication views in a route-level workspace container."
-      title="Inbox"
-    >
-      <ChatInbox />
-      <ConversationInbox selectedPhone={selectedPhone} setSelectedPhone={setSelectedPhone} />
-      <LazyCompatibility label="Loading seller workspace...">
-        <ConversationThread selectedPhone={selectedPhone} />
-      </LazyCompatibility>
-    </WorkspaceContainer>
-  );
 }
 
 function DealsWorkspace({ deals, openDeal, setFilteredDeals, setSelectedPhone }) {
@@ -177,7 +160,11 @@ export default function WorkspaceRoutes({ workspaceId, isUnknownRoute, onNavigat
         </LazyCompatibility>
       );
     case "inbox":
-      return <InboxWorkspace {...props} />;
+      return (
+        <LazyCompatibility label="Loading Inbox workspace...">
+          <InboxWorkspace {...props} />
+        </LazyCompatibility>
+      );
     case "deals":
       return <DealsWorkspace {...props} />;
     case "deal-decision-room":

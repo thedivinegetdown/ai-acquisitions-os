@@ -73,7 +73,8 @@ export function PipelineCard({ item, onOpenDeal, onToggleSelect }) {
         <div className="pipeline-card__status">
           <Badge>{item.currentStatus}</Badge>
           {item.approvalRequired ? <StatusBadge status="warning">Approval required</StatusBadge> : null}
-          {item.unreadConversation ? <StatusBadge status="info">Unread seller response</StatusBadge> : null}
+          {item.needsReply ? <StatusBadge status="info">Needs Reply</StatusBadge> : null}
+          {item.unreadConversation ? <StatusBadge status="info">Unread conversation</StatusBadge> : null}
           {item.stale ? <StatusBadge status="danger">Stale</StatusBadge> : null}
         </div>
 

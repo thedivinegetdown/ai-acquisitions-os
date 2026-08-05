@@ -69,14 +69,16 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByText("Existing Offer Engine Panel")).toBeInTheDocument();
   });
 
-  it("routes primary actions to existing sections without mutating records", async () => {
+  it("opens the selected seller conversation in the route-level Inbox", () => {
     const setSelectedPhone = vi.fn();
-    renderRoom({ setSelectedPhone });
+    const onNavigateWorkspace = vi.fn();
+    renderRoom({ onNavigateWorkspace, setSelectedPhone });
 
     fireEvent.click(screen.getByRole("button", { name: "View Conversation" }));
 
     expect(setSelectedPhone).toHaveBeenCalledWith("5551112222");
-    await waitFor(() => expect(screen.getByText("Existing Message Center Panel")).toBeInTheDocument());
+    expect(onNavigateWorkspace).toHaveBeenCalledWith("inbox");
+    expect(screen.queryByText("Existing Message Center Panel")).not.toBeInTheDocument();
   });
 
   it("renders a safe fallback when the route does not match a loaded deal", () => {

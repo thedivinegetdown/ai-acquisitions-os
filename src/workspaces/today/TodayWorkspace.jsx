@@ -194,12 +194,15 @@ function TodayLoadingState() {
 }
 
 export default function TodayWorkspace({
+  conversationLoadError = null,
+  conversations = [],
   dealLoadError = null,
   deals = [],
   loading = false,
   onNavigateWorkspace,
   openDeal,
   refresh,
+  refreshConversations,
   setSelectedPhone,
 }) {
   const [selectedCategory, setSelectedCategory] = useState(readSelectedCategory);
@@ -209,10 +212,11 @@ export default function TodayWorkspace({
   const readModel = useMemo(
     () =>
       buildTodayReadModel({
+        conversations,
         deals,
-        errors: [dealLoadError, refreshError].filter(Boolean),
+        errors: [conversationLoadError, dealLoadError, refreshError].filter(Boolean),
       }),
-    [dealLoadError, deals, refreshError]
+    [conversationLoadError, conversations, dealLoadError, deals, refreshError]
   );
   const briefing = useMemo(() => buildTodayBriefing(readModel), [readModel]);
   const tabs = readModel.categories.map((category) => ({
@@ -231,10 +235,14 @@ export default function TodayWorkspace({
     setRefreshError("");
 
     try {
-      await refresh?.();
+      await Promise.all(
+        [refresh, refreshConversations]
+          .filter((callback) => typeof callback === "function")
+          .map((callback) => callback())
+      );
       setManualRefreshAt(new Date().toISOString());
-    } catch (error) {
-      setRefreshError(error?.message || "Could not refresh Today data.");
+    } catch {
+      setRefreshError("Could not refresh all Today data. Existing results remain visible.");
     }
   }
 

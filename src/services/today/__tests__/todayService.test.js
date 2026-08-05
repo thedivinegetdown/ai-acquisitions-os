@@ -157,7 +157,7 @@ describe("buildTodayReadModel", () => {
       expect.arrayContaining([
         expect.objectContaining({
           category: "act-now",
-          source: "Conversation Inbox",
+          source: "Unified Inbox",
           type: "seller-reply",
         }),
       ])
@@ -167,8 +167,18 @@ describe("buildTodayReadModel", () => {
   it("deduplicates duplicate underlying conditions", () => {
     const model = buildTodayReadModel({
       conversations: [
-        { phone: "+15550000000", direction: "inbound" },
-        { phone: "+15550000000", direction: "inbound" },
+        {
+          phone: "+15550000000",
+          direction: "inbound",
+          lastMessagePreview: "Please call",
+          lastMessageAt: "2026-07-30T11:00:00.000Z",
+        },
+        {
+          phone: "+1 (555) 000-0000",
+          direction: "inbound",
+          lastMessagePreview: "Please call",
+          lastMessageAt: "2026-07-30T11:00:00.000Z",
+        },
       ],
       now: NOW,
     });

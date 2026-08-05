@@ -3,6 +3,10 @@ import { getPriorityWeight } from "../notifications/notificationPriorityService"
 import { buildApprovalReadModel, isApprovalNotification } from "../approvals";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
+import {
+  conversationNeedsReply,
+  getConversationCompatibilityKey,
+} from "../conversations";
 
 export const TODAY_CATEGORIES = ["act-now", "approvals", "waiting", "at-risk", "completed"];
 
@@ -282,34 +286,59 @@ function buildCompletedItems(deals = [], { now = Date.now() } = {}) {
 
 function buildSellerReplyItems(conversations = [], { now = Date.now() } = {}) {
   return conversations
-    .filter((conversation) => conversation?.direction === "inbound")
+    .filter(conversationNeedsReply)
     .slice(0, 10)
-    .map((conversation) => ({
-      id: `seller-reply:${conversation.phone}`,
-      tenantId: conversation.organization_id || conversation.tenant_id || null,
-      type: "seller-reply",
-      category: "act-now",
-      title: "Seller reply needs attention",
-      summary: conversation.lastMessagePreview || "Recent inbound seller message.",
-      relatedSeller: conversation.sellerName || "Unknown seller",
-      relatedDeal: conversation.relatedDeal || conversation.phone || "Unknown property",
-      priority: "High",
-      urgency: "Seller response",
-      reason: "The latest available conversation summary is inbound.",
-      recommendedNextAction: "Open the inbox and respond from the existing communication workflow.",
-      dueDate: "",
-      actionWindow: "",
-      source: "Conversation Inbox",
-      createdAt: conversation.created_at || nowIso(now),
-      updatedAt: conversation.lastMessageAt || conversation.created_at || nowIso(now),
-      status: "New",
-      availableActions: [{ id: "open-inbox", label: "Open inbox", targetWorkspace: "inbox", phone: conversation.phone }],
-      evidence: [{ label: "Last message direction", value: "Inbound" }],
-      targetWorkspace: "inbox",
-      target: { dealId: null, phone: conversation.phone || "" },
-      dataConfidence: "Derived from loaded conversation summary",
-      sortSignals: { priorityWeight: 3, dueDate: "" },
-    }));
+    .map((conversation) => {
+      const phone = conversation.phone || conversation.participantIdentifier || "";
+      const dealId = conversation.linkedDealId || conversation.dealId || null;
+      return {
+        id: `seller-reply:${getConversationCompatibilityKey(conversation)}`,
+        tenantId:
+          conversation.organizationId ||
+          conversation.organization_id ||
+          conversation.tenantId ||
+          conversation.tenant_id ||
+          null,
+        type: "seller-reply",
+        category: "act-now",
+        title: "Seller reply needs attention",
+        summary: conversation.lastMessagePreview || "Recent inbound seller message.",
+        relatedSeller: conversation.sellerName || "Unknown seller",
+        relatedDeal:
+          conversation.propertyAddress ||
+          conversation.relatedDeal ||
+          phone ||
+          "Unknown property",
+        priority: "High",
+        urgency: "Seller response",
+        reason: "The latest valid message in the shared conversation summary is inbound.",
+        recommendedNextAction:
+          "Open the inbox and respond from the existing communication workflow.",
+        dueDate: "",
+        actionWindow: "",
+        source: "Unified Inbox",
+        createdAt: conversation.created_at || nowIso(now),
+        updatedAt:
+          conversation.lastMessageTimestamp ||
+          conversation.lastMessageAt ||
+          conversation.created_at ||
+          nowIso(now),
+        status: "New",
+        availableActions: [
+          {
+            id: "open-inbox",
+            label: "Open inbox",
+            targetWorkspace: "inbox",
+            phone,
+          },
+        ],
+        evidence: [{ label: "Last message direction", value: "Inbound" }],
+        targetWorkspace: "inbox",
+        target: { dealId, phone },
+        dataConfidence: "Derived from the normalized Inbox communication signal",
+        sortSignals: { priorityWeight: 3, dueDate: "" },
+      };
+    });
 }
 
 function dedupeTodayItems(items = []) {
@@ -317,10 +346,14 @@ function dedupeTodayItems(items = []) {
   const deduped = [];
 
   for (const item of items) {
+    const targetKey =
+      item.type === "seller-reply"
+        ? item.id
+        : item.target?.dealId || item.target?.phone || item.relatedDeal;
     const conditionKey = [
       item.type,
       item.category,
-      item.target?.dealId || item.target?.phone || item.relatedDeal,
+      targetKey,
       item.reason,
     ].join(":");
 

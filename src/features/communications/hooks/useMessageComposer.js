@@ -73,14 +73,18 @@ export function useMessageComposer({
         const smsResult = await sendSmsFromComposer({
           to: draft.to || phone || deal?.phone || "",
           body: draft.body,
-          logLocally: true,
+          dealId: deal?.id || deal?.deal_id || deal?.lead_id || null,
         });
 
         if (!smsResult.success) {
           throw new Error(smsResult.error?.message || "Could not send SMS.");
         }
 
-        setStatusMessage("SMS sent and logged.");
+        setStatusMessage(
+          smsResult.data?.mode === "test"
+            ? "Message saved in test mode. No live SMS was sent."
+            : "SMS accepted for sending. Delivery has not been confirmed."
+        );
         resetDraft(COMPOSER_CHANNELS.SMS);
         onSent?.();
         return smsResult;

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useDealData } from "./hooks/useDealData";
+import { useConversationData } from "./hooks/useConversationData";
 import CommandPalette from "./components/CommandPalette";
 import { AppShell } from "./design-system";
 import { workspaceDefinitions } from "./navigation/workspaces";
@@ -30,6 +31,11 @@ isUnknownRoute,
 navigateToDeal,
 navigateToWorkspace,
 } = useWorkspaceRouter();
+const conversationData = useConversationData({
+  dealLoadError: error,
+  deals,
+  enabled: ["today", "pipeline", "inbox"].includes(currentWorkspaceId),
+});
 
 const toggleSelect = useCallback((id) => {
 setSelectedIds((current) =>
@@ -59,6 +65,10 @@ return (
 
   <WorkspaceRoutes
     clearSelection={clearSelection}
+    conversationLoadError={conversationData.error}
+    conversationLoading={conversationData.loading}
+    conversationReadModel={conversationData.readModel}
+    conversations={conversationData.conversations}
     deals={deals}
     dealLoadError={error}
     filteredDeals={filteredDeals}
@@ -70,6 +80,7 @@ return (
     onNavigateWorkspace={navigateToWorkspace}
     openDeal={(deal) => navigateToDeal(getDealAliasText(deal, "id"))}
     refresh={loadDeals}
+    refreshConversations={conversationData.refresh}
     selectedIds={selectedIds}
     selectedPhone={selectedPhone}
     setFilteredDeals={setFilteredDeals}

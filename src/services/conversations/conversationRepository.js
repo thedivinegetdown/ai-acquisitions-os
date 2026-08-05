@@ -2,62 +2,89 @@ import { supabase } from "../../supabaseClient";
 import { toUserSafeError } from "../../utils/errors";
 import { getOrSetCachedValue } from "../cache";
 import {
-  isMissingDirectionColumnError,
   loadMessageLogs,
   normalizeMessageRecord,
 } from "./messageRepository";
+import {
+  getCanonicalConversationId,
+  getConversationCompatibilityKey,
+} from "./conversationSignals";
 
-async function loadConversationSummaryRows() {
-  const withDirection = await supabase
-    .from("message_logs")
-    .select("phone, created_at, message, direction")
-    .order("created_at", {
-      ascending: false,
-    });
+export const CONVERSATION_SUMMARY_DEFAULT_LIMIT = 100;
+export const CONVERSATION_SUMMARY_MAX_LIMIT = 500;
 
-  if (!isMissingDirectionColumnError(withDirection.error)) {
-    return withDirection;
-  }
+function normalizeSummaryLimit(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return CONVERSATION_SUMMARY_DEFAULT_LIMIT;
+  return Math.min(CONVERSATION_SUMMARY_MAX_LIMIT, Math.max(1, Math.floor(parsed)));
+}
 
+async function loadConversationSummaryRows(limit) {
   return supabase
     .from("message_logs")
-    .select("phone, created_at, message, status")
+    .select("*")
+    .limit(limit + 1)
     .order("created_at", {
       ascending: false,
     });
 }
 
-export async function loadConversationSummaries() {
+export async function loadConversationSummaries({
+  force = false,
+  limit = CONVERSATION_SUMMARY_DEFAULT_LIMIT,
+} = {}) {
   try {
-    const { data, error } = await getOrSetCachedValue(
-      "conversation-summaries",
-      loadConversationSummaryRows,
-      10000
-    );
+    const safeLimit = normalizeSummaryLimit(limit);
+    const cacheKey = `conversation-summaries:${safeLimit}`;
+    const { data, error } = force
+      ? await loadConversationSummaryRows(safeLimit)
+      : await getOrSetCachedValue(
+          cacheKey,
+          () => loadConversationSummaryRows(safeLimit),
+          10000
+        );
 
     if (error) throw error;
 
     const uniqueConversations = [];
-    const seenPhones = new Set();
+    const seenKeys = new Set();
 
     (data || []).forEach((message) => {
       const normalized = normalizeMessageRecord(message);
+      const compatibilityKey = getConversationCompatibilityKey(normalized);
 
-      if (!normalized.phone || seenPhones.has(normalized.phone)) return;
+      if (!compatibilityKey || seenKeys.has(compatibilityKey)) return;
 
-      seenPhones.add(normalized.phone);
+      seenKeys.add(compatibilityKey);
       uniqueConversations.push({
+        ...normalized,
+        canonicalConversationId: getCanonicalConversationId(normalized) || null,
+        compatibilityKey,
         phone: normalized.phone,
+        normalizedPhone: normalized.normalizedPhone,
+        dealId: normalized.deal_id || normalized.dealId || null,
         created_at: normalized.created_at,
         lastMessageAt: normalized.created_at,
+        lastMessageTimestamp: normalized.created_at,
         lastMessagePreview: normalized.message,
+        lastMessageDirection: normalized.direction,
+        lastDeliveryStatus: message.status || null,
         direction: normalized.direction,
       });
     });
 
+    const summaries = uniqueConversations.slice(0, safeLimit);
+
     return {
       success: true,
-      data: uniqueConversations,
+      data: summaries,
+      metadata: {
+        limit: safeLimit,
+        returned: summaries.length,
+        sourceRows: (data || []).length,
+        truncated:
+          (data || []).length > safeLimit || uniqueConversations.length > safeLimit,
+      },
     };
   } catch (error) {
     return {
@@ -113,7 +140,11 @@ export async function findConversationByPhone(phone) {
     };
   }
 
-  const result = await loadMessageLogs({ phone, ascending: true });
+  const result = await loadMessageLogs({
+    phone,
+    ascending: false,
+    limit: 200,
+  });
 
   if (!result.success) return result;
 
@@ -121,8 +152,8 @@ export async function findConversationByPhone(phone) {
     success: true,
     data: {
       phone,
-      messages: result.data,
-      lastMessageAt: result.data.at(-1)?.created_at || null,
+      messages: [...result.data].reverse(),
+      lastMessageAt: result.data[0]?.created_at || null,
     },
   };
 }
@@ -148,7 +179,8 @@ export async function findConversationByDeal(deal) {
 
   const result = await loadMessageLogs({
     dealId,
-    ascending: true,
+    ascending: false,
+    limit: 200,
   });
 
   if (!result.success) return result;
@@ -157,8 +189,8 @@ export async function findConversationByDeal(deal) {
     success: true,
     data: {
       phone: result.data[0]?.phone || "",
-      messages: result.data,
-      lastMessageAt: result.data.at(-1)?.created_at || null,
+      messages: [...result.data].reverse(),
+      lastMessageAt: result.data[0]?.created_at || null,
     },
   };
 }

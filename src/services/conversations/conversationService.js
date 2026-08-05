@@ -7,8 +7,8 @@ import {
 } from "./conversationRepository";
 import { loadMessageLogs } from "./messageRepository";
 
-export async function loadConversationInbox() {
-  return loadConversationSummaries();
+export async function loadConversationInbox(options = {}) {
+  return loadConversationSummaries(options);
 }
 
 export async function loadConversationThread(phone) {
@@ -31,20 +31,37 @@ export async function loadConversationThread(phone) {
     findConversationByPhone(phone),
   ]);
 
-  if (!dealResult.success) return dealResult;
   if (!conversationResult.success) return conversationResult;
 
   return {
     success: true,
     data: {
-      deal: dealResult.data,
+      deal: dealResult.success ? dealResult.data : null,
       conversation: conversationResult.data,
+      sourceWarnings: dealResult.success
+        ? []
+        : ["Linked deal context could not be loaded."],
     },
   };
 }
 
-export async function loadThreadMessages(phone) {
-  return loadMessageLogs({ phone, ascending: true });
+export async function loadThreadMessages(phone, options = {}) {
+  const {
+    ascending = true,
+    dealId = null,
+    force = false,
+    limit,
+    offset = 0,
+  } = options;
+
+  return loadMessageLogs({
+    phone: phone || undefined,
+    dealId: phone ? undefined : dealId || undefined,
+    ascending,
+    force,
+    limit,
+    offset,
+  });
 }
 
 export function buildSmsTimelineEvent(message = {}) {

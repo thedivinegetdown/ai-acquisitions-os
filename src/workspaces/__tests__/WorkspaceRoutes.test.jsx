@@ -3,13 +3,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import WorkspaceRoutes from "../WorkspaceRoutes";
 
-vi.mock("../../components/ChatInbox", () => ({ default: () => <div>Chat Inbox Mock</div> }));
-vi.mock("../../components/ConversationInbox", () => ({
-  default: () => <div>Conversation Inbox Mock</div>,
-}));
-vi.mock("../../components/ConversationThread", () => ({
-  default: () => <div>Conversation Thread Mock</div>,
-}));
 vi.mock("../../components/MorningBriefing", () => ({ default: () => <div>Morning Briefing Mock</div> }));
 vi.mock("../../components/ActionInboxPanel", () => ({ default: () => <div>Action Inbox Mock</div> }));
 vi.mock("../../components/NotificationsCenter", () => ({
@@ -25,6 +18,14 @@ vi.mock("../pipeline/PipelineWorkspace", () => ({
     <section>
       <h1>Pipeline</h1>
       <div>Pipeline Workspace Mock</div>
+    </section>
+  ),
+}));
+vi.mock("../inbox/InboxWorkspace", () => ({
+  default: () => (
+    <section>
+      <h1>Inbox</h1>
+      <div>Unified Inbox Workspace Mock</div>
     </section>
   ),
 }));
@@ -54,13 +55,15 @@ describe("WorkspaceRoutes", () => {
     expect(screen.queryByText("Search Filters Mock")).not.toBeInTheDocument();
   });
 
-  it("preserves the existing Inbox entry points in the Inbox workspace", async () => {
+  it("lazy loads the Unified Inbox without mounting legacy Inbox products", async () => {
     render(<WorkspaceRoutes {...baseProps} workspaceId="inbox" />);
 
+    await waitFor(() =>
+      expect(screen.getByText("Unified Inbox Workspace Mock")).toBeInTheDocument()
+    );
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByText("Chat Inbox Mock")).toBeInTheDocument();
-    expect(screen.getByText("Conversation Inbox Mock")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Conversation Thread Mock")).toBeInTheDocument());
+    expect(screen.queryByText("Chat Inbox Mock")).not.toBeInTheDocument();
+    expect(screen.queryByText("Conversation Thread Mock")).not.toBeInTheDocument();
   });
 
   it("renders the route-level Deal Decision Room workspace", async () => {
