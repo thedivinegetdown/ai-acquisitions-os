@@ -94,9 +94,117 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByRole("heading", { level: 1, name: "123 Main Street" })).toBeInTheDocument();
     expect(screen.getAllByText("Sam Seller").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Contacted").length).toBeGreaterThan(0);
-    expect(screen.getByText("Recommended Next Action:")).toBeInTheDocument();
+    expect(screen.getByText("Lifecycle: Verify")).toBeInTheDocument();
+    expect(screen.getByText("Recommended Next Action")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ask about repairs and current property condition.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Offer readiness: Not Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
+  });
+
+  it("renders the existing route loading state before decision evaluation", () => {
+    renderRoom({ loading: true });
+
+    expect(screen.getByRole("heading", { name: "Deal Decision Room" })).toBeInTheDocument();
+    expect(screen.getByText("Loading deal...")).toBeInTheDocument();
+    expect(screen.queryByText("Decision Snapshot")).not.toBeInTheDocument();
+  });
+
+  it("renders the canonical Decision Basis without future metric clutter", () => {
+    renderRoom();
+
+    const disclosure = screen.getByText("Decision Basis");
+    expect(disclosure).toBeInTheDocument();
+    fireEvent.click(disclosure);
+
+    expect(screen.getByRole("heading", { name: "Evidence and Provenance" })).toBeInTheDocument();
+    expect(screen.getByText(/deal-decision-compatibility/)).toBeInTheDocument();
+    expect(screen.getAllByText("Deal record").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Source timestamp: Not available/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Pursuit Score")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recommendation Confidence")).not.toBeInTheDocument();
+    expect(screen.queryByText("Data Reliability")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cost of Delay")).not.toBeInTheDocument();
+  });
+
+  it("keeps deterministic Decision Intelligence separate from optional AI-assisted insight", async () => {
+    renderRoom();
+
+    expect(screen.getAllByText("Deterministic compatibility").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "AI-assisted insight" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/separate from the deterministic compatibility recommendation/i)
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
+  });
+
+  it("shows partial source warnings without hiding the usable decision", () => {
+    renderRoom({
+      decisionContext: {
+        sourceErrors: [new Error("Approval context could not be loaded.")],
+      },
+    });
+
+    expect(screen.getByText(/Decision basis is partial/)).toHaveAttribute("role", "status");
+    expect(screen.getByText("Approval context could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeEnabled();
+  });
+
+  it("renders a safe decision error without exposing an internal secret", () => {
+    const brokenDeal = { ...deal };
+    Object.defineProperty(brokenDeal, "price", {
+      get() {
+        throw new Error("service_role secret should not render");
+      },
+    });
+
+    renderRoom({ deals: [brokenDeal] });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Decision information unavailable");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("service_role");
+    expect(screen.getByText("Readiness unavailable")).toBeInTheDocument();
+  });
+
+  it("shows only represented approval context and keeps unsupported mutations disabled", () => {
+    renderRoom({
+      decisionContext: {
+        approvalItems: [
+          {
+            id: "approval-1",
+            relatedDeal: { id: "deal-123" },
+            status: "pending",
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByText("pending")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark Waiting" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeDisabled();
+  });
+
+  it("keeps the disclosure keyboard-focusable and token-based in dark mode", () => {
+    const { container } = render(
+      <div data-theme="dark">
+        <DealDecisionRoom
+          currentPath="/deals/deal-123"
+          deals={[deal]}
+          loading={false}
+          onNavigateWorkspace={vi.fn()}
+          refresh={vi.fn()}
+          selectedPhone={null}
+          setSelectedPhone={vi.fn()}
+        />
+      </div>
+    );
+
+    const disclosure = screen.getByText("Decision Basis");
+    disclosure.focus();
+    expect(disclosure).toHaveFocus();
+    expect(container.querySelector(".decision-room__decision")).toBeInTheDocument();
+    expect(container.querySelector("[style]")).not.toBeInTheDocument();
   });
 
   it("keeps inactive section bundles unmounted until selected", async () => {
@@ -152,6 +260,16 @@ describe("DealDecisionRoom", () => {
     expect(setSelectedPhone).toHaveBeenCalledWith("5551112222");
     expect(onNavigateWorkspace).toHaveBeenCalledWith("inbox");
     expect(screen.queryByText("Existing Message Center Panel")).not.toBeInTheDocument();
+  });
+
+  it("preserves safe Decision action navigation from the canonical action list", async () => {
+    renderRoom();
+
+    fireEvent.click(screen.getByRole("button", { name: "Prepare Offer" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Numbers" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    ));
   });
 
   it("renders a safe fallback when the route does not match a loaded deal", () => {

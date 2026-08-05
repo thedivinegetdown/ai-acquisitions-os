@@ -11,8 +11,9 @@ import {
   StatusBadge,
   Tabs,
 } from "../../design-system";
-import { analyzeOfferReadiness } from "../../services/offers";
+import { buildCompatibilityDecisionReadModel } from "../../services/decision-intelligence";
 import { getDealIdFromRoute } from "../../navigation/workspaces";
+import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 
 const AIInsights = lazy(() => import("../../components/AIInsights"));
@@ -55,6 +56,16 @@ const SECTION_LABELS = {
   closing: "Closing",
 };
 
+const EMPTY_DECISION_CONTEXT = Object.freeze({});
+
+const LIFECYCLE_STATUS = {
+  Identify: "neutral",
+  Verify: "warning",
+  Decide: "info",
+  Act: "info",
+  Learn: "success",
+};
+
 const PRIMARY_FACTS = [
   { id: "property", label: "Property", value: (deal) => getDealAliasText(deal, "address") || "Unknown property" },
   { id: "seller", label: "Seller", value: (deal) => getDealAliasText(deal, "ownerName") || "Unknown seller" },
@@ -76,24 +87,6 @@ function findDealByRoute(deals = [], route = "") {
 
 function getPhone(deal = {}) {
   return getDealAliasText(deal, "phone") || deal.phone_number || "";
-}
-
-function getMissingInformation(deal) {
-  const readiness = analyzeOfferReadiness(deal);
-  return readiness.checklist.filter((item) => !item.complete).map((item) => item.label);
-}
-
-function getRecommendedNextAction(deal) {
-  const readiness = analyzeOfferReadiness(deal);
-  if (deal?.due_date && deal.due_date < new Date().toISOString().slice(0, 10)) {
-    return "Follow up with the seller today and update the next action.";
-  }
-
-  if (!getPhone(deal) && !deal?.email) {
-    return "Add seller contact information before outreach.";
-  }
-
-  return readiness.recommendedNextStep;
 }
 
 function PanelSection({ children, description, title }) {
@@ -126,15 +119,18 @@ function MissingInformation({ missingItems }) {
   return (
     <Card className="decision-room__missing" muted>
       <SectionHeader
-        description="Derived from the existing offer-readiness checklist."
+        description="Open compatibility issues that block or qualify the current decision."
         title="Missing Information"
       />
       {missingItems.length === 0 ? (
-        <p>No required offer-readiness facts are missing from the current deal record.</p>
+        <p>No decision-critical compatibility facts are missing from the current deal record.</p>
       ) : (
         <ul>
           {missingItems.map((item) => (
-            <li key={item}>{item}</li>
+            <li key={item.issueId}>
+              <strong>{item.label}</strong>
+              {item.severity === "blocking" ? " - Blocking" : ""}
+            </li>
           ))}
         </ul>
       )}
@@ -142,19 +138,42 @@ function MissingInformation({ missingItems }) {
   );
 }
 
-function PrimaryActions({ deal, onAction }) {
-  const hasPhone = Boolean(getPhone(deal));
+function PrimaryActions({ actions, onAction }) {
+  const actionById = Object.fromEntries(actions.map((action) => [action.id, action]));
+
+  function runAction(actionId) {
+    const action = actionById[actionId];
+    if (!action?.enabled) return;
+    onAction(actionId === "view-conversation" ? "conversation" : action.targetSection);
+  }
 
   return (
     <div className="decision-room__actions" aria-label="Decision Room primary actions">
-      <Button onClick={() => onAction("numbers")}>Prepare Offer</Button>
-      <Button onClick={() => onAction("communication")} variant="secondary">
+      <Button
+        disabled={!actionById["prepare-offer"]?.enabled}
+        onClick={() => runAction("prepare-offer")}
+      >
+        Prepare Offer
+      </Button>
+      <Button
+        disabled={!actionById["follow-up"]?.enabled}
+        onClick={() => runAction("follow-up")}
+        variant="secondary"
+      >
         Follow Up
       </Button>
-      <Button onClick={() => onAction("activity")} variant="secondary">
+      <Button
+        disabled={!actionById.assign?.enabled}
+        onClick={() => runAction("assign")}
+        variant="secondary"
+      >
         Assign
       </Button>
-      <Button disabled={!hasPhone} onClick={() => onAction("conversation")} variant="secondary">
+      <Button
+        disabled={!actionById["view-conversation"]?.enabled}
+        onClick={() => runAction("view-conversation")}
+        variant="secondary"
+      >
         View Conversation
       </Button>
       <Button
@@ -171,24 +190,154 @@ function PrimaryActions({ deal, onAction }) {
   );
 }
 
-function DecisionOverview({ deal, missingItems, onAction }) {
+function readinessStatus(value) {
+  if (value === "Ready to Offer") return "success";
+  if (value === "Ready to Analyze") return "info";
+  if (value === "Needs Info") return "warning";
+  return "neutral";
+}
+
+function DecisionOverview({ deal, decisionResult, onAction }) {
+  if (!decisionResult?.success) {
+    return (
+      <Card>
+        <SectionHeader
+          description="The existing deal remains available, but its deterministic decision summary failed."
+          title="Decision Snapshot"
+        />
+        <ErrorState
+          description={
+            decisionResult?.error?.message ||
+            "Decision information could not be evaluated from the current record."
+          }
+          title="Decision information unavailable"
+        />
+      </Card>
+    );
+  }
+
+  const readModel = decisionResult.data;
+  const readiness = readModel.metricsById["offer-readiness"];
+  const approval = readModel.approvalSummary;
+
   return (
     <div className="decision-room__decision">
       <Card>
         <SectionHeader
-          description="Deterministic summary from the currently loaded CRM fields."
+          description="Deterministic compatibility summary from the currently loaded CRM fields."
           title="Decision Snapshot"
         />
+        <div className="decision-room__decision-statuses" aria-label="Current decision states">
+          <StatusBadge status={LIFECYCLE_STATUS[readModel.lifecycle.state] || "neutral"}>
+            Lifecycle: {readModel.lifecycle.state || "Not evaluated"}
+          </StatusBadge>
+          {readiness?.evaluationState === "compatibility-result" ? (
+            <StatusBadge status={readinessStatus(readiness.displayValue)}>
+              Offer readiness: {readiness.displayValue}
+            </StatusBadge>
+          ) : null}
+          <Badge>Deterministic compatibility</Badge>
+        </div>
         <FactGrid deal={deal} />
         <div className="decision-room__recommendation">
-          <strong>Recommended Next Action:</strong> {getRecommendedNextAction(deal)}
+          <span>Current lifecycle</span>
+          <strong>{readModel.lifecycle.state || "Not evaluated"}</strong>
+          <p>{readModel.lifecycle.reason || "No lifecycle reason is available."}</p>
+          <span>Recommended Next Action</span>
+          <strong>{readModel.recommendation.label || "Needs review"}</strong>
+          <p>{readModel.recommendation.explanation}</p>
         </div>
-        <PrimaryActions deal={deal} onAction={onAction} />
+        <dl className="decision-room__decision-meta">
+          <div>
+            <dt>Approval context</dt>
+            <dd>{approval.status === "unavailable" ? "Not supplied" : approval.status}</dd>
+          </div>
+          <div>
+            <dt>Last evaluated</dt>
+            <dd>{formatSafeDate(readModel.lifecycle.evaluatedTimestamp, "Not available")}</dd>
+          </div>
+        </dl>
+        {readModel.sourceStatus === "partial" ? (
+          <p className="decision-room__partial-warning" role="status">
+            Decision basis is partial. Review the source and compatibility warnings below.
+          </p>
+        ) : null}
+        <PrimaryActions actions={readModel.availableActions} onAction={onAction} />
       </Card>
-      <MissingInformation missingItems={missingItems} />
-      <LazySection label="Loading existing insights...">
-        <AIInsights deal={deal} />
-      </LazySection>
+      <MissingInformation missingItems={readModel.missingInformationReferences} />
+      <Card className="decision-room__basis" muted>
+        <details>
+          <summary>Decision Basis</summary>
+          <div className="decision-room__basis-content">
+            <dl className="decision-room__decision-meta">
+              <div>
+                <dt>Ruleset</dt>
+                <dd>
+                  {readModel.ruleset.rulesetId} / {readModel.ruleset.rulesetVersion}
+                </dd>
+              </div>
+              <div>
+                <dt>Source mode</dt>
+                <dd>Deterministic compatibility</dd>
+              </div>
+              <div>
+                <dt>Source freshness</dt>
+                <dd>{readModel.sourceFreshness.state}</dd>
+              </div>
+              <div>
+                <dt>Latest source timestamp</dt>
+                <dd>
+                  {formatSafeDate(
+                    readModel.sourceFreshness.latestSourceTimestamp,
+                    "Not available"
+                  )}
+                </dd>
+              </div>
+            </dl>
+            <h3>Evidence and Provenance</h3>
+            {readModel.evidenceReferences.length ? (
+              <ul className="decision-room__evidence-list">
+                {readModel.evidenceReferences.map((entry) => (
+                  <li key={entry.evidenceId}>
+                    <strong>{entry.sourceSystem}</strong>
+                    <span>
+                      {entry.sourceType}
+                      {entry.sourceField ? ` / ${entry.sourceField}` : ""}
+                    </span>
+                    <span>{entry.valueSummary || "Current field is present"}</span>
+                    <span>
+                      Source timestamp: {formatSafeDate(entry.sourceTimestamp, "Not available")};
+                      verification: {entry.verificationState}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No source evidence is available for this compatibility record.</p>
+            )}
+            {readModel.sourceWarnings.length ? (
+              <div className="decision-room__source-warnings">
+                <h3>Source warnings</h3>
+                <ul>
+                  {readModel.sourceWarnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </details>
+      </Card>
+      <Card className="decision-room__ai-separation" muted>
+        <SectionHeader
+          description="This existing optional panel is separate from the deterministic compatibility recommendation above."
+          eyebrow="Optional"
+          title="AI-assisted insight"
+        />
+        <LazySection label="Loading existing insights...">
+          <AIInsights deal={deal} />
+        </LazySection>
+      </Card>
     </div>
   );
 }
@@ -322,6 +471,7 @@ function ClosingSection({ deal, refresh }) {
 // but cannot provide route-level navigation, breadcrumbs, or section ownership.
 export default function DealDecisionRoom({
   currentPath = "",
+  decisionContext = EMPTY_DECISION_CONTEXT,
   deals = [],
   loading = false,
   onNavigateWorkspace,
@@ -331,7 +481,16 @@ export default function DealDecisionRoom({
 }) {
   const [activeSection, setActiveSection] = useState("decision");
   const deal = useMemo(() => findDealByRoute(deals, currentPath), [currentPath, deals]);
-  const missingItems = useMemo(() => (deal ? getMissingInformation(deal) : []), [deal]);
+  const decisionResult = useMemo(
+    () =>
+      deal
+        ? buildCompatibilityDecisionReadModel({
+            ...decisionContext,
+            deal,
+          })
+        : null,
+    [deal, decisionContext]
+  );
 
   function handlePrimaryAction(action) {
     if (action === "conversation") {
@@ -406,13 +565,21 @@ export default function DealDecisionRoom({
   const address = getDealAliasText(deal, "address") || "Unknown property";
   const seller = getDealAliasText(deal, "ownerName") || "Unknown seller";
   const stage = getDealAliasText(deal, "stage") || "New Lead";
-  const readiness = analyzeOfferReadiness(deal);
+  const decisionReadModel = decisionResult?.success ? decisionResult.data : null;
+  const readiness = decisionReadModel?.metricsById["offer-readiness"];
+  const missingCount = decisionReadModel?.missingInformationReferences.length || 0;
 
   function renderActiveSection(sectionId) {
     if (sectionId !== activeSection) return null;
 
     if (sectionId === "decision") {
-      return <DecisionOverview deal={deal} missingItems={missingItems} onAction={handlePrimaryAction} />;
+      return (
+        <DecisionOverview
+          deal={deal}
+          decisionResult={decisionResult}
+          onAction={handlePrimaryAction}
+        />
+      );
     }
 
     if (sectionId === "seller") return <SellerSection deal={deal} refresh={refresh} />;
@@ -466,10 +633,10 @@ export default function DealDecisionRoom({
         </div>
         <div className="decision-room__hero-badges">
           <StatusBadge status="info">{stage}</StatusBadge>
-          <StatusBadge status={missingItems.length ? "warning" : "success"}>
-            {readiness.status}
+          <StatusBadge status={readinessStatus(readiness?.displayValue)}>
+            {readiness?.displayValue || "Readiness unavailable"}
           </StatusBadge>
-          <Badge>{missingItems.length} missing facts</Badge>
+          <Badge>{missingCount} missing facts</Badge>
         </div>
       </Card>
 
