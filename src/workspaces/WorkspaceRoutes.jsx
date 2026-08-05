@@ -2,12 +2,12 @@ import { lazy, Suspense } from "react";
 import ChatInbox from "../components/ChatInbox";
 import ConversationInbox from "../components/ConversationInbox";
 import LazyPanelFallback from "../components/LazyPanelFallback";
-import PipelineBoard from "../components/PipelineBoard";
 import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system";
 import TodayWorkspace from "./today/TodayWorkspace";
 
 const DealDecisionRoom = lazy(() => import("./deals/DealDecisionRoom"));
 const ApprovalInboxWorkspace = lazy(() => import("./approvals/ApprovalInboxWorkspace"));
+const PipelineWorkspace = lazy(() => import("./pipeline/PipelineWorkspace"));
 const ConversationThread = lazy(() => import("../components/ConversationThread"));
 const ExecutiveDashboard = lazy(() =>
   import("../features/dashboard").then((module) => ({ default: module.ExecutiveDashboard }))
@@ -23,8 +23,6 @@ const LeadImporter = lazy(() => import("../components/LeadImporter"));
 const DuplicateDetector = lazy(() => import("../components/DuplicateDetector"));
 const DataHealthCenter = lazy(() => import("../components/DataHealthCenter"));
 const AutoLeadScoring = lazy(() => import("../components/AutoLeadScoring"));
-const BulkActionsBar = lazy(() => import("../components/BulkActionsBar"));
-const SavedViewsBar = lazy(() => import("../components/SavedViewsBar"));
 const ExecutiveScorecard = lazy(() => import("../components/ExecutiveScorecard"));
 const RevenueBoard = lazy(() => import("../components/RevenueBoard"));
 const AnalyticsBoard = lazy(() => import("../components/AnalyticsBoard"));
@@ -32,7 +30,6 @@ const DashboardStats = lazy(() => import("../components/DashboardStats"));
 const KPIBoard = lazy(() => import("../components/KPIBoard"));
 const SourceBoard = lazy(() => import("../components/SourceBoard"));
 const BuyersBoard = lazy(() => import("../components/BuyersBoard"));
-const SearchFilters = lazy(() => import("../components/SearchFilters"));
 
 function WorkspaceContainer({ children, description, title }) {
   return (
@@ -57,44 +54,6 @@ function CompatibilityGroup({ children, title }) {
 
 function LazyCompatibility({ children, label }) {
   return <Suspense fallback={<LazyPanelFallback label={label} />}>{children}</Suspense>;
-}
-
-function PipelineWorkspace({
-  clearSelection,
-  deals,
-  filteredDeals,
-  loading,
-  openDeal,
-  refresh,
-  selectedIds,
-  setFilteredDeals,
-  toggleSelect,
-}) {
-  return (
-    <WorkspaceContainer
-      description="Existing pipeline workflow in a route-level workspace container."
-      title="Pipeline"
-    >
-      <CompatibilityGroup title="Pipeline controls">
-        <LazyCompatibility label="Loading pipeline controls...">
-          <SearchFilters deals={deals} onChange={setFilteredDeals} />
-          <SavedViewsBar deals={deals} applyView={setFilteredDeals} />
-          <BulkActionsBar clearSelection={clearSelection} refresh={refresh} selectedIds={selectedIds} />
-        </LazyCompatibility>
-      </CompatibilityGroup>
-      {loading ? (
-        <p>Loading deals...</p>
-      ) : (
-        <PipelineBoard
-          deals={filteredDeals}
-          openDeal={openDeal}
-          refresh={refresh}
-          selectedIds={selectedIds}
-          toggleSelect={toggleSelect}
-        />
-      )}
-    </WorkspaceContainer>
-  );
 }
 
 function InboxWorkspace({ selectedPhone, setSelectedPhone }) {
@@ -212,7 +171,11 @@ export default function WorkspaceRoutes({ workspaceId, isUnknownRoute, onNavigat
         </LazyCompatibility>
       );
     case "pipeline":
-      return <PipelineWorkspace {...props} />;
+      return (
+        <LazyCompatibility label="Loading Pipeline workspace...">
+          <PipelineWorkspace {...props} />
+        </LazyCompatibility>
+      );
     case "inbox":
       return <InboxWorkspace {...props} />;
     case "deals":

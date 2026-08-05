@@ -10,10 +10,6 @@ vi.mock("../../components/ConversationInbox", () => ({
 vi.mock("../../components/ConversationThread", () => ({
   default: () => <div>Conversation Thread Mock</div>,
 }));
-vi.mock("../../components/PipelineBoard", () => ({ default: () => <div>Pipeline Board Mock</div> }));
-vi.mock("../../components/SearchFilters", () => ({ default: () => <div>Search Filters Mock</div> }));
-vi.mock("../../components/SavedViewsBar", () => ({ default: () => <div>Saved Views Mock</div> }));
-vi.mock("../../components/BulkActionsBar", () => ({ default: () => <div>Bulk Actions Mock</div> }));
 vi.mock("../../components/MorningBriefing", () => ({ default: () => <div>Morning Briefing Mock</div> }));
 vi.mock("../../components/ActionInboxPanel", () => ({ default: () => <div>Action Inbox Mock</div> }));
 vi.mock("../../components/NotificationsCenter", () => ({
@@ -23,6 +19,14 @@ vi.mock("../../components/TaskDashboard", () => ({ default: () => <div>Task Dash
 vi.mock("../deals/DealDecisionRoom", () => ({ default: () => <div>Decision Room Mock</div> }));
 vi.mock("../approvals/ApprovalInboxWorkspace", () => ({
   default: () => <div>Approval Inbox Mock</div>,
+}));
+vi.mock("../pipeline/PipelineWorkspace", () => ({
+  default: () => (
+    <section>
+      <h1>Pipeline</h1>
+      <div>Pipeline Workspace Mock</div>
+    </section>
+  ),
 }));
 
 const baseProps = {
@@ -44,10 +48,10 @@ describe("WorkspaceRoutes", () => {
   it("renders the active Pipeline workspace without loading every legacy panel", async () => {
     render(<WorkspaceRoutes {...baseProps} workspaceId="pipeline" />);
 
+    await waitFor(() => expect(screen.getByText("Pipeline Workspace Mock")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Pipeline" })).toBeInTheDocument();
-    expect(screen.getByText("Pipeline Board Mock")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Search Filters Mock")).toBeInTheDocument());
     expect(screen.queryByText("Action Inbox Mock")).not.toBeInTheDocument();
+    expect(screen.queryByText("Search Filters Mock")).not.toBeInTheDocument();
   });
 
   it("preserves the existing Inbox entry points in the Inbox workspace", async () => {
