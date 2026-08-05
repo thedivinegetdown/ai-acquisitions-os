@@ -125,8 +125,8 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByText("Lifecycle: Verify")).toBeInTheDocument();
     expect(screen.getByText("Recommended Next Action")).toBeInTheDocument();
     expect(
-      screen.getByText("Ask about repairs and current property condition.")
-    ).toBeInTheDocument();
+      screen.getAllByText("How would you describe the property's current condition?").length
+    ).toBeGreaterThan(0);
     expect(screen.getByText("Offer readiness: Not Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
     expect(
@@ -248,7 +248,7 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeEnabled();
   });
 
-  it("renders a safe decision error without exposing an internal secret", () => {
+  it("renders a partial usable decision when one compatibility field throws", () => {
     const brokenDeal = { ...deal };
     Object.defineProperty(brokenDeal, "price", {
       get() {
@@ -258,11 +258,12 @@ describe("DealDecisionRoom", () => {
 
     renderRoom({ deals: [brokenDeal] });
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Decision information unavailable");
-    expect(screen.getByRole("alert")).not.toHaveTextContent("service_role");
+    expect(screen.getAllByText(/Decision basis is partial/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Decision information unavailable")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("service_role");
     expect(
-      screen.getByText("Residential home - Compatibility Analysis")
-    ).toBeInTheDocument();
+      screen.getAllByText("Residential home - Compatibility Analysis").length
+    ).toBeGreaterThan(0);
   });
 
   it("shows only represented approval context and keeps unsupported mutations disabled", () => {

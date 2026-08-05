@@ -21,6 +21,7 @@ import { buildCompatibilityDecisionReadModel } from "../../services/decision-int
 import { getDealIdFromRoute } from "../../navigation/workspaces";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
+import MissingInformationAutopilot from "./MissingInformationAutopilot";
 
 const AIInsights = lazy(() => import("../../components/AIInsights"));
 const ActivityTimeline = lazy(() => import("../../components/ActivityTimeline"));
@@ -181,29 +182,6 @@ function FactGrid({ deal }) {
         </div>
       ))}
     </dl>
-  );
-}
-
-function MissingInformation({ missingItems }) {
-  return (
-    <Card className="decision-room__missing" muted>
-      <SectionHeader
-        description="Open compatibility issues that block or qualify the current decision."
-        title="Missing Information"
-      />
-      {missingItems.length === 0 ? (
-        <p>No decision-critical compatibility facts are missing from the current deal record.</p>
-      ) : (
-        <ul>
-          {missingItems.map((item) => (
-            <li key={item.issueId}>
-              <strong>{item.label}</strong>
-              {item.severity === "blocking" ? " - Blocking" : ""}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
   );
 }
 
@@ -379,7 +357,10 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
         ) : null}
         <PrimaryActions actions={readModel.availableActions} onAction={onAction} />
       </Card>
-      <MissingInformation missingItems={readModel.missingInformationReferences} />
+      <MissingInformationAutopilot
+        onNavigateSection={onAction}
+        readModel={readModel.missingInformationReadModel}
+      />
       <Card className="decision-room__basis" muted>
         <details>
           <summary>Decision Basis</summary>
@@ -863,7 +844,8 @@ export default function DealDecisionRoom({
   const stage = getDealAliasText(deal, "stage") || "New Lead";
   const decisionReadModel = decisionResult?.success ? decisionResult.data : null;
   const readiness = decisionReadModel?.metricsById["offer-readiness"];
-  const missingCount = decisionReadModel?.missingInformationReferences.length || 0;
+  const missingCount =
+    decisionReadModel?.missingInformationReadModel?.counts?.open || 0;
 
   function renderActiveSection(sectionId) {
     if (sectionId !== activeSection) return null;
@@ -973,7 +955,7 @@ export default function DealDecisionRoom({
               {assetStrategyContext.statusSummary}
             </StatusBadge>
           ) : null}
-          {decisionReadModel ? <Badge>{missingCount} missing facts</Badge> : null}
+          {decisionReadModel ? <Badge>{missingCount} information needs</Badge> : null}
         </div>
       </Card>
 

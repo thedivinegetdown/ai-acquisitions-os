@@ -1,7 +1,6 @@
 import { createFailure, createSuccess } from "../api/serviceResult";
 import {
   ASSET_CAPABILITY_IDS,
-  ASSET_STRATEGY_SUPPORT_STATES,
   buildAssetStrategyContext,
   canRunAssetCapability,
 } from "../asset-strategy/assetStrategyContextService";
@@ -10,6 +9,12 @@ import {
   OFFER_READINESS_CHECKLIST,
   analyzeOfferReadiness,
 } from "../offers/offerReadinessService";
+import {
+  RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS,
+  evaluateMissingInformation,
+  isBlockingInformationState,
+  toDecisionIssueReferences,
+} from "../research-intelligence";
 import {
   conversationNeedsReply,
   getConversationCompatibilityKey,
@@ -32,7 +37,6 @@ import {
   DECISION_METRIC_REGISTRY,
   DECISION_SOURCE_MODES,
   normalizeConflictReference,
-  normalizeDecisionIssueReference,
   normalizeDecisionRecord,
   normalizeDecisionTimestamp,
   normalizeEvidenceReference,
@@ -73,17 +77,6 @@ const COMPLETED_TASK_STATES = new Set(["complete", "completed", "done", "cancell
 const CRM_COMPATIBILITY_WARNING =
   "Current CRM fields are compatibility evidence without field-level source timestamps or verification metadata.";
 
-const READINESS_CANONICAL_FIELDS = {
-  "Asking price": "deal.askingPrice",
-  "Property condition": "property.condition",
-  "Motivation level": "seller.motivation",
-  "Seller timeline": "seller.timeline",
-  "Mortgage status": "property.mortgageStatus",
-  "Repairs needed": "property.repairs",
-  "Occupancy status": "property.occupancy",
-  "ARV / comps status": "property.arvOrComps",
-};
-
 const READINESS_ACTION_CODES = {
   "Ask about repairs and current property condition.":
     DECISION_ACTION_TAXONOMY.COLLECT_PROPERTY_CONDITION,
@@ -120,14 +113,38 @@ function idSegment(value) {
   return text ? encodeURIComponent(text) : "";
 }
 
+function readRecordField(record, key) {
+  try {
+    return record?.[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function safeDealAliasText(deal, alias) {
+  try {
+    return getDealAliasText(deal, alias);
+  } catch {
+    return "";
+  }
+}
+
 function getDealId(deal) {
-  return getDealAliasText(deal, "id") || "";
+  return safeDealAliasText(deal, "id");
 }
 
 function getTenantContext(deal) {
   return {
-    organizationId: safeText(deal?.organization_id || deal?.organizationId) || null,
-    tenantId: safeText(deal?.tenant_id || deal?.tenantId) || null,
+    organizationId:
+      safeText(
+        readRecordField(deal, "organization_id") ||
+          readRecordField(deal, "organizationId")
+      ) || null,
+    tenantId:
+      safeText(
+        readRecordField(deal, "tenant_id") ||
+          readRecordField(deal, "tenantId")
+      ) || null,
   };
 }
 
@@ -143,10 +160,29 @@ function matchesTenantContext(record, context) {
 
 function getFieldEntry(deal, keys) {
   for (const key of keys) {
-    const value = deal?.[key];
-    if (value !== null && value !== undefined && value !== "") return { key, value };
+    try {
+      const value = deal?.[key];
+      if (value !== null && value !== undefined && value !== "") {
+        return { key, value };
+      }
+    } catch {
+      // Missing Information detection records the field-level partial warning.
+    }
   }
   return null;
+}
+
+function safelyAnalyzeOfferReadiness(deal, allowed) {
+  if (!allowed) return { readiness: null, warning: null };
+  try {
+    return { readiness: analyzeOfferReadiness(deal), warning: null };
+  } catch {
+    return {
+      readiness: null,
+      warning:
+        "Residential offer readiness could not be evaluated from one or more stored fields.",
+    };
+  }
 }
 
 function valueSummary(value) {
@@ -216,7 +252,7 @@ function buildCurrentDealEvidence(deal, readiness, context, dealId) {
   OFFER_READINESS_CHECKLIST.forEach((item) => {
     if (!readinessByLabel.get(item.label)?.complete) return;
     descriptors.push({
-      canonicalField: READINESS_CANONICAL_FIELDS[item.label],
+      canonicalField: RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS[item.label],
       keys: item.keys,
     });
   });
@@ -307,189 +343,6 @@ function normalizeExternalEvidence(references, context) {
     .map(normalizeEvidenceReference)
     .filter(Boolean)
     .slice(0, DECISION_EVIDENCE_LIMIT);
-}
-
-function issueId(dealId, category, label) {
-  if (!dealId) return null;
-  return `issue:${idSegment(dealId)}:${idSegment(category)}:${idSegment(normalizedKey(label))}`;
-}
-
-function createMissingIssue({
-  canonicalField,
-  category,
-  dealId,
-  description,
-  evidenceReferenceIds = [],
-  label,
-  severity,
-}) {
-  const id = issueId(dealId, category, label);
-  if (!id) return null;
-  return normalizeDecisionIssueReference({
-    issueId: id,
-    label,
-    description,
-    severity,
-    state: "open",
-    relatedCanonicalField: canonicalField,
-    evidenceReferenceIds,
-    sourceMode: SOURCE_MODE,
-    rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
-  });
-}
-
-function buildAssetStrategyIssue(assetStrategyContext, dealId) {
-  if (!dealId) return null;
-  const evidenceReferenceIds = assetStrategyContext.classificationEvidence.map(
-    (reference) => reference.evidenceId
-  );
-
-  if (
-    assetStrategyContext.classificationState ===
-    ASSET_CLASSIFICATION_STATES.UNCLASSIFIED
-  ) {
-    return createMissingIssue({
-      canonicalField: "property.assetType",
-      category: "asset-classification",
-      dealId,
-      description:
-        "Asset type classification is required before strategy-specific analysis can run.",
-      evidenceReferenceIds,
-      label: "Asset type classification",
-      severity: "blocking",
-    });
-  }
-
-  if (
-    assetStrategyContext.classificationState ===
-    ASSET_CLASSIFICATION_STATES.AMBIGUOUS
-  ) {
-    return createMissingIssue({
-      canonicalField: "property.assetType",
-      category: "asset-classification",
-      dealId,
-      description:
-        "Conflicting or ambiguous asset classification requires human review before strategy-specific analysis can run.",
-      evidenceReferenceIds,
-      label: "Asset type classification conflict",
-      severity: "blocking",
-    });
-  }
-
-  if (
-    assetStrategyContext.classificationState ===
-    ASSET_CLASSIFICATION_STATES.UNSUPPORTED
-  ) {
-    return createMissingIssue({
-      canonicalField: "property.assetType",
-      category: "asset-classification",
-      dealId,
-      description:
-        "The stored asset type does not map to a supported Asset Strategy classification.",
-      evidenceReferenceIds,
-      label: "Supported asset type classification",
-      severity: "blocking",
-    });
-  }
-
-  if (
-    assetStrategyContext.strategySupportState ===
-      ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY ||
-    assetStrategyContext.strategySupportState ===
-      ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
-  ) {
-    return createMissingIssue({
-      canonicalField: "property.assetType",
-      category: "asset-strategy-availability",
-      dealId,
-      description: `${assetStrategyContext.strategyLabel} is ${
-        assetStrategyContext.strategySupportState ===
-        ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
-          ? "deferred"
-          : "not yet implemented"
-      }; residential-house analysis is blocked.`,
-      evidenceReferenceIds,
-      label: `${assetStrategyContext.assetTypeLabel} strategy availability`,
-      severity: "blocking",
-    });
-  }
-
-  return null;
-}
-
-function buildMissingInformation(deal, readiness, dealId, assetStrategyContext) {
-  const missing = (Array.isArray(readiness?.checklist) ? readiness.checklist : [])
-    .filter((item) => !item.complete)
-    .map((item) =>
-      createMissingIssue({
-        canonicalField: READINESS_CANONICAL_FIELDS[item.label],
-        category: "offer-readiness",
-        dealId,
-        description: "Required by the existing offer-readiness compatibility checklist.",
-        label: item.label,
-        severity: "blocking",
-      })
-    );
-  const assetStrategyIssue = buildAssetStrategyIssue(
-    assetStrategyContext,
-    dealId
-  );
-  if (assetStrategyIssue) missing.push(assetStrategyIssue);
-
-  if (!getDealAliasText(deal, "address")) {
-    missing.push(
-      createMissingIssue({
-        canonicalField: "property.address",
-        category: "identity",
-        dealId,
-        description: "Property identity is incomplete in the current deal record.",
-        label: "Property address",
-        severity: "blocking",
-      })
-    );
-  }
-  if (!getDealAliasText(deal, "ownerName")) {
-    missing.push(
-      createMissingIssue({
-        canonicalField: "seller.name",
-        category: "identity",
-        dealId,
-        description: "Seller identity is incomplete in the current deal record.",
-        label: "Seller name",
-        severity: "blocking",
-      })
-    );
-  }
-  if (!getDealAliasText(deal, "stage")) {
-    missing.push(
-      createMissingIssue({
-        canonicalField: "deal.stage",
-        category: "decision-context",
-        dealId,
-        description: "A current pipeline stage is needed for decision context.",
-        label: "Current stage",
-        severity: "blocking",
-      })
-    );
-  }
-  if (!getDealAliasText(deal, "phone") && !safeText(deal?.email)) {
-    missing.push(
-      createMissingIssue({
-        canonicalField: "seller.contact",
-        category: "seller-contact",
-        dealId,
-        description: "The existing next-action rule requires a seller phone or email before outreach.",
-        label: "Seller contact information",
-        severity: "blocking",
-      })
-    );
-  }
-
-  const byId = new Map();
-  missing.filter(Boolean).forEach((issue) => {
-    if (!byId.has(issue.issueId)) byId.set(issue.issueId, issue);
-  });
-  return [...byId.values()];
 }
 
 function dateKey(value) {
@@ -588,24 +441,24 @@ function getLifecycle({
   dueContext,
   evidence,
   evaluatedTimestamp,
-  missingInformation,
+  missingInformationReadModel,
   previousLifecycle,
   sellerReply,
   taskDue,
 }) {
-  const address = getDealAliasText(deal, "address");
-  const seller = getDealAliasText(deal, "ownerName");
-  const stage = normalizedKey(getDealAliasText(deal, "stage") || deal?.status);
+  const address = safeDealAliasText(deal, "address");
+  const seller = safeDealAliasText(deal, "ownerName");
+  const stage = normalizedKey(
+    safeDealAliasText(deal, "stage") || readRecordField(deal, "status")
+  );
   const stageEvidence = evidenceForCanonicalField(evidence, "deal.stage");
   const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
   const actionEvidence = evidence.filter((entry) =>
     ["conversation-summary", "task-record"].includes(entry.sourceType)
   );
-  const staleOrUnverified = evidence.filter(
-    (entry) =>
-      entry.provenanceDetails.decisionCritical === true &&
-      (entry.freshnessState === "stale" || entry.verificationState === "unverified")
-  );
+  const blockingInformation = (
+    missingInformationReadModel?.blockingItems || []
+  ).filter(isBlockingInformationState);
 
   let state;
   let reason;
@@ -627,7 +480,7 @@ function getLifecycle({
   } else if (TERMINAL_OUTCOMES.has(stage)) {
     state = DECISION_LIFECYCLE_STATES.LEARN;
     reason = `The current deal record contains the explicit outcome state "${
-      getDealAliasText(deal, "stage") || deal.status
+      safeDealAliasText(deal, "stage") || readRecordField(deal, "status")
     }".`;
     lifecycleEvidence = stageEvidence ? [stageEvidence.evidenceId] : [];
   } else if (
@@ -647,23 +500,21 @@ function getLifecycle({
       ...actionEvidence.map((entry) => entry.evidenceId),
       dueEvidence?.evidenceId,
     ].filter(Boolean);
-  } else if (missingInformation.length || conflicts.length || staleOrUnverified.length) {
+  } else if (blockingInformation.length || conflicts.length) {
     state = DECISION_LIFECYCLE_STATES.VERIFY;
     const reasons = [
-      missingInformation.length
-        ? `${missingInformation.length} decision-critical item${
-            missingInformation.length === 1 ? " is" : "s are"
-          } missing`
+      blockingInformation.length
+        ? `${blockingInformation.length} decision-critical item${
+            blockingInformation.length === 1 ? " requires" : "s require"
+          } information or verification`
         : null,
       conflicts.length ? `${conflicts.length} explicit conflict${conflicts.length === 1 ? " is" : "s are"} unresolved` : null,
-      staleOrUnverified.length
-        ? `${staleOrUnverified.length} critical evidence record${
-            staleOrUnverified.length === 1 ? " needs" : "s need"
-          } verification`
-        : null,
     ].filter(Boolean);
     reason = `${reasons.join(" and ")}.`;
-    lifecycleEvidence = evidence.map((entry) => entry.evidenceId);
+    lifecycleEvidence = uniqueStrings([
+      ...blockingInformation.flatMap((item) => item.evidenceReferenceIds),
+      ...conflicts.flatMap((conflict) => conflict.evidenceReferenceIds),
+    ]);
   } else {
     state = DECISION_LIFECYCLE_STATES.DECIDE;
     reason = "The existing compatibility checklist is complete enough for human decision review.";
@@ -687,15 +538,18 @@ function getLifecycle({
 function getRecommendation({
   approvalSummary,
   assetStrategyContext,
-  deal,
   dealId,
   dueContext,
   evaluatedTimestamp,
   evidence,
   missingInformation,
+  missingInformationReadModel,
   conflicts,
   readiness,
   readinessCapability,
+  readinessWarning,
+  sellerReply,
+  taskDue,
 }) {
   const missingIds = missingInformation.map((issue) => issue.issueId);
   const conflictIds = conflicts.map((conflict) => conflict.conflictId);
@@ -732,33 +586,67 @@ function getRecommendation({
     explanation = "The current deal follow-up date is overdue.";
     const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
     supportingEvidence = dueEvidence ? [dueEvidence.evidenceId] : [];
-  } else if (!getDealAliasText(deal, "phone") && !safeText(deal?.email)) {
-    actionCode = DECISION_ACTION_TAXONOMY.ADD_CONTACT_INFORMATION;
-    label = "Add seller contact information before outreach.";
-    explanation = "Seller phone and email are missing from the current CRM record.";
+  } else if (sellerReply) {
+    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
+    label = "Respond to the seller reply.";
+    explanation = "The latest valid linked seller message is inbound and needs a response.";
+    supportingEvidence = evidence
+      .filter((entry) => entry.sourceType === "conversation-summary")
+      .map((entry) => entry.evidenceId);
+  } else if (taskDue || dueContext.isDue) {
+    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
+    label = "Complete the due follow-up action.";
+    explanation = "A linked task or the current deal follow-up is due.";
+    supportingEvidence = evidence
+      .filter((entry) => entry.sourceType === "task-record")
+      .map((entry) => entry.evidenceId);
+    const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
+    if (dueEvidence) supportingEvidence.push(dueEvidence.evidenceId);
   } else if (
-    assetStrategyContext.classificationState !==
-      ASSET_CLASSIFICATION_STATES.CLASSIFIED ||
-    assetStrategyContext.manualReviewRequired
+    missingInformationReadModel?.highestPriorityAction?.enabled
   ) {
-    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
-    label = assetStrategyContext.statusSummary;
-    explanation = `${readinessCapability.explanation} Generic CRM, seller context, and communication remain available.`;
-    supportingEvidence = assetStrategyContext.classificationEvidence.map(
-      (reference) => reference.evidenceId
+    const informationAction = missingInformationReadModel.highestPriorityAction;
+    const informationItem = missingInformationReadModel.openItems.find(
+      (item) => item.requirementId === informationAction.requirementId
     );
+    const actionCodesByField = {
+      "seller.contact": DECISION_ACTION_TAXONOMY.ADD_CONTACT_INFORMATION,
+      "property.condition": DECISION_ACTION_TAXONOMY.COLLECT_PROPERTY_CONDITION,
+      "property.repairs": DECISION_ACTION_TAXONOMY.COLLECT_PROPERTY_CONDITION,
+      "seller.motivation": DECISION_ACTION_TAXONOMY.COLLECT_SELLER_MOTIVATION,
+      "seller.timeline": DECISION_ACTION_TAXONOMY.COLLECT_SELLER_TIMELINE,
+      "deal.askingPrice": DECISION_ACTION_TAXONOMY.COLLECT_ASKING_PRICE,
+      "property.arvOrComps": DECISION_ACTION_TAXONOMY.RUN_COMPS,
+    };
+    actionCode =
+      actionCodesByField[informationItem?.canonicalField] ||
+      DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    if (informationItem?.canonicalField === "seller.contact") {
+      label = "Add seller contact information before outreach.";
+    } else if (informationAction.sellerQuestion) {
+      label = informationAction.sellerQuestion;
+    } else {
+      label = informationAction.label;
+    }
+    explanation = `${informationAction.explanation} ${
+      informationItem?.reason || "Review the current stored information."
+    }`;
+    supportingEvidence = informationItem?.evidenceReferenceIds || [];
   } else if (!readinessCapability.allowed) {
     actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
-    label = `${assetStrategyContext.strategyLabel} is ${
-      assetStrategyContext.strategySupportState ===
-      ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
-        ? "deferred"
-        : "not yet implemented"
-    }.`;
+    label =
+      missingInformationReadModel?.limitations?.[0]?.label ||
+      assetStrategyContext.statusSummary;
     explanation = `${readinessCapability.explanation} Maintain seller context and communication without residential calculations.`;
     supportingEvidence = assetStrategyContext.classificationEvidence.map(
       (reference) => reference.evidenceId
     );
+  } else if (!readiness) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = "Review residential compatibility inputs.";
+    explanation =
+      readinessWarning ||
+      "Residential offer readiness could not be evaluated safely from the current record.";
   } else {
     actionCode =
       READINESS_ACTION_CODES[readiness.recommendedNextStep] || DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
@@ -771,7 +659,11 @@ function getRecommendation({
       .map((entry) => entry.evidenceId);
   }
 
-  const hasSafeResult = Boolean(label && actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW);
+  const hasSafeResult = Boolean(
+    label &&
+      (actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
+        missingInformationReadModel?.highestPriorityAction?.enabled)
+  );
   return normalizeRecommendation({
     recommendationId: `recommendation:deal:${idSegment(dealId)}:compatibility`,
     actionCode,
@@ -805,15 +697,25 @@ function buildMetricOutputs({
   evaluatedTimestamp,
   evidence,
   missingInformation,
+  missingInformationReadModel,
+  readinessWarning,
   readiness,
   readinessCapability,
 }) {
   const missingIds = missingInformation
-    .filter((issue) => issue.description?.includes("offer-readiness"))
+    .filter((issue) =>
+      (missingInformationReadModel?.openItems || []).some(
+        (item) =>
+          item.itemId === issue.issueId &&
+          item.profileId === "residential-compatibility-requirements-v1"
+      )
+    )
     .map((issue) => issue.issueId);
   const readinessEvidence = evidence
     .filter((entry) =>
-      Object.values(READINESS_CANONICAL_FIELDS).includes(entry.relatedCanonicalField)
+      Object.values(RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS).includes(
+        entry.relatedCanonicalField
+      )
     )
     .map((entry) => entry.evidenceId);
   const completeCount = Array.isArray(readiness?.checklist)
@@ -859,14 +761,14 @@ function buildMetricOutputs({
         evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
         value: null,
         displayValue: null,
-        explanation: readinessCapability.explanation,
+        explanation: readinessWarning || readinessCapability.explanation,
         inputEvidenceIds: classificationEvidenceIds,
         blockingIssueIds: classificationIssueIds,
         advisoryIssueIds: [],
         rulesetVersion: OFFER_READINESS_COMPATIBILITY_RULESET_VERSION,
         evaluatedTimestamp,
         sourceMode: SOURCE_MODE,
-        partialDataWarnings: [readinessCapability.explanation],
+        partialDataWarnings: [readinessWarning || readinessCapability.explanation],
       });
     }
 
@@ -942,7 +844,7 @@ function buildRuleset(evaluatedTimestamp) {
 }
 
 function buildAvailableActions(deal, dealId, assetStrategyContext) {
-  const phone = getDealAliasText(deal, "phone");
+  const phone = safeDealAliasText(deal, "phone");
   const offerCapability = canRunAssetCapability(
     assetStrategyContext,
     ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_GENERATION
@@ -1005,9 +907,11 @@ function buildReadModel({
     assetStrategyContext,
     ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_READINESS
   );
-  const readiness = readinessCapability.allowed
-    ? analyzeOfferReadiness(safeDeal)
-    : null;
+  const readinessEvaluation = safelyAnalyzeOfferReadiness(
+    safeDeal,
+    readinessCapability.allowed
+  );
+  const readiness = readinessEvaluation.readiness;
   const currentEvidence = buildCurrentDealEvidence(safeDeal, readiness, context, dealId);
   const externalEvidence = normalizeExternalEvidence(evidenceReferences, context);
   const conversationEvidence = adaptConversationEvidence(
@@ -1023,12 +927,6 @@ function buildReadModel({
     ...conversationEvidence,
     ...taskEvidence,
   ]);
-  const missingInformation = buildMissingInformation(
-    safeDeal,
-    readiness,
-    dealId,
-    assetStrategyContext
-  );
   const providedConflicts = (Array.isArray(conflicts) ? conflicts : [])
     .map(normalizeConflictReference)
     .filter(Boolean)
@@ -1043,6 +941,17 @@ function buildReadModel({
     }
   });
   const normalizedConflicts = [...conflictById.values()].slice(0, SOURCE_LIMIT);
+  const missingInformationReadModel = evaluateMissingInformation({
+    assetStrategyContext,
+    conflicts: normalizedConflicts,
+    deal: safeDeal,
+    evaluatedTimestamp,
+    evidenceReferences: evidence,
+    sourceErrors,
+  });
+  const missingInformation = toDecisionIssueReferences(
+    missingInformationReadModel
+  );
   const approvalSummary = buildApprovalSummary(approvalItems, context, dealId);
   const dueContext = getDueContext(safeDeal, now);
   const sellerReply = hasSellerReply(conversationSignals, context, dealId);
@@ -1054,6 +963,8 @@ function buildReadModel({
     dealId ? "" : "The loaded opportunity has no stable compatibility identifier.",
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
     ...assetStrategyContext.sourceWarnings,
+    readinessEvaluation.warning || "",
+    ...missingInformationReadModel.partialDataWarnings,
   ]).slice(0, 10);
   const ruleset = buildRuleset(evaluatedTimestamp);
   const lifecycle = getLifecycle({
@@ -1066,7 +977,7 @@ function buildReadModel({
     dueContext,
     evidence,
     evaluatedTimestamp,
-    missingInformation,
+    missingInformationReadModel,
     previousLifecycle,
     sellerReply,
     taskDue,
@@ -1075,14 +986,17 @@ function buildReadModel({
     approvalSummary,
     assetStrategyContext,
     conflicts: normalizedConflicts,
-    deal: safeDeal,
     dealId,
     dueContext,
     evaluatedTimestamp,
     evidence,
     missingInformation,
+    missingInformationReadModel,
     readiness,
     readinessCapability,
+    readinessWarning: readinessEvaluation.warning,
+    sellerReply,
+    taskDue,
   });
   const metricOutputs = buildMetricOutputs({
     assetStrategyContext,
@@ -1091,8 +1005,10 @@ function buildReadModel({
     evaluatedTimestamp,
     evidence,
     missingInformation,
+    missingInformationReadModel,
     readiness,
     readinessCapability,
+    readinessWarning: readinessEvaluation.warning,
   });
   const decisionRecord = normalizeDecisionRecord({
     decisionId: dealId ? `decision:deal:${idSegment(dealId)}:compatibility` : null,
@@ -1100,13 +1016,21 @@ function buildReadModel({
     tenantId: context.tenantId,
     dealId: dealId || null,
     sellerReference: {
-      id: safeText(safeDeal.seller_id || safeDeal.sellerId) || null,
-      name: getDealAliasText(safeDeal, "ownerName") || null,
-      phone: getDealAliasText(safeDeal, "phone") || null,
+      id:
+        safeText(
+          readRecordField(safeDeal, "seller_id") ||
+            readRecordField(safeDeal, "sellerId")
+        ) || null,
+      name: safeDealAliasText(safeDeal, "ownerName") || null,
+      phone: safeDealAliasText(safeDeal, "phone") || null,
     },
     propertyReference: {
-      id: safeText(safeDeal.property_id || safeDeal.propertyId) || null,
-      address: getDealAliasText(safeDeal, "address") || null,
+      id:
+        safeText(
+          readRecordField(safeDeal, "property_id") ||
+            readRecordField(safeDeal, "propertyId")
+        ) || null,
+      address: safeDealAliasText(safeDeal, "address") || null,
     },
     assetType: assetStrategyContext.decisionIntegrationFields.assetType,
     assetStrategyIdentifier:
@@ -1152,6 +1076,7 @@ function buildReadModel({
     ),
     evidenceReferences: decisionRecord.evidenceReferences,
     missingInformationReferences: decisionRecord.missingInformationReferences,
+    missingInformationReadModel,
     conflictReferences: decisionRecord.conflictReferences,
     sourceWarnings,
     sourceStatus: sourceWarnings.length ? "partial" : "complete",

@@ -194,7 +194,10 @@ describe("compatibility decision read model", () => {
     expect(result.data.decisionRecord.assetStrategyIdentifier).toBeNull();
     expect(result.data.missingInformationReferences).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ label: "Asset type classification" }),
+        expect.objectContaining({
+          issueId: "missing-information:deal-1:asset-classification",
+          label: "Asset Classification Required",
+        }),
       ])
     );
     expect(readiness).toMatchObject({
@@ -287,6 +290,9 @@ describe("compatibility decision read model", () => {
           "Repairs needed",
           "ARV / comps",
         ])
+      );
+      expect(issueLabels).not.toContain(
+        result.data.missingInformationReadModel.limitations[0]?.label
       );
       expect(recommendationText).not.toMatch(
         /prepare residential offer|run residential comps|house mao|house arv|residential repair facts/i
@@ -459,7 +465,7 @@ describe("compatibility decision read model", () => {
     expect(result.data.metricsById["offer-readiness"].value).toBeNull();
   });
 
-  it("returns a safe failure if an input record throws during evaluation", () => {
+  it("returns a partial successful result if one requirement field throws", () => {
     const deal = completeDeal();
     Object.defineProperty(deal, "price", {
       get() {
@@ -469,10 +475,54 @@ describe("compatibility decision read model", () => {
 
     const result = build({ deal });
 
-    expect(result.success).toBe(false);
-    expect(result.error.message).toBe(
-      "Decision information could not be evaluated from the current record."
+    expect(result.success).toBe(true);
+    expect(result.data.sourceStatus).toBe("partial");
+    expect(result.data.metricsById["offer-readiness"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+      value: null,
+      displayValue: null,
+    });
+    expect(result.data.sourceWarnings).toContain(
+      "Residential offer readiness could not be evaluated from one or more stored fields."
     );
+    expect(JSON.stringify(result)).not.toContain("service_role");
+  });
+
+  it("does not move to Verify for an advisory-only missing core fact", () => {
+    const result = build({
+      deal: completeDeal({
+        asset_type: ASSET_TYPES.SMALL_MULTIFAMILY,
+        motivation_score: null,
+      }),
+    });
+
+    expect(result.data.missingInformationReadModel.advisoryItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requirementId: "seller-motivation" }),
+      ])
+    );
+    expect(result.data.missingInformationReadModel.blockingItems).toEqual([]);
+    expect(result.data.lifecycle.state).toBe("Decide");
+  });
+
+  it("keeps an urgent seller reply above missing-information actions", () => {
+    const result = build({
+      conversationSignals: [
+        {
+          compatibilityKey: "phone:5551112222",
+          linkedDealId: "deal-1",
+          lastMessageDirection: "inbound",
+          lastMessagePreview: "Can you call me?",
+          lastMessageTimestamp: "2026-08-05T14:00:00Z",
+          organizationId: "org-1",
+          tenantId: "tenant-1",
+        },
+      ],
+      deal: completeDeal({ property_condition: null }),
+    });
+
+    expect(result.data.lifecycle.state).toBe("Act");
+    expect(result.data.recommendation.label).toBe("Respond to the seller reply.");
   });
 
   it("does not mutate input while mapping an explicit legacy asset field", () => {
