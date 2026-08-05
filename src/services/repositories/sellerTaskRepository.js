@@ -1,12 +1,17 @@
 import { supabase } from "../../supabaseClient";
 import { safeTrim } from "../../utils/text";
 import {
+  normalizeRepositoryListLimit,
+  REPOSITORY_LIST_LIMIT,
   repositoryFailure,
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
 
-export async function listSellerTasksByPhone(phone) {
+export async function listSellerTasksByPhone(
+  phone,
+  { limit = REPOSITORY_LIST_LIMIT } = {}
+) {
   const normalizedPhone = safeTrim(phone);
 
   if (!normalizedPhone) {
@@ -19,7 +24,8 @@ export async function listSellerTasksByPhone(phone) {
       .select("*")
       .eq("phone", normalizedPhone)
       .order("status", { ascending: false })
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(normalizeRepositoryListLimit(limit));
 
     if (error) throw error;
 

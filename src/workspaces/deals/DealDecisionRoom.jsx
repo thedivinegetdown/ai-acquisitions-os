@@ -22,6 +22,7 @@ const BuyerMatches = lazy(() => import("../../components/BuyerMatches"));
 const CloseoutPanel = lazy(() => import("../../components/CloseoutPanel"));
 const CompsEngine = lazy(() => import("../../components/CompsEngine"));
 const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
+const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
 const DocumentVault = lazy(() => import("../../components/DocumentVault"));
 const MessageCenter = lazy(() => import("../../components/MessageCenter"));
@@ -263,14 +264,14 @@ function CommunicationSection({ deal, selectedPhone }) {
   );
 }
 
-function ActivitySection({ deal, refresh, selectedPhone }) {
+function ActivitySection({ deal, onOpenContext, refresh }) {
   return (
     <PanelSection
       description="Activity, ownership, and follow-up operating history."
       title="Activity"
     >
       <LazySection label="Loading activity timeline...">
-        <ActivityTimeline deal={deal} selectedPhone={selectedPhone} />
+        <DealTimeline deal={deal} onOpenContext={onOpenContext} />
       </LazySection>
       <LazySection label="Loading task panel...">
         <TaskPanel deal={deal} refresh={refresh} />
@@ -349,6 +350,30 @@ export default function DealDecisionRoom({
     }
   }
 
+  function handleTimelineContext(event) {
+    const action = event?.availableActions?.[0];
+    if (!action) return;
+
+    if (action.targetWorkspace === "inbox") {
+      const phone = event.sellerReference?.phone || getPhone(deal);
+      if (phone) setSelectedPhone?.(phone);
+      onNavigateWorkspace?.("inbox");
+      return;
+    }
+
+    if (
+      action.targetWorkspace &&
+      action.targetWorkspace !== "deal-decision-room"
+    ) {
+      onNavigateWorkspace?.(action.targetWorkspace);
+      return;
+    }
+
+    if (SECTION_IDS.includes(action.targetSection)) {
+      setActiveSection(action.targetSection);
+    }
+  }
+
   if (loading) {
     return (
       <section className="workspace decision-room">
@@ -394,7 +419,15 @@ export default function DealDecisionRoom({
     if (sectionId === "property") return <PropertySection deal={deal} refresh={refresh} />;
     if (sectionId === "numbers") return <NumbersSection deal={deal} refresh={refresh} />;
     if (sectionId === "communication") return <CommunicationSection deal={deal} selectedPhone={selectedPhone} />;
-    if (sectionId === "activity") return <ActivitySection deal={deal} refresh={refresh} selectedPhone={selectedPhone} />;
+    if (sectionId === "activity") {
+      return (
+        <ActivitySection
+          deal={deal}
+          onOpenContext={handleTimelineContext}
+          refresh={refresh}
+        />
+      );
+    }
     if (sectionId === "documents") return <DocumentsSection deal={deal} />;
 
     return <ClosingSection deal={deal} refresh={refresh} />;

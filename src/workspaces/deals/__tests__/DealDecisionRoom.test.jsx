@@ -18,8 +18,49 @@ vi.mock("../../../components/MessageCenter", () => ({
 vi.mock("../../../components/ActivityTimeline", () => ({
   default: () => <div>Existing Activity Timeline Panel</div>,
 }));
+vi.mock("../DealTimeline", () => ({
+  default: ({ onOpenContext }) => (
+    <div>
+      <div>Unified Deal Timeline</div>
+      <button
+        onClick={() =>
+          onOpenContext({
+            availableActions: [{ id: "open-context", targetSection: "documents" }],
+          })
+        }
+        type="button"
+      >
+        Timeline document context
+      </button>
+      <button
+        onClick={() =>
+          onOpenContext({
+            availableActions: [{ id: "open-context", targetWorkspace: "inbox" }],
+            sellerReference: { phone: "5553334444" },
+          })
+        }
+        type="button"
+      >
+        Timeline inbox context
+      </button>
+      <button
+        onClick={() =>
+          onOpenContext({
+            availableActions: [{ id: "open-context", targetWorkspace: "approvals" }],
+          })
+        }
+        type="button"
+      >
+        Timeline approval context
+      </button>
+    </div>
+  ),
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
+}));
+vi.mock("../../../components/DocumentContractPrepPanel", () => ({
+  default: () => <div>Existing Document Prep Panel</div>,
 }));
 
 const deal = {
@@ -67,6 +108,38 @@ describe("DealDecisionRoom", () => {
 
     await waitFor(() => expect(screen.getByText("Existing Deal Analyzer Panel")).toBeInTheDocument());
     expect(screen.getByText("Existing Offer Engine Panel")).toBeInTheDocument();
+  });
+
+  it("lazy-loads the unified timeline only when Activity is selected", async () => {
+    renderRoom();
+
+    expect(screen.queryByText("Unified Deal Timeline")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+
+    await waitFor(() => expect(screen.getByText("Unified Deal Timeline")).toBeInTheDocument());
+  });
+
+  it("switches Decision Room sections from a timeline context action", async () => {
+    renderRoom();
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Timeline document context" }));
+
+    await waitFor(() => expect(screen.getByText("Existing Document Vault Panel")).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: "Documents" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens Inbox and Approvals from supported timeline contexts", async () => {
+    const setSelectedPhone = vi.fn();
+    const onNavigateWorkspace = vi.fn();
+    renderRoom({ onNavigateWorkspace, setSelectedPhone });
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Timeline inbox context" }));
+    expect(setSelectedPhone).toHaveBeenCalledWith("5553334444");
+    expect(onNavigateWorkspace).toHaveBeenCalledWith("inbox");
+
+    fireEvent.click(screen.getByRole("button", { name: "Timeline approval context" }));
+    expect(onNavigateWorkspace).toHaveBeenCalledWith("approvals");
   });
 
   it("opens the selected seller conversation in the route-level Inbox", () => {

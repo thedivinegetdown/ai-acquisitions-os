@@ -1,11 +1,16 @@
 import { supabase } from "../../supabaseClient";
 import {
+  normalizeRepositoryListLimit,
+  REPOSITORY_LIST_LIMIT,
   repositoryFailure,
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
 
-export async function listSequencesByDeal(dealId) {
+export async function listSequencesByDeal(
+  dealId,
+  { limit = REPOSITORY_LIST_LIMIT } = {}
+) {
   if (!dealId) {
     return repositorySuccess([]);
   }
@@ -15,7 +20,8 @@ export async function listSequencesByDeal(dealId) {
       .from("sequences")
       .select("*")
       .eq("deal_id", dealId)
-      .order("step_day", { ascending: true });
+      .order("step_day", { ascending: true })
+      .limit(normalizeRepositoryListLimit(limit));
 
     if (error) throw error;
 

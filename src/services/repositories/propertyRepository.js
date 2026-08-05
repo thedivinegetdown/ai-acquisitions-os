@@ -1,12 +1,17 @@
 import { supabase } from "../../supabaseClient";
 import { safeTrim } from "../../utils/text";
 import {
+  normalizeRepositoryListLimit,
+  REPOSITORY_LIST_LIMIT,
   repositoryFailure,
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
 
-export async function listCompsByDeal(dealId) {
+export async function listCompsByDeal(
+  dealId,
+  { limit = REPOSITORY_LIST_LIMIT } = {}
+) {
   if (!dealId) {
     return repositorySuccess([]);
   }
@@ -16,7 +21,8 @@ export async function listCompsByDeal(dealId) {
       .from("comps")
       .select("*")
       .eq("deal_id", dealId)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(normalizeRepositoryListLimit(limit));
 
     if (error) throw error;
 
