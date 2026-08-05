@@ -11,6 +11,12 @@ import {
   StatusBadge,
   Tabs,
 } from "../../design-system";
+import {
+  ASSET_CAPABILITY_IDS,
+  ASSET_STRATEGY_SUPPORT_STATES,
+  buildAssetStrategyContext,
+  canRunAssetCapability,
+} from "../../services/asset-strategy";
 import { buildCompatibilityDecisionReadModel } from "../../services/decision-intelligence";
 import { getDealIdFromRoute } from "../../navigation/workspaces";
 import { formatSafeDate } from "../../utils/dates";
@@ -66,6 +72,15 @@ const LIFECYCLE_STATUS = {
   Learn: "success",
 };
 
+const STRATEGY_SUPPORT_STATUS = {
+  [ASSET_STRATEGY_SUPPORT_STATES.COMPATIBILITY_ONLY]: "info",
+  [ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY]: "warning",
+  [ASSET_STRATEGY_SUPPORT_STATES.DEFERRED]: "warning",
+  [ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED]: "success",
+  [ASSET_STRATEGY_SUPPORT_STATES.UNASSIGNED]: "neutral",
+  [ASSET_STRATEGY_SUPPORT_STATES.UNSUPPORTED]: "warning",
+};
+
 const PRIMARY_FACTS = [
   { id: "property", label: "Property", value: (deal) => getDealAliasText(deal, "address") || "Unknown property" },
   { id: "seller", label: "Seller", value: (deal) => getDealAliasText(deal, "ownerName") || "Unknown seller" },
@@ -89,6 +104,39 @@ function getPhone(deal = {}) {
   return getDealAliasText(deal, "phone") || deal.phone_number || "";
 }
 
+function getDecisionRoomCapabilityGates(assetStrategyContext) {
+  return {
+    propertyIntelligence: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_PROPERTY_INTELLIGENCE
+    ),
+    comps: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_COMPS
+    ),
+    underwriting: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_UNDERWRITING
+    ),
+    offerGeneration: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_GENERATION
+    ),
+    negotiationCalculations: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_NEGOTIATION_CALCULATIONS
+    ),
+    buyerMatching: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_MATCHING
+    ),
+    buyerBlast: canRunAssetCapability(
+      assetStrategyContext,
+      ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_BLAST
+    ),
+  };
+}
+
 function PanelSection({ children, description, title }) {
   return (
     <Card className="decision-room__section">
@@ -100,6 +148,27 @@ function PanelSection({ children, description, title }) {
 
 function LazySection({ children, label }) {
   return <Suspense fallback={<LazyPanelFallback label={label} />}>{children}</Suspense>;
+}
+
+// New component reason: compose the shared EmptyState with consistent, safe
+// Decision Room navigation whenever an asset capability is unavailable.
+function StrategyCapabilityState({ gate, onNavigateSection, title }) {
+  return (
+    <EmptyState
+      action={
+        <div className="decision-room__actions">
+          <Button onClick={() => onNavigateSection("decision")} variant="secondary">
+            Review Decision
+          </Button>
+          <Button onClick={() => onNavigateSection("seller")} variant="secondary">
+            Review Seller
+          </Button>
+        </div>
+      }
+      description={gate.explanation}
+      title={title}
+    />
+  );
 }
 
 function FactGrid({ deal }) {
@@ -152,6 +221,7 @@ function PrimaryActions({ actions, onAction }) {
       <Button
         disabled={!actionById["prepare-offer"]?.enabled}
         onClick={() => runAction("prepare-offer")}
+        title={actionById["prepare-offer"]?.disabledReason || undefined}
       >
         Prepare Offer
       </Button>
@@ -219,6 +289,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
   const readModel = decisionResult.data;
   const readiness = readModel.metricsById["offer-readiness"];
   const approval = readModel.approvalSummary;
+  const assetStrategyContext = readModel.assetStrategyContext;
+  const insightGate = canRunAssetCapability(
+    assetStrategyContext,
+    ASSET_CAPABILITY_IDS.RESIDENTIAL_UNDERWRITING
+  );
 
   return (
     <div className="decision-room__decision">
@@ -236,8 +311,48 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               Offer readiness: {readiness.displayValue}
             </StatusBadge>
           ) : null}
-          <Badge>Deterministic compatibility</Badge>
+          <StatusBadge
+            status={
+              STRATEGY_SUPPORT_STATUS[
+                assetStrategyContext.strategySupportState
+              ] || "neutral"
+            }
+          >
+            {assetStrategyContext.statusSummary}
+          </StatusBadge>
+          <Badge>
+            {assetStrategyContext.compatibilityAnalysisEligibility
+              ? "Deterministic compatibility"
+              : "Deterministic decision context"}
+          </Badge>
         </div>
+        <dl
+          aria-label="Asset Strategy status"
+          className="decision-room__decision-meta"
+        >
+          <div>
+            <dt>Asset Type</dt>
+            <dd>{assetStrategyContext.assetTypeLabel}</dd>
+          </div>
+          <div>
+            <dt>Classification State</dt>
+            <dd>{assetStrategyContext.classificationLabel}</dd>
+          </div>
+          <div>
+            <dt>Strategy</dt>
+            <dd>{assetStrategyContext.strategyLabel}</dd>
+          </div>
+          <div>
+            <dt>Strategy Support</dt>
+            <dd>{assetStrategyContext.strategySupportLabel}</dd>
+          </div>
+          {assetStrategyContext.compatibilityAnalysisEligibility ? (
+            <div>
+              <dt>Compatibility Mode</dt>
+              <dd>Residential Compatibility Analysis</dd>
+            </div>
+          ) : null}
+        </dl>
         <FactGrid deal={deal} />
         <div className="decision-room__recommendation">
           <span>Current lifecycle</span>
@@ -293,7 +408,54 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                   )}
                 </dd>
               </div>
+              <div>
+                <dt>Classification field</dt>
+                <dd>
+                  {assetStrategyContext.classificationSource.sourceValues
+                    .map((sourceValue) => sourceValue.field)
+                    .join(", ") || "Not available"}
+                </dd>
+              </div>
+              <div>
+                <dt>Classification reason</dt>
+                <dd>
+                  {assetStrategyContext.classificationSource.reasonCode ||
+                    "Not available"}
+                </dd>
+              </div>
+              <div>
+                <dt>Classification source</dt>
+                <dd>{assetStrategyContext.classificationSource.label}</dd>
+              </div>
+              <div>
+                <dt>Manual review required</dt>
+                <dd>
+                  {assetStrategyContext.manualReviewRequired ? "Yes" : "No"}
+                </dd>
+              </div>
+              <div>
+                <dt>Strategy support state</dt>
+                <dd>{assetStrategyContext.strategySupportState}</dd>
+              </div>
             </dl>
+            <h3>Classification sources</h3>
+            {assetStrategyContext.classificationSource.sourceValues.length ? (
+              <ul className="decision-room__evidence-list">
+                {assetStrategyContext.classificationSource.sourceValues.map(
+                  (sourceValue) => (
+                    <li key={`${sourceValue.field}:${sourceValue.rawValue}`}>
+                      <strong>{sourceValue.field}</strong>
+                      <span>Stored value: {sourceValue.rawValue}</span>
+                      <span>
+                        Mapped value: {sourceValue.mappedAssetType || "No canonical mapping"}
+                      </span>
+                    </li>
+                  )
+                )}
+              </ul>
+            ) : (
+              <p>No explicit asset classification value is stored on this record.</p>
+            )}
             <h3>Evidence and Provenance</h3>
             {readModel.evidenceReferences.length ? (
               <ul className="decision-room__evidence-list">
@@ -315,6 +477,40 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
             ) : (
               <p>No source evidence is available for this compatibility record.</p>
             )}
+            <h3>Classification conflicts</h3>
+            {assetStrategyContext.classificationConflicts.length ? (
+              <ul className="decision-room__evidence-list">
+                {assetStrategyContext.classificationConflicts.map((conflict) => (
+                  <li key={conflict.conflictId}>{conflict.summary}</li>
+                ))}
+              </ul>
+            ) : (
+              <p>No explicit classification conflicts were found.</p>
+            )}
+            <h3>Capability availability</h3>
+            {assetStrategyContext.blockedCapabilityReasons.length ? (
+              <ul className="decision-room__evidence-list">
+                {assetStrategyContext.blockedCapabilityReasons.map((gate) => (
+                  <li key={gate.capabilityId}>
+                    <strong>{gate.capabilityId}</strong>
+                    <span>{gate.explanation}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No residential compatibility capability is blocked by classification.</p>
+            )}
+            {assetStrategyContext.compatibilityWarning ? (
+              <p className="decision-room__partial-warning" role="status">
+                {assetStrategyContext.compatibilityWarning}
+              </p>
+            ) : null}
+            {assetStrategyContext.manualReviewRequired ? (
+              <p className="decision-room__partial-warning" role="status">
+                Update the CRM record through an approved persistent path before
+                running strategy-specific analysis.
+              </p>
+            ) : null}
             {readModel.sourceWarnings.length ? (
               <div className="decision-room__source-warnings">
                 <h3>Source warnings</h3>
@@ -330,13 +526,32 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
       </Card>
       <Card className="decision-room__ai-separation" muted>
         <SectionHeader
-          description="This existing optional panel is separate from the deterministic compatibility recommendation above."
-          eyebrow="Optional"
-          title="AI-assisted insight"
+          description={
+            insightGate.allowed
+              ? "This existing optional residential panel is separate from the deterministic compatibility recommendation above."
+              : "Asset classification controls whether the existing residential insight panel can run."
+          }
+          eyebrow={insightGate.allowed ? "Optional" : "Asset Strategy"}
+          title={
+            insightGate.allowed
+              ? "AI-assisted insight"
+              : "Residential analysis unavailable"
+          }
         />
-        <LazySection label="Loading existing insights...">
-          <AIInsights deal={deal} />
-        </LazySection>
+        {insightGate.allowed ? (
+          <>
+            <Badge>Residential Compatibility Analysis</Badge>
+            <LazySection label="Loading existing insights...">
+              <AIInsights deal={deal} />
+            </LazySection>
+          </>
+        ) : (
+          <StrategyCapabilityState
+            gate={insightGate}
+            onNavigateSection={onAction}
+            title={assetStrategyContext.statusSummary}
+          />
+        )}
       </Card>
     </div>
   );
@@ -359,37 +574,84 @@ function SellerSection({ deal, refresh }) {
   );
 }
 
-function PropertySection({ deal, refresh }) {
+function PropertySection({
+  assetStrategyContext,
+  capabilityGates,
+  deal,
+  onNavigateSection,
+  refresh,
+}) {
+  const blockedPropertyGate = [
+    capabilityGates.propertyIntelligence,
+    capabilityGates.comps,
+  ].find((gate) => !gate.allowed);
+
   return (
     <PanelSection
-      description="Property facts, comps, and existing property intelligence tools."
+      description="Property identity and classification, with compatible analysis when available."
       title="Property"
     >
-      <LazySection label="Loading property intelligence...">
-        <PropertyIntelligencePanel deal={deal} />
-      </LazySection>
-      <LazySection label="Loading comps...">
-        <CompsEngine deal={deal} refresh={refresh} />
-      </LazySection>
+      <FactGrid deal={deal} />
+      {!blockedPropertyGate ? (
+        <>
+          <Badge>Residential Compatibility Analysis</Badge>
+          <LazySection label="Loading property intelligence...">
+            <PropertyIntelligencePanel deal={deal} />
+          </LazySection>
+          <LazySection label="Loading comps...">
+            <CompsEngine deal={deal} refresh={refresh} />
+          </LazySection>
+        </>
+      ) : (
+        <StrategyCapabilityState
+          gate={blockedPropertyGate}
+          onNavigateSection={onNavigateSection}
+          title={assetStrategyContext.statusSummary}
+        />
+      )}
     </PanelSection>
   );
 }
 
-function NumbersSection({ deal, refresh }) {
+function NumbersSection({
+  assetStrategyContext,
+  capabilityGates,
+  deal,
+  onNavigateSection,
+  refresh,
+}) {
+  const numbersGates = [
+    capabilityGates.underwriting,
+    capabilityGates.offerGeneration,
+    capabilityGates.negotiationCalculations,
+  ];
+  const blockedGate = numbersGates.find((gate) => !gate.allowed);
+
   return (
     <PanelSection
-      description="Existing underwriting, offer, and negotiation tools."
+      description="Asset-compatible underwriting, offer, and negotiation tools."
       title="Numbers"
     >
-      <LazySection label="Loading deal analyzer...">
-        <DealAnalyzer deal={deal} refresh={refresh} />
-      </LazySection>
-      <LazySection label="Loading offer engine...">
-        <OfferEngine deal={deal} />
-      </LazySection>
-      <LazySection label="Loading negotiation tracker...">
-        <NegotiationTracker deal={deal} refresh={refresh} />
-      </LazySection>
+      {!blockedGate ? (
+        <>
+          <Badge>Residential Compatibility Analysis</Badge>
+          <LazySection label="Loading deal analyzer...">
+            <DealAnalyzer deal={deal} refresh={refresh} />
+          </LazySection>
+          <LazySection label="Loading offer engine...">
+            <OfferEngine deal={deal} />
+          </LazySection>
+          <LazySection label="Loading negotiation tracker...">
+            <NegotiationTracker deal={deal} refresh={refresh} />
+          </LazySection>
+        </>
+      ) : (
+        <StrategyCapabilityState
+          gate={blockedGate}
+          onNavigateSection={onNavigateSection}
+          title={assetStrategyContext.statusSummary}
+        />
+      )}
     </PanelSection>
   );
 }
@@ -448,18 +710,42 @@ function DocumentsSection({ deal }) {
   );
 }
 
-function ClosingSection({ deal, refresh }) {
+function ClosingSection({
+  assetStrategyContext,
+  capabilityGates,
+  deal,
+  onNavigateSection,
+  refresh,
+}) {
+  const buyerGates = [
+    capabilityGates.buyerMatching,
+    capabilityGates.buyerBlast,
+  ];
+  const blockedBuyerGate = buyerGates.find((gate) => !gate.allowed);
+
   return (
     <PanelSection
-      description="Disposition, buyer matching, and closeout workflow surfaces."
+      description="Compatible buyer disposition tools and generic operational closeout records."
       title="Closing"
     >
-      <LazySection label="Loading buyer matches...">
-        <BuyerMatches deal={deal} />
-      </LazySection>
-      <LazySection label="Loading buyer blast...">
-        <BuyerBlast deal={deal} />
-      </LazySection>
+      {!blockedBuyerGate ? (
+        <>
+          <Badge>Residential Compatibility Analysis</Badge>
+          <LazySection label="Loading buyer matches...">
+            <BuyerMatches deal={deal} />
+          </LazySection>
+          <LazySection label="Loading buyer blast...">
+            <BuyerBlast deal={deal} />
+          </LazySection>
+        </>
+      ) : (
+        <StrategyCapabilityState
+          gate={blockedBuyerGate}
+          onNavigateSection={onNavigateSection}
+          title={assetStrategyContext.statusSummary}
+        />
+      )}
+      <Badge>Generic Closeout Records</Badge>
       <LazySection label="Loading closeout...">
         <CloseoutPanel deal={deal} refresh={refresh} />
       </LazySection>
@@ -490,6 +776,16 @@ export default function DealDecisionRoom({
           })
         : null,
     [deal, decisionContext]
+  );
+  const assetStrategyContext = useMemo(() => {
+    if (decisionResult?.success) {
+      return decisionResult.data.assetStrategyContext;
+    }
+    return deal ? buildAssetStrategyContext(deal) : null;
+  }, [deal, decisionResult]);
+  const capabilityGates = useMemo(
+    () => getDecisionRoomCapabilityGates(assetStrategyContext),
+    [assetStrategyContext]
   );
 
   function handlePrimaryAction(action) {
@@ -583,8 +879,28 @@ export default function DealDecisionRoom({
     }
 
     if (sectionId === "seller") return <SellerSection deal={deal} refresh={refresh} />;
-    if (sectionId === "property") return <PropertySection deal={deal} refresh={refresh} />;
-    if (sectionId === "numbers") return <NumbersSection deal={deal} refresh={refresh} />;
+    if (sectionId === "property") {
+      return (
+        <PropertySection
+          assetStrategyContext={assetStrategyContext}
+          capabilityGates={capabilityGates}
+          deal={deal}
+          onNavigateSection={handlePrimaryAction}
+          refresh={refresh}
+        />
+      );
+    }
+    if (sectionId === "numbers") {
+      return (
+        <NumbersSection
+          assetStrategyContext={assetStrategyContext}
+          capabilityGates={capabilityGates}
+          deal={deal}
+          onNavigateSection={handlePrimaryAction}
+          refresh={refresh}
+        />
+      );
+    }
     if (sectionId === "communication") return <CommunicationSection deal={deal} selectedPhone={selectedPhone} />;
     if (sectionId === "activity") {
       return (
@@ -597,7 +913,15 @@ export default function DealDecisionRoom({
     }
     if (sectionId === "documents") return <DocumentsSection deal={deal} />;
 
-    return <ClosingSection deal={deal} refresh={refresh} />;
+    return (
+      <ClosingSection
+        assetStrategyContext={assetStrategyContext}
+        capabilityGates={capabilityGates}
+        deal={deal}
+        onNavigateSection={handlePrimaryAction}
+        refresh={refresh}
+      />
+    );
   }
 
   const tabs = SECTION_IDS.map((sectionId) => ({
@@ -633,10 +957,23 @@ export default function DealDecisionRoom({
         </div>
         <div className="decision-room__hero-badges">
           <StatusBadge status="info">{stage}</StatusBadge>
-          <StatusBadge status={readinessStatus(readiness?.displayValue)}>
-            {readiness?.displayValue || "Readiness unavailable"}
-          </StatusBadge>
-          <Badge>{missingCount} missing facts</Badge>
+          {readiness?.evaluationState === "compatibility-result" ? (
+            <StatusBadge status={readinessStatus(readiness.displayValue)}>
+              {readiness.displayValue}
+            </StatusBadge>
+          ) : null}
+          {assetStrategyContext ? (
+            <StatusBadge
+              status={
+                STRATEGY_SUPPORT_STATUS[
+                  assetStrategyContext.strategySupportState
+                ] || "neutral"
+              }
+            >
+              {assetStrategyContext.statusSummary}
+            </StatusBadge>
+          ) : null}
+          {decisionReadModel ? <Badge>{missingCount} missing facts</Badge> : null}
         </div>
       </Card>
 

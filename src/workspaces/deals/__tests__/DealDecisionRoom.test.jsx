@@ -12,11 +12,38 @@ vi.mock("../../../components/DealAnalyzer", () => ({
 vi.mock("../../../components/OfferEngine", () => ({
   default: () => <div>Existing Offer Engine Panel</div>,
 }));
+vi.mock("../../../components/NegotiationTracker", () => ({
+  default: () => <div>Existing Negotiation Tracker Panel</div>,
+}));
+vi.mock("../../../components/PropertyIntelligencePanel", () => ({
+  default: () => <div>Existing Property Intelligence Panel</div>,
+}));
+vi.mock("../../../components/CompsEngine", () => ({
+  default: () => <div>Existing Comps Engine Panel</div>,
+}));
+vi.mock("../../../components/BuyerMatches", () => ({
+  default: () => <div>Existing Buyer Matches Panel</div>,
+}));
+vi.mock("../../../components/BuyerBlast", () => ({
+  default: () => <div>Existing Buyer Blast Panel</div>,
+}));
+vi.mock("../../../components/CloseoutPanel", () => ({
+  default: () => <div>Existing Closeout Panel</div>,
+}));
 vi.mock("../../../components/MessageCenter", () => ({
   default: () => <div>Existing Message Center Panel</div>,
 }));
+vi.mock("../../../components/SequenceEngine", () => ({
+  default: () => <div>Existing Sequence Engine Panel</div>,
+}));
 vi.mock("../../../components/ActivityTimeline", () => ({
   default: () => <div>Existing Activity Timeline Panel</div>,
+}));
+vi.mock("../../../components/TaskPanel", () => ({
+  default: () => <div>Existing Task Panel</div>,
+}));
+vi.mock("../../../components/TeamPanel", () => ({
+  default: () => <div>Existing Team Panel</div>,
 }));
 vi.mock("../DealTimeline", () => ({
   default: ({ onOpenContext }) => (
@@ -65,6 +92,7 @@ vi.mock("../../../components/DocumentContractPrepPanel", () => ({
 
 const deal = {
   id: "deal-123",
+  asset_type: "residential-home",
   property_address: "123 Main Street",
   owner_name: "Sam Seller",
   phone: "5551112222",
@@ -101,7 +129,75 @@ describe("DealDecisionRoom", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Offer readiness: Not Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Residential home - Compatibility Analysis").length
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText("Residential Compatibility Analysis").length
+    ).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
+  });
+
+  it("requires classification for an unknown asset and does not mount residential insight", () => {
+    renderRoom({ deals: [{ ...deal, asset_type: undefined }] });
+
+    expect(
+      screen.getAllByText("Asset Type Unknown - Classification Required").length
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("Classification Required").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Residential analysis unavailable" })).toBeInTheDocument();
+    expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
+  });
+
+  it("requires review for conflicting classifications and exposes both sources", () => {
+    renderRoom({ deals: [{ ...deal, property_type: "Vacant land" }] });
+
+    expect(
+      screen.getAllByText("Asset Type Conflict - Review Required").length
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText("Review Required").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByText("Decision Basis"));
+    expect(screen.getByText("Stored value: residential-home")).toBeInTheDocument();
+    expect(screen.getByText("Stored value: Vacant land")).toBeInTheDocument();
+    expect(
+      screen.getByText(/map to different canonical asset types/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/approved persistent path/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["vacant-residential-land", "Vacant residential land - Strategy Not Yet Implemented"],
+    ["small-multifamily", "Small multifamily - Strategy Not Yet Implemented"],
+    ["manufactured-home", "Manufactured home - Deferred"],
+    ["commercial", "Commercial - Deferred"],
+  ])("shows truthful strategy status for %s", (assetType, expectedStatus) => {
+    renderRoom({ deals: [{ ...deal, asset_type: assetType }] });
+
+    expect(screen.getAllByText(expectedStatus).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeDisabled();
+    expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
+  });
+
+  it("shows classification provenance and blocked reasons in the existing Decision Basis", () => {
+    renderRoom({
+      deals: [{ ...deal, asset_type: "vacant-residential-land" }],
+    });
+
+    fireEvent.click(screen.getByText("Decision Basis"));
+
+    expect(
+      screen.getByText("Stored value: vacant-residential-land")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Mapped value: vacant-residential-land")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/maps to Vacant residential land/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/cannot use residential property intelligence/i)
+    ).toBeInTheDocument();
   });
 
   it("renders the existing route loading state before decision evaluation", () => {
@@ -164,7 +260,9 @@ describe("DealDecisionRoom", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("Decision information unavailable");
     expect(screen.getByRole("alert")).not.toHaveTextContent("service_role");
-    expect(screen.getByText("Readiness unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByText("Residential home - Compatibility Analysis")
+    ).toBeInTheDocument();
   });
 
   it("shows only represented approval context and keeps unsupported mutations disabled", () => {
@@ -216,6 +314,66 @@ describe("DealDecisionRoom", () => {
 
     await waitFor(() => expect(screen.getByText("Existing Deal Analyzer Panel")).toBeInTheDocument());
     expect(screen.getByText("Existing Offer Engine Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Negotiation Tracker Panel")).toBeInTheDocument();
+  });
+
+  it("mounts existing residential property and buyer tools only after selection", async () => {
+    renderRoom();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Property" }));
+    expect(
+      await screen.findByText("Existing Property Intelligence Panel")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Existing Comps Engine Panel")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Closing" }));
+    expect(await screen.findByText("Existing Buyer Matches Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Buyer Blast Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Closeout Panel")).toBeInTheDocument();
+  });
+
+  it("does not mount residential property, numbers, or buyer bundles for vacant land", async () => {
+    renderRoom({
+      deals: [{ ...deal, asset_type: "vacant-residential-land" }],
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Property" }));
+    expect(screen.getAllByText("123 Main Street").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Existing Property Intelligence Panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Existing Comps Engine Panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Numbers" }));
+    expect(screen.queryByText("Existing Deal Analyzer Panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Existing Offer Engine Panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Existing Negotiation Tracker Panel")).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$0/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Closing" }));
+    expect(screen.queryByText("Existing Buyer Matches Panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("Existing Buyer Blast Panel")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Existing Closeout Panel")).toBeInTheDocument()
+    );
+  });
+
+  it("keeps generic CRM sections available for a non-residential asset", async () => {
+    renderRoom({ deals: [{ ...deal, asset_type: "commercial" }] });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Seller" }));
+    expect(await screen.findByText("Existing Task Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Team Panel")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Communication" }));
+    expect(await screen.findByText("Existing Message Center Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Sequence Engine Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Activity Timeline Panel")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Activity" }));
+    expect(await screen.findByText("Unified Deal Timeline")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Documents" }));
+    expect(await screen.findByText("Existing Document Vault Panel")).toBeInTheDocument();
+    expect(screen.getByText("Existing Document Prep Panel")).toBeInTheDocument();
   });
 
   it("lazy-loads the unified timeline only when Activity is selected", async () => {

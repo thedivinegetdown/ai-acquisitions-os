@@ -5,6 +5,7 @@ import {
   DECISION_SOURCE_MODES,
   buildCompatibilityDecisionReadModel,
 } from "../index";
+import { ASSET_TYPES } from "../../asset-strategy";
 
 const NOW = Date.parse("2026-08-05T15:00:00Z");
 
@@ -13,6 +14,7 @@ function completeDeal(overrides = {}) {
     id: "deal-1",
     organization_id: "org-1",
     tenant_id: "tenant-1",
+    asset_type: ASSET_TYPES.RESIDENTIAL_HOME,
     property_address: "123 Main Street",
     owner_name: "Sam Seller",
     phone: "5551112222",
@@ -50,6 +52,7 @@ describe("compatibility decision read model", () => {
     const result = build({
       deal: {
         id: "deal-1",
+        asset_type: ASSET_TYPES.RESIDENTIAL_HOME,
         property_address: "123 Main Street",
         owner_name: "Sam Seller",
         stage: "New Lead",
@@ -139,6 +142,7 @@ describe("compatibility decision read model", () => {
     for (const id of [
       "pursuit-score",
       "recommendation-confidence",
+      "data-completeness",
       "data-reliability",
       "financial-resilience",
       "deal-effort",
@@ -154,6 +158,162 @@ describe("compatibility decision read model", () => {
     expect(result.data).not.toHaveProperty("pursuitScore");
     expect(result.data).not.toHaveProperty("recommendationConfidence");
   });
+
+  it("integrates classified residential strategy context and provenance", () => {
+    const result = build({ deal: completeDeal() });
+    const classificationEvidence = result.data.evidenceReferences.find(
+      (entry) => entry.sourceType === "crm-asset-classification"
+    );
+
+    expect(result.data.decisionRecord).toMatchObject({
+      assetType: ASSET_TYPES.RESIDENTIAL_HOME,
+      assetStrategyId: "residential-acquisition",
+      assetStrategyIdentifier: "residential-acquisition",
+    });
+    expect(result.data.assetStrategyContext).toMatchObject({
+      strategySupportState: "compatibility-only",
+      compatibilityAnalysisEligibility: true,
+    });
+    expect(classificationEvidence).toMatchObject({
+      sourceField: "asset_type",
+      sourceTimestamp: null,
+      verificationState: "unknown",
+    });
+    expect(classificationEvidence.valueSummary).toContain("residential-home");
+  });
+
+  it("moves an identified unknown asset to Verify without residential readiness", () => {
+    const result = build({
+      deal: completeDeal({ asset_type: undefined }),
+    });
+    const readiness = result.data.metricsById["offer-readiness"];
+
+    expect(result.success).toBe(true);
+    expect(result.data.lifecycle.state).toBe("Verify");
+    expect(result.data.decisionRecord.assetType).toBeNull();
+    expect(result.data.decisionRecord.assetStrategyIdentifier).toBeNull();
+    expect(result.data.missingInformationReferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: "Asset type classification" }),
+      ])
+    );
+    expect(readiness).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+      value: null,
+      displayValue: null,
+    });
+    expect(
+      result.data.missingInformationReferences.map((issue) => issue.label)
+    ).not.toEqual(
+      expect.arrayContaining([
+        "Asking price",
+        "Property condition",
+        "Repairs needed",
+        "ARV / comps",
+      ])
+    );
+    expect(
+      result.data.availableActions.find((action) => action.id === "prepare-offer")
+    ).toMatchObject({ enabled: false });
+  });
+
+  it("requires human review for conflicting explicit classifications", () => {
+    const result = build({
+      deal: completeDeal({ property_type: "Vacant land" }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.lifecycle.state).toBe("Verify");
+    expect(result.data.decisionRecord.assetType).toBeNull();
+    expect(result.data.decisionRecord.assetStrategyIdentifier).toBeNull();
+    expect(result.data.assetStrategyContext.manualReviewRequired).toBe(true);
+    expect(result.data.conflictReferences).toHaveLength(1);
+    expect(
+      result.data.evidenceReferences.filter(
+        (entry) => entry.sourceType === "crm-asset-classification"
+      )
+    ).toHaveLength(2);
+    expect(result.data.metricsById["offer-readiness"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+      value: null,
+      displayValue: null,
+    });
+  });
+
+  it.each([
+    [
+      "vacant land",
+      ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
+      "vacant-land-acquisition",
+    ],
+    [
+      "small multifamily",
+      ASSET_TYPES.SMALL_MULTIFAMILY,
+      "small-multifamily-acquisition",
+    ],
+    [
+      "manufactured home",
+      ASSET_TYPES.MANUFACTURED_HOME,
+      "manufactured-home-acquisition",
+    ],
+    ["commercial", ASSET_TYPES.COMMERCIAL, "commercial-acquisition"],
+  ])(
+    "keeps %s truthful and unavailable for residential readiness",
+    (_, assetType, strategyId) => {
+      const result = build({ deal: completeDeal({ asset_type: assetType }) });
+      const readiness = result.data.metricsById["offer-readiness"];
+      const issueLabels = result.data.missingInformationReferences.map(
+        (issue) => issue.label
+      );
+      const recommendationText = [
+        result.data.recommendation.label,
+        result.data.recommendation.explanation,
+      ].join(" ");
+
+      expect(result.success).toBe(true);
+      expect(result.data.decisionRecord).toMatchObject({
+        assetType,
+        assetStrategyIdentifier: strategyId,
+      });
+      expect(readiness).toMatchObject({
+        evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+        value: null,
+        displayValue: null,
+      });
+      expect(issueLabels).not.toEqual(
+        expect.arrayContaining([
+          "Asking price",
+          "Property condition",
+          "Repairs needed",
+          "ARV / comps",
+        ])
+      );
+      expect(recommendationText).not.toMatch(
+        /prepare residential offer|run residential comps|house mao|house arv|residential repair facts/i
+      );
+      expect(
+        result.data.availableActions.find(
+          (action) => action.id === "prepare-offer"
+        )
+      ).toMatchObject({ enabled: false });
+      for (const metricId of [
+        "pursuit-score",
+        "recommendation-confidence",
+        "data-completeness",
+        "data-reliability",
+        "financial-resilience",
+        "deal-effort",
+        "risk-level",
+        "cost-of-delay",
+      ]) {
+        expect(result.data.metricsById[metricId]).toMatchObject({
+          evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+          value: null,
+          displayValue: null,
+        });
+      }
+    }
+  );
 
   it("maps current missing checklist items to blocking compatibility issues", () => {
     const result = build({
@@ -279,6 +439,26 @@ describe("compatibility decision read model", () => {
     expect(result.data.sourceWarnings).toContain("Approval context could not be loaded.");
   });
 
+  it("returns a partial safe result when asset classification cannot be read", () => {
+    const deal = completeDeal();
+    Object.defineProperty(deal, "asset_type", {
+      get() {
+        throw new Error("classification read failed");
+      },
+    });
+
+    const result = build({ deal });
+
+    expect(result.success).toBe(true);
+    expect(result.data.sourceStatus).toBe("partial");
+    expect(result.data.decisionRecord.assetType).toBeNull();
+    expect(result.data.lifecycle.state).toBe("Verify");
+    expect(result.data.sourceWarnings).toContain(
+      "Asset classification could not be read from the current CRM record."
+    );
+    expect(result.data.metricsById["offer-readiness"].value).toBeNull();
+  });
+
   it("returns a safe failure if an input record throws during evaluation", () => {
     const deal = completeDeal();
     Object.defineProperty(deal, "price", {
@@ -295,13 +475,21 @@ describe("compatibility decision read model", () => {
     );
   });
 
-  it("does not mutate input or infer an asset strategy", () => {
-    const deal = completeDeal({ property_type: "Vacant land" });
+  it("does not mutate input while mapping an explicit legacy asset field", () => {
+    const deal = completeDeal({
+      asset_type: undefined,
+      property_type: "Vacant land",
+    });
     const before = JSON.parse(JSON.stringify(deal));
     const result = build({ deal });
 
     expect(deal).toEqual(before);
-    expect(result.data.decisionRecord.assetType).toBeNull();
-    expect(result.data.decisionRecord.assetStrategyId).toBeNull();
+    expect(result.data.decisionRecord.assetType).toBe(
+      ASSET_TYPES.VACANT_RESIDENTIAL_LAND
+    );
+    expect(result.data.decisionRecord.assetStrategyIdentifier).toBe(
+      "vacant-land-acquisition"
+    );
+    expect(result.data.metricsById["offer-readiness"].value).toBeNull();
   });
 });

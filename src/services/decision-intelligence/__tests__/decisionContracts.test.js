@@ -179,6 +179,17 @@ describe("decision contract foundation", () => {
     expect(scoped.tenantId).toBe("tenant-1");
   });
 
+  it("normalizes the canonical asset strategy identifier with its compatibility alias", () => {
+    const record = normalizeDecisionRecord({
+      assetType: "residential-home",
+      assetStrategyIdentifier: "residential-acquisition",
+    });
+
+    expect(record.assetType).toBe("residential-home");
+    expect(record.assetStrategyIdentifier).toBe("residential-acquisition");
+    expect(record.assetStrategyId).toBe("residential-acquisition");
+  });
+
   it("validates required canonical decision identity and ruleset fields", () => {
     const invalid = validateDecisionRecord({});
     const valid = validateDecisionRecord({

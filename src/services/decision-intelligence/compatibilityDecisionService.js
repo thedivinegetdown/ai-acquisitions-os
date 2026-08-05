@@ -1,5 +1,12 @@
 import { createFailure, createSuccess } from "../api/serviceResult";
 import {
+  ASSET_CAPABILITY_IDS,
+  ASSET_STRATEGY_SUPPORT_STATES,
+  buildAssetStrategyContext,
+  canRunAssetCapability,
+} from "../asset-strategy/assetStrategyContextService";
+import { ASSET_CLASSIFICATION_STATES } from "../asset-strategy/assetStrategyContracts";
+import {
   OFFER_READINESS_CHECKLIST,
   analyzeOfferReadiness,
 } from "../offers/offerReadinessService";
@@ -200,7 +207,12 @@ function buildCurrentDealEvidence(deal, readiness, context, dealId) {
     { canonicalField: "deal.status", keys: ["status", "negotiation_status"] },
   ];
 
-  const readinessByLabel = new Map(readiness.checklist.map((item) => [item.label, item]));
+  const readinessChecklist = Array.isArray(readiness?.checklist)
+    ? readiness.checklist
+    : [];
+  const readinessByLabel = new Map(
+    readinessChecklist.map((item) => [item.label, item])
+  );
   OFFER_READINESS_CHECKLIST.forEach((item) => {
     if (!readinessByLabel.get(item.label)?.complete) return;
     descriptors.push({
@@ -302,7 +314,15 @@ function issueId(dealId, category, label) {
   return `issue:${idSegment(dealId)}:${idSegment(category)}:${idSegment(normalizedKey(label))}`;
 }
 
-function createMissingIssue({ canonicalField, category, dealId, description, label, severity }) {
+function createMissingIssue({
+  canonicalField,
+  category,
+  dealId,
+  description,
+  evidenceReferenceIds = [],
+  label,
+  severity,
+}) {
   const id = issueId(dealId, category, label);
   if (!id) return null;
   return normalizeDecisionIssueReference({
@@ -312,14 +332,93 @@ function createMissingIssue({ canonicalField, category, dealId, description, lab
     severity,
     state: "open",
     relatedCanonicalField: canonicalField,
-    evidenceReferenceIds: [],
+    evidenceReferenceIds,
     sourceMode: SOURCE_MODE,
     rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
   });
 }
 
-function buildMissingInformation(deal, readiness, dealId) {
-  const missing = readiness.checklist
+function buildAssetStrategyIssue(assetStrategyContext, dealId) {
+  if (!dealId) return null;
+  const evidenceReferenceIds = assetStrategyContext.classificationEvidence.map(
+    (reference) => reference.evidenceId
+  );
+
+  if (
+    assetStrategyContext.classificationState ===
+    ASSET_CLASSIFICATION_STATES.UNCLASSIFIED
+  ) {
+    return createMissingIssue({
+      canonicalField: "property.assetType",
+      category: "asset-classification",
+      dealId,
+      description:
+        "Asset type classification is required before strategy-specific analysis can run.",
+      evidenceReferenceIds,
+      label: "Asset type classification",
+      severity: "blocking",
+    });
+  }
+
+  if (
+    assetStrategyContext.classificationState ===
+    ASSET_CLASSIFICATION_STATES.AMBIGUOUS
+  ) {
+    return createMissingIssue({
+      canonicalField: "property.assetType",
+      category: "asset-classification",
+      dealId,
+      description:
+        "Conflicting or ambiguous asset classification requires human review before strategy-specific analysis can run.",
+      evidenceReferenceIds,
+      label: "Asset type classification conflict",
+      severity: "blocking",
+    });
+  }
+
+  if (
+    assetStrategyContext.classificationState ===
+    ASSET_CLASSIFICATION_STATES.UNSUPPORTED
+  ) {
+    return createMissingIssue({
+      canonicalField: "property.assetType",
+      category: "asset-classification",
+      dealId,
+      description:
+        "The stored asset type does not map to a supported Asset Strategy classification.",
+      evidenceReferenceIds,
+      label: "Supported asset type classification",
+      severity: "blocking",
+    });
+  }
+
+  if (
+    assetStrategyContext.strategySupportState ===
+      ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY ||
+    assetStrategyContext.strategySupportState ===
+      ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
+  ) {
+    return createMissingIssue({
+      canonicalField: "property.assetType",
+      category: "asset-strategy-availability",
+      dealId,
+      description: `${assetStrategyContext.strategyLabel} is ${
+        assetStrategyContext.strategySupportState ===
+        ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
+          ? "deferred"
+          : "not yet implemented"
+      }; residential-house analysis is blocked.`,
+      evidenceReferenceIds,
+      label: `${assetStrategyContext.assetTypeLabel} strategy availability`,
+      severity: "blocking",
+    });
+  }
+
+  return null;
+}
+
+function buildMissingInformation(deal, readiness, dealId, assetStrategyContext) {
+  const missing = (Array.isArray(readiness?.checklist) ? readiness.checklist : [])
     .filter((item) => !item.complete)
     .map((item) =>
       createMissingIssue({
@@ -331,6 +430,11 @@ function buildMissingInformation(deal, readiness, dealId) {
         severity: "blocking",
       })
     );
+  const assetStrategyIssue = buildAssetStrategyIssue(
+    assetStrategyContext,
+    dealId
+  );
+  if (assetStrategyIssue) missing.push(assetStrategyIssue);
 
   if (!getDealAliasText(deal, "address")) {
     missing.push(
@@ -476,6 +580,7 @@ function hasSellerReply(signals, context, dealId) {
 
 function getLifecycle({
   approvalSummary,
+  assetStrategyContext,
   conflicts,
   context,
   deal,
@@ -509,6 +614,16 @@ function getLifecycle({
   if (!dealId || (!address && !seller)) {
     state = DECISION_LIFECYCLE_STATES.IDENTIFY;
     reason = "A stable opportunity identity is required before decision evaluation can continue.";
+  } else if (
+    assetStrategyContext.classificationState !==
+      ASSET_CLASSIFICATION_STATES.CLASSIFIED ||
+    assetStrategyContext.manualReviewRequired
+  ) {
+    state = DECISION_LIFECYCLE_STATES.VERIFY;
+    reason = `${assetStrategyContext.statusSummary}. Strategy-specific analysis cannot run until the stored classification is reviewed.`;
+    lifecycleEvidence = assetStrategyContext.classificationEvidence.map(
+      (reference) => reference.evidenceId
+    );
   } else if (TERMINAL_OUTCOMES.has(stage)) {
     state = DECISION_LIFECYCLE_STATES.LEARN;
     reason = `The current deal record contains the explicit outcome state "${
@@ -571,6 +686,7 @@ function getLifecycle({
 
 function getRecommendation({
   approvalSummary,
+  assetStrategyContext,
   deal,
   dealId,
   dueContext,
@@ -579,6 +695,7 @@ function getRecommendation({
   missingInformation,
   conflicts,
   readiness,
+  readinessCapability,
 }) {
   const missingIds = missingInformation.map((issue) => issue.issueId);
   const conflictIds = conflicts.map((conflict) => conflict.conflictId);
@@ -619,6 +736,29 @@ function getRecommendation({
     actionCode = DECISION_ACTION_TAXONOMY.ADD_CONTACT_INFORMATION;
     label = "Add seller contact information before outreach.";
     explanation = "Seller phone and email are missing from the current CRM record.";
+  } else if (
+    assetStrategyContext.classificationState !==
+      ASSET_CLASSIFICATION_STATES.CLASSIFIED ||
+    assetStrategyContext.manualReviewRequired
+  ) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = assetStrategyContext.statusSummary;
+    explanation = `${readinessCapability.explanation} Generic CRM, seller context, and communication remain available.`;
+    supportingEvidence = assetStrategyContext.classificationEvidence.map(
+      (reference) => reference.evidenceId
+    );
+  } else if (!readinessCapability.allowed) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = `${assetStrategyContext.strategyLabel} is ${
+      assetStrategyContext.strategySupportState ===
+      ASSET_STRATEGY_SUPPORT_STATES.DEFERRED
+        ? "deferred"
+        : "not yet implemented"
+    }.`;
+    explanation = `${readinessCapability.explanation} Maintain seller context and communication without residential calculations.`;
+    supportingEvidence = assetStrategyContext.classificationEvidence.map(
+      (reference) => reference.evidenceId
+    );
   } else {
     actionCode =
       READINESS_ACTION_CODES[readiness.recommendedNextStep] || DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
@@ -659,12 +799,14 @@ function getRecommendation({
 }
 
 function buildMetricOutputs({
+  assetStrategyContext,
   dealId,
   dueContext,
   evaluatedTimestamp,
   evidence,
   missingInformation,
   readiness,
+  readinessCapability,
 }) {
   const missingIds = missingInformation
     .filter((issue) => issue.description?.includes("offer-readiness"))
@@ -674,10 +816,23 @@ function buildMetricOutputs({
       Object.values(READINESS_CANONICAL_FIELDS).includes(entry.relatedCanonicalField)
     )
     .map((entry) => entry.evidenceId);
-  const completeCount = readiness.checklist.filter((item) => item.complete).length;
+  const completeCount = Array.isArray(readiness?.checklist)
+    ? readiness.checklist.filter((item) => item.complete).length
+    : 0;
+  const classificationIssueIds = missingInformation
+    .filter((issue) => issue.relatedCanonicalField === "property.assetType")
+    .map((issue) => issue.issueId);
+  const classificationEvidenceIds = assetStrategyContext.classificationEvidence.map(
+    (reference) => reference.evidenceId
+  );
 
   return DECISION_METRIC_REGISTRY.map((definition) => {
-    if (definition.id === "offer-readiness" && dealId) {
+    if (
+      definition.id === "offer-readiness" &&
+      dealId &&
+      readinessCapability.allowed &&
+      readiness
+    ) {
       return normalizeMetricOutput({
         metricId: definition.id,
         evaluationState: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
@@ -695,6 +850,23 @@ function buildMetricOutputs({
         partialDataWarnings: [
           "This is the existing compatibility checklist, not the future strategy-aware readiness model.",
         ],
+      });
+    }
+
+    if (definition.id === "offer-readiness") {
+      return normalizeMetricOutput({
+        metricId: definition.id,
+        evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+        value: null,
+        displayValue: null,
+        explanation: readinessCapability.explanation,
+        inputEvidenceIds: classificationEvidenceIds,
+        blockingIssueIds: classificationIssueIds,
+        advisoryIssueIds: [],
+        rulesetVersion: OFFER_READINESS_COMPATIBILITY_RULESET_VERSION,
+        evaluatedTimestamp,
+        sourceMode: SOURCE_MODE,
+        partialDataWarnings: [readinessCapability.explanation],
       });
     }
 
@@ -769,15 +941,22 @@ function buildRuleset(evaluatedTimestamp) {
   });
 }
 
-function buildAvailableActions(deal, dealId) {
+function buildAvailableActions(deal, dealId, assetStrategyContext) {
   const phone = getDealAliasText(deal, "phone");
+  const offerCapability = canRunAssetCapability(
+    assetStrategyContext,
+    ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_GENERATION
+  );
   return [
     {
       id: "prepare-offer",
       label: "Prepare Offer",
       targetSection: "numbers",
       targetWorkspace: "deal-decision-room",
-      enabled: Boolean(dealId),
+      enabled: Boolean(dealId) && offerCapability.allowed,
+      disabledReason: offerCapability.allowed
+        ? null
+        : offerCapability.explanation,
       mode: "navigation",
     },
     {
@@ -821,7 +1000,14 @@ function buildReadModel({
   const dealId = getDealId(safeDeal);
   const context = getTenantContext(safeDeal);
   const evaluatedTimestamp = normalizeDecisionTimestamp(now);
-  const readiness = analyzeOfferReadiness(safeDeal);
+  const assetStrategyContext = buildAssetStrategyContext(safeDeal);
+  const readinessCapability = canRunAssetCapability(
+    assetStrategyContext,
+    ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_READINESS
+  );
+  const readiness = readinessCapability.allowed
+    ? analyzeOfferReadiness(safeDeal)
+    : null;
   const currentEvidence = buildCurrentDealEvidence(safeDeal, readiness, context, dealId);
   const externalEvidence = normalizeExternalEvidence(evidenceReferences, context);
   const conversationEvidence = adaptConversationEvidence(
@@ -831,16 +1017,32 @@ function buildReadModel({
   );
   const taskEvidence = adaptTaskEvidence(tasks, context, dealId);
   const evidence = dedupeEvidence([
+    ...assetStrategyContext.classificationEvidence,
     ...currentEvidence,
     ...externalEvidence,
     ...conversationEvidence,
     ...taskEvidence,
   ]);
-  const missingInformation = buildMissingInformation(safeDeal, readiness, dealId);
-  const normalizedConflicts = (Array.isArray(conflicts) ? conflicts : [])
+  const missingInformation = buildMissingInformation(
+    safeDeal,
+    readiness,
+    dealId,
+    assetStrategyContext
+  );
+  const providedConflicts = (Array.isArray(conflicts) ? conflicts : [])
     .map(normalizeConflictReference)
     .filter(Boolean)
     .slice(0, SOURCE_LIMIT);
+  const conflictById = new Map();
+  [
+    ...assetStrategyContext.classificationConflicts,
+    ...providedConflicts,
+  ].forEach((conflict) => {
+    if (!conflictById.has(conflict.conflictId)) {
+      conflictById.set(conflict.conflictId, conflict);
+    }
+  });
+  const normalizedConflicts = [...conflictById.values()].slice(0, SOURCE_LIMIT);
   const approvalSummary = buildApprovalSummary(approvalItems, context, dealId);
   const dueContext = getDueContext(safeDeal, now);
   const sellerReply = hasSellerReply(conversationSignals, context, dealId);
@@ -851,10 +1053,12 @@ function buildReadModel({
     currentEvidence.length ? CRM_COMPATIBILITY_WARNING : "",
     dealId ? "" : "The loaded opportunity has no stable compatibility identifier.",
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
+    ...assetStrategyContext.sourceWarnings,
   ]).slice(0, 10);
   const ruleset = buildRuleset(evaluatedTimestamp);
   const lifecycle = getLifecycle({
     approvalSummary,
+    assetStrategyContext,
     conflicts: normalizedConflicts,
     context,
     deal: safeDeal,
@@ -869,6 +1073,7 @@ function buildReadModel({
   });
   const recommendation = getRecommendation({
     approvalSummary,
+    assetStrategyContext,
     conflicts: normalizedConflicts,
     deal: safeDeal,
     dealId,
@@ -877,14 +1082,17 @@ function buildReadModel({
     evidence,
     missingInformation,
     readiness,
+    readinessCapability,
   });
   const metricOutputs = buildMetricOutputs({
+    assetStrategyContext,
     dealId,
     dueContext,
     evaluatedTimestamp,
     evidence,
     missingInformation,
     readiness,
+    readinessCapability,
   });
   const decisionRecord = normalizeDecisionRecord({
     decisionId: dealId ? `decision:deal:${idSegment(dealId)}:compatibility` : null,
@@ -900,8 +1108,9 @@ function buildReadModel({
       id: safeText(safeDeal.property_id || safeDeal.propertyId) || null,
       address: getDealAliasText(safeDeal, "address") || null,
     },
-    assetType: safeText(safeDeal.asset_type || safeDeal.assetType) || null,
-    assetStrategyId: null,
+    assetType: assetStrategyContext.decisionIntegrationFields.assetType,
+    assetStrategyIdentifier:
+      assetStrategyContext.decisionIntegrationFields.assetStrategyIdentifier,
     lifecycle,
     recommendation,
     metricOutputs,
@@ -949,9 +1158,14 @@ function buildReadModel({
     ruleset,
     sourceFreshness: buildSourceFreshness(evidence),
     approvalSummary,
-    availableActions: buildAvailableActions(safeDeal, dealId),
+    availableActions: buildAvailableActions(
+      safeDeal,
+      dealId,
+      assetStrategyContext
+    ),
     targetSections: TARGET_SECTIONS,
-    compatibilityMode: true,
+    compatibilityMode: assetStrategyContext.compatibilityAnalysisEligibility,
+    assetStrategyContext,
   };
 }
 

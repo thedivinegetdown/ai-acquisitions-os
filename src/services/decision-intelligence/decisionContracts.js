@@ -372,6 +372,10 @@ function normalizeMetricRegistryOutputs(values) {
 
 export function normalizeDecisionRecord(value) {
   const source = safeObject(value);
+  const assetStrategyIdentifier = nullableText(
+    source.assetStrategyIdentifier || source.assetStrategyId,
+    160
+  );
   const evidenceReferences = (Array.isArray(source.evidenceReferences)
     ? source.evidenceReferences
     : []
@@ -389,7 +393,8 @@ export function normalizeDecisionRecord(value) {
     sellerReference: normalizeEntityReference(source.sellerReference, "seller"),
     propertyReference: normalizeEntityReference(source.propertyReference, "property"),
     assetType: nullableText(source.assetType, 120),
-    assetStrategyId: nullableText(source.assetStrategyId, 160),
+    assetStrategyId: assetStrategyIdentifier,
+    assetStrategyIdentifier,
     lifecycle: normalizeDecisionLifecycle(source.lifecycle),
     recommendation: normalizeRecommendation(source.recommendation),
     metricOutputs: normalizeMetricRegistryOutputs(source.metricOutputs),
