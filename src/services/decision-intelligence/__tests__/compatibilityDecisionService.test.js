@@ -3,9 +3,15 @@ import {
   COMPATIBILITY_DECISION_RULESET_VERSION,
   DECISION_EVALUATION_STATES,
   DECISION_SOURCE_MODES,
+  PURSUIT_SCORING_PROFILE_STATUSES,
   buildCompatibilityDecisionReadModel,
+  evaluatePursuitScore,
 } from "../index";
 import { ASSET_TYPES } from "../../asset-strategy";
+import {
+  createResidentialScoringProfile,
+  createScoringInput,
+} from "../pursuit-scoring/__tests__/fixtures/pursuitScoringFixtures";
 
 const NOW = Date.parse("2026-08-05T15:00:00Z");
 
@@ -157,6 +163,43 @@ describe("compatibility decision read model", () => {
     }
     expect(result.data).not.toHaveProperty("pursuitScore");
     expect(result.data).not.toHaveProperty("recommendationConfidence");
+  });
+
+  it("never converts an existing lead_score into Pursuit Score", () => {
+    const result = build({
+      deal: completeDeal({ lead_score: 100 }),
+    });
+    expect(result.data.metricsById["pursuit-score"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+      value: null,
+      displayValue: null,
+    });
+    expect(result.data.pursuitScoreResult).toBeNull();
+  });
+
+  it("rejects a supplied score when the live Asset Strategy remains compatibility-only", () => {
+    const profile = createResidentialScoringProfile({
+      status: PURSUIT_SCORING_PROFILE_STATUSES.ACTIVE,
+    });
+    const scoringResult = evaluatePursuitScore({
+      ...createScoringInput(profile),
+      executionMode: "production",
+    });
+    const result = build({
+      deal: completeDeal(),
+      pursuitScoreResult: scoringResult,
+    });
+
+    expect(scoringResult.evaluationState).toBe("evaluated");
+    expect(result.data.assetStrategyContext.strategySupportState).toBe(
+      "compatibility-only"
+    );
+    expect(result.data.metricsById["pursuit-score"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+      value: null,
+      displayValue: null,
+    });
+    expect(result.data.pursuitScoreResult).toBeNull();
   });
 
   it("integrates classified residential strategy context and provenance", () => {

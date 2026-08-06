@@ -1,6 +1,7 @@
 import { getDealAlias } from "../../utils/dealFields";
 import { compactText, uniqueStrings } from "../../utils/text";
 import {
+  DECISION_EVALUATION_STATES,
   normalizeConflictReference,
   normalizeEvidenceReference,
 } from "../decision-intelligence/decisionContracts";
@@ -91,6 +92,16 @@ export const CLASSIFICATION_COMPATIBILITY_WARNING =
 
 export const RESIDENTIAL_COMPATIBILITY_WARNING =
   "Existing residential calculations are compatibility analysis, not the completed Residential Acquisition Strategy.";
+
+export const PURSUIT_SCORING_FRAMEWORK_STATUS = Object.freeze({
+  frameworkAvailable: true,
+  strategyHookContractAvailable: true,
+  concreteProfileAvailable: false,
+  productionProfileAvailable: false,
+  evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+  explanation:
+    "The Pursuit Scoring Framework is available, but no concrete production Asset Strategy scoring profile is implemented.",
+});
 
 const GENERIC_CAPABILITIES = new Set(GENERIC_ASSET_CAPABILITY_IDS);
 const RESIDENTIAL_CAPABILITIES = new Set(
@@ -591,6 +602,7 @@ export function buildAssetStrategyContext(deal, options = {}) {
     compatibilityWarning: compatibilityAnalysisEligibility
       ? RESIDENTIAL_COMPATIBILITY_WARNING
       : null,
+    pursuitScoring: { ...PURSUIT_SCORING_FRAMEWORK_STATUS },
     genericCapabilityAvailability: Object.fromEntries(
       GENERIC_ASSET_CAPABILITY_IDS.map((capabilityId) => [capabilityId, true])
     ),
@@ -622,6 +634,7 @@ export function buildAssetStrategyContext(deal, options = {}) {
       assetStrategyIdentifier: assetDefinition?.strategyId || null,
       evidenceReferences: classificationEvidence,
       conflictReferences: classificationConflicts,
+      pursuitScoring: { ...PURSUIT_SCORING_FRAMEWORK_STATUS },
       partialDataWarnings: sourceWarnings,
     },
   };

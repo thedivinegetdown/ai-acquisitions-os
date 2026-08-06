@@ -17,7 +17,10 @@ import {
   buildAssetStrategyContext,
   canRunAssetCapability,
 } from "../../services/asset-strategy";
-import { buildCompatibilityDecisionReadModel } from "../../services/decision-intelligence";
+import {
+  buildCompatibilityDecisionReadModel,
+  canPresentPursuitScore,
+} from "../../services/decision-intelligence";
 import { getDealIdFromRoute } from "../../navigation/workspaces";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
@@ -37,6 +40,7 @@ const MessageCenter = lazy(() => import("../../components/MessageCenter"));
 const NegotiationTracker = lazy(() => import("../../components/NegotiationTracker"));
 const OfferEngine = lazy(() => import("../../components/OfferEngine"));
 const PropertyIntelligencePanel = lazy(() => import("../../components/PropertyIntelligencePanel"));
+const PursuitScoreSummary = lazy(() => import("./PursuitScoreSummary"));
 const SequenceEngine = lazy(() => import("../../components/SequenceEngine"));
 const TaskPanel = lazy(() => import("../../components/TaskPanel"));
 const TeamPanel = lazy(() => import("../../components/TeamPanel"));
@@ -266,6 +270,12 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
 
   const readModel = decisionResult.data;
   const readiness = readModel.metricsById["offer-readiness"];
+  const pursuitScoreMetric = readModel.metricsById["pursuit-score"];
+  const showPursuitScore = canPresentPursuitScore({
+    assetStrategyContext: readModel.assetStrategyContext,
+    metric: pursuitScoreMetric,
+    result: readModel.pursuitScoreResult,
+  });
   const approval = readModel.approvalSummary;
   const assetStrategyContext = readModel.assetStrategyContext;
   const insightGate = canRunAssetCapability(
@@ -357,6 +367,15 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
         ) : null}
         <PrimaryActions actions={readModel.availableActions} onAction={onAction} />
       </Card>
+      {showPursuitScore ? (
+        <LazySection label="Loading Pursuit Score explanation...">
+          <PursuitScoreSummary
+            assetStrategyContext={assetStrategyContext}
+            metric={pursuitScoreMetric}
+            result={readModel.pursuitScoreResult}
+          />
+        </LazySection>
+      ) : null}
       <MissingInformationAutopilot
         onNavigateSection={onAction}
         readModel={readModel.missingInformationReadModel}
@@ -417,6 +436,23 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               <div>
                 <dt>Strategy support state</dt>
                 <dd>{assetStrategyContext.strategySupportState}</dd>
+              </div>
+              <div>
+                <dt>Pursuit Scoring Framework</dt>
+                <dd>
+                  {assetStrategyContext.pursuitScoring.frameworkAvailable
+                    ? "Available"
+                    : "Unavailable"}
+                </dd>
+              </div>
+              <div>
+                <dt>Production Strategy Profile</dt>
+                <dd>
+                  {assetStrategyContext.pursuitScoring
+                    .productionProfileAvailable
+                    ? "Available"
+                    : "Not yet implemented"}
+                </dd>
               </div>
             </dl>
             <h3>Classification sources</h3>

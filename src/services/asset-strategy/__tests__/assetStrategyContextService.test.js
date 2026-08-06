@@ -44,6 +44,25 @@ describe("asset strategy runtime context", () => {
     expect(context.compatibilityWarning).toContain("not the completed");
   });
 
+  it("reports the scoring framework without activating a concrete profile", () => {
+    const context = buildAssetStrategyContext(
+      deal({ asset_type: ASSET_TYPES.RESIDENTIAL_HOME })
+    );
+
+    expect(context.pursuitScoring).toEqual(
+      expect.objectContaining({
+        frameworkAvailable: true,
+        strategyHookContractAvailable: true,
+        concreteProfileAvailable: false,
+        productionProfileAvailable: false,
+        evaluationState: "not-evaluated",
+      })
+    );
+    expect(context.decisionIntegrationFields.pursuitScoring).toEqual(
+      context.pursuitScoring
+    );
+  });
+
   it.each([
     [
       "vacant land",

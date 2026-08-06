@@ -2,3 +2,4 @@
 // compatibility service through one stable domain-service boundary.
 export * from "./decisionContracts";
 export * from "./compatibilityDecisionService";
+export * from "./pursuit-scoring";

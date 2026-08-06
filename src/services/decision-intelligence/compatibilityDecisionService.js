@@ -44,9 +44,13 @@ import {
   normalizeRecommendation,
   normalizeRulesetDescriptor,
 } from "./decisionContracts";
+import {
+  normalizePursuitScoreResult,
+  toPursuitScoreMetric,
+} from "./pursuit-scoring";
 
 // Distinct responsibility: adapt existing deterministic deal facts into the
-// canonical Decision Intelligence contract without adding new scoring or mutations.
+// canonical Decision Intelligence contract without deriving scores from deal fields or mutating data.
 export const COMPATIBILITY_DECISION_RULESET_ID = "deal-decision-compatibility";
 export const COMPATIBILITY_DECISION_RULESET_VERSION = "decision-compatibility-v1";
 export const OFFER_READINESS_COMPATIBILITY_RULESET_VERSION =
@@ -698,10 +702,15 @@ function buildMetricOutputs({
   evidence,
   missingInformation,
   missingInformationReadModel,
+  pursuitScoreResult,
   readinessWarning,
   readiness,
   readinessCapability,
 }) {
+  const pursuitScoreMetric = toPursuitScoreMetric(pursuitScoreResult, {
+    assetStrategyContext,
+    productionOnly: true,
+  });
   const missingIds = missingInformation
     .filter((issue) =>
       (missingInformationReadModel?.openItems || []).some(
@@ -729,6 +738,10 @@ function buildMetricOutputs({
   );
 
   return DECISION_METRIC_REGISTRY.map((definition) => {
+    if (definition.id === "pursuit-score") {
+      return pursuitScoreMetric;
+    }
+
     if (
       definition.id === "offer-readiness" &&
       dealId &&
@@ -895,6 +908,7 @@ function buildReadModel({
   evidenceReferences,
   now,
   previousLifecycle,
+  pursuitScoreResult,
   sourceErrors,
   tasks,
 }) {
@@ -1006,6 +1020,7 @@ function buildReadModel({
     evidence,
     missingInformation,
     missingInformationReadModel,
+    pursuitScoreResult,
     readiness,
     readinessCapability,
     readinessWarning: readinessEvaluation.warning,
@@ -1064,6 +1079,12 @@ function buildReadModel({
         : "compatibility-result"
       : "incomplete",
   });
+  const normalizedPursuitScoreResult = normalizePursuitScoreResult(
+    pursuitScoreResult
+  );
+  const pursuitScoreMetric = decisionRecord.metricOutputs.find(
+    (metric) => metric.metricId === "pursuit-score"
+  );
 
   return {
     contractVersion: DECISION_CONTRACT_VERSION,
@@ -1077,6 +1098,12 @@ function buildReadModel({
     evidenceReferences: decisionRecord.evidenceReferences,
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
+    pursuitScoreResult:
+      pursuitScoreMetric?.evaluationState ===
+        DECISION_EVALUATION_STATES.EVALUATED &&
+      Number.isFinite(pursuitScoreMetric.value)
+        ? normalizedPursuitScoreResult
+        : null,
     conflictReferences: decisionRecord.conflictReferences,
     sourceWarnings,
     sourceStatus: sourceWarnings.length ? "partial" : "complete",
@@ -1102,6 +1129,7 @@ export function buildCompatibilityDecisionReadModel({
   evidenceReferences = [],
   now = Date.now(),
   previousLifecycle = null,
+  pursuitScoreResult = null,
   sourceErrors = [],
   tasks = [],
 } = {}) {
@@ -1114,6 +1142,7 @@ export function buildCompatibilityDecisionReadModel({
       evidenceReferences,
       now,
       previousLifecycle,
+      pursuitScoreResult,
       sourceErrors,
       tasks,
     });

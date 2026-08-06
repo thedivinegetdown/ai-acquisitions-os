@@ -83,6 +83,9 @@ vi.mock("../DealTimeline", () => ({
     </div>
   ),
 }));
+vi.mock("../PursuitScoreSummary", () => ({
+  default: () => <div>Future Pursuit Score Summary</div>,
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -219,10 +222,22 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByText(/deal-decision-compatibility/)).toBeInTheDocument();
     expect(screen.getAllByText("Deal record").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Source timestamp: Not available/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Pursuit Scoring Framework")).toBeInTheDocument();
+    expect(screen.getByText("Production Strategy Profile")).toBeInTheDocument();
+    expect(screen.getByText("Not yet implemented")).toBeInTheDocument();
     expect(screen.queryByText("Pursuit Score")).not.toBeInTheDocument();
+    expect(screen.queryByText("Future Pursuit Score Summary")).not.toBeInTheDocument();
     expect(screen.queryByText("Recommendation Confidence")).not.toBeInTheDocument();
     expect(screen.queryByText("Data Reliability")).not.toBeInTheDocument();
     expect(screen.queryByText("Cost of Delay")).not.toBeInTheDocument();
+  });
+
+  it("does not convert or display a legacy lead score as Pursuit Score", () => {
+    renderRoom({ deals: [{ ...deal, lead_score: 100 }] });
+
+    expect(screen.queryByRole("heading", { name: "Pursuit Score" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Future Pursuit Score Summary")).not.toBeInTheDocument();
+    expect(screen.queryByText("100/100")).not.toBeInTheDocument();
   });
 
   it("keeps deterministic Decision Intelligence separate from optional AI-assisted insight", async () => {
