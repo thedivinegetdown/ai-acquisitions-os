@@ -33,6 +33,7 @@ const BuyerMatches = lazy(() => import("../../components/BuyerMatches"));
 const CloseoutPanel = lazy(() => import("../../components/CloseoutPanel"));
 const CompsEngine = lazy(() => import("../../components/CompsEngine"));
 const ConflictReviewPanel = lazy(() => import("./ConflictReviewPanel"));
+const DecisionQualitySummary = lazy(() => import("./DecisionQualitySummary"));
 const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
 const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
@@ -297,6 +298,16 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
               Offer readiness: {readiness.displayValue}
             </StatusBadge>
           ) : null}
+          {readModel.dataReliabilityResult?.evaluationState === "evaluated" ? (
+            <StatusBadge status={readModel.dataReliabilityResult.grade === "strong" ? "success" : readModel.dataReliabilityResult.grade === "limited" ? "warning" : "info"}>
+              Data Reliability: {readModel.dataReliabilityResult.displayLabel}
+            </StatusBadge>
+          ) : null}
+          {readModel.recommendationConfidenceResult?.evaluationState === "evaluated" ? (
+            <StatusBadge status={readModel.recommendationConfidenceResult.level === "high" ? "success" : readModel.recommendationConfidenceResult.level === "low" ? "warning" : "info"}>
+              Recommendation Confidence: {readModel.recommendationConfidenceResult.displayLabel}
+            </StatusBadge>
+          ) : null}
           <StatusBadge
             status={
               STRATEGY_SUPPORT_STATUS[
@@ -404,6 +415,15 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           onNavigateSection={onAction}
           onNavigateWorkspace={onNavigateWorkspace}
           result={readModel.readinessResult}
+        />
+      </LazySection>
+      <LazySection label="Loading Decision Quality...">
+        <DecisionQualitySummary
+          confidence={readModel.recommendationConfidenceResult}
+          onNavigateSection={onAction}
+          recommendation={readModel.recommendation}
+          recommendationBasis={readModel.recommendationBasis}
+          reliability={readModel.dataReliabilityResult}
         />
       </LazySection>
       {readModel.residentialStrategyResult?.eligible ? (
@@ -558,7 +578,26 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
                 <dt>Evidence ruleset</dt>
                 <dd>{readModel.evidenceRegistry?.rulesetVersion || "Not available"}</dd>
               </div>
+              <div>
+                <dt>Data Reliability ruleset</dt>
+                <dd>{readModel.dataReliabilityResult?.rulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Reliability assessment basis</dt>
+                <dd>{readModel.dataReliabilityResult?.assessmentBasis || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Recommendation Confidence ruleset</dt>
+                <dd>{readModel.recommendationConfidenceResult?.rulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Recommendation basis</dt>
+                <dd>{readModel.recommendationBasis?.basisType || "Not available"}</dd>
+              </div>
             </dl>
+            <h3>Decision Quality limitations</h3>
+            <p>{readModel.dataReliabilityResult?.limitationCodes?.join(", ") || "No Data Reliability limitations are recorded."}</p>
+            <p>{readModel.recommendationConfidenceResult?.limitingFactors?.join(", ") || "No Recommendation Confidence limiting factors are recorded."}</p>
             {readModel.conflictReadModel?.activeConflicts?.length ? (
               <>
                 <h3>Conflict Intelligence</h3>

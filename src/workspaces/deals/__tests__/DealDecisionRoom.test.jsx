@@ -98,6 +98,11 @@ vi.mock("../OfferReadinessSummary", () => ({
 vi.mock("../ConflictReviewPanel", () => ({
   default: ({ readModel }) => <div>Conflict Review: {readModel.counts.open} open</div>,
 }));
+vi.mock("../DecisionQualitySummary", () => ({
+  default: ({ confidence, reliability }) => (
+    <div>Decision Quality: {reliability.displayLabel} / {confidence.displayLabel}</div>
+  ),
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));

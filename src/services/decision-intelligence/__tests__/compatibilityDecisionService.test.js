@@ -120,7 +120,7 @@ describe("compatibility decision read model", () => {
     expect(withHistory.data.lifecycle.previousState).toBe("Verify");
   });
 
-  it("wraps the existing deterministic next-action behavior without AI or confidence", () => {
+  it("wraps the existing deterministic next-action behavior with canonical confidence and no AI", () => {
     const result = build({ deal: completeDeal({ due_date: "2026-08-01" }) });
     const recommendation = result.data.recommendation;
 
@@ -132,7 +132,11 @@ describe("compatibility decision read model", () => {
       DECISION_SOURCE_MODES.DETERMINISTIC_COMPATIBILITY
     );
     expect(recommendation.rulesetVersion).toBe(COMPATIBILITY_DECISION_RULESET_VERSION);
-    expect(recommendation.confidenceReference).toBeNull();
+    expect(recommendation.confidenceReference).toBe(
+      result.data.recommendationConfidenceResult.confidenceId
+    );
+    expect(result.data.recommendationBasis.basisType).toBe("overdue-action");
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
     expect(JSON.stringify(recommendation).toLowerCase()).not.toContain("ai recommendation");
   });
 
@@ -157,10 +161,20 @@ describe("compatibility decision read model", () => {
       evaluationState: "partial",
       productionEligible: true,
     });
+    expect(result.data.metricsById["recommendation-confidence"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "low",
+      unit: "confidence-level",
+      scale: null,
+    });
+    expect(result.data.metricsById["data-reliability"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "limited",
+      unit: "reliability-grade",
+      scale: null,
+    });
     for (const id of [
-      "recommendation-confidence",
       "data-completeness",
-      "data-reliability",
       "financial-resilience",
       "deal-effort",
       "risk-level",
@@ -232,8 +246,8 @@ describe("compatibility decision read model", () => {
     expect(result.data.recommendation.status).toBe(
       DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
     );
-    expect(result.data.metricsById["recommendation-confidence"].value).toBeNull();
-    expect(result.data.metricsById["data-reliability"].value).toBeNull();
+    expect(result.data.metricsById["recommendation-confidence"].value).toBe("low");
+    expect(result.data.metricsById["data-reliability"].value).toBe("limited");
     expect(result.data.metricsById["risk-level"].value).toBeNull();
   });
 
@@ -462,9 +476,7 @@ describe("compatibility decision read model", () => {
       ).toMatchObject({ enabled: false });
       for (const metricId of [
         "pursuit-score",
-        "recommendation-confidence",
         "data-completeness",
-        "data-reliability",
         "financial-resilience",
         "deal-effort",
         "risk-level",
@@ -480,6 +492,13 @@ describe("compatibility decision read model", () => {
           displayValue: null,
         });
       }
+      expect(result.data.metricsById["recommendation-confidence"]).toMatchObject({
+        evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+        value: "low",
+      });
+      expect(result.data.metricsById["data-reliability"].value).toEqual(
+        expect.stringMatching(/limited|moderate/)
+      );
     }
   );
 
@@ -575,7 +594,7 @@ describe("compatibility decision read model", () => {
     expect(result.data.sourceFreshness.latestSourceTimestamp).toBeNull();
   });
 
-  it("exposes canonical Evidence coverage and traceability without reliability or confidence", () => {
+  it("exposes canonical Evidence coverage, traceability, reliability, and confidence", () => {
     const result = build({ deal: completeDeal() });
     expect(result.data.evidenceRegistry.contractVersion).toBe("evidence-provenance-contract-v1");
     expect(result.data.evidenceCoverage.counts.representedFields).toBeGreaterThan(0);
@@ -583,8 +602,11 @@ describe("compatibility decision read model", () => {
       expect.arrayContaining(["residential-underwriting", "pursuit-score", "offer-readiness"])
     );
     expect(result.data.recommendationTraceability).toMatchObject({ rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION });
-    expect(result.data.metricsById["data-reliability"].value).toBeNull();
-    expect(result.data.metricsById["recommendation-confidence"].value).toBeNull();
+    expect(result.data.metricsById["data-reliability"].value).toBe("limited");
+    expect(result.data.metricsById["recommendation-confidence"].value).toBe("low");
+    expect(result.data.recommendationTraceability.basisType).toBe(
+      "residential-strategy-guidance"
+    );
   });
 
   it("bounds evidence and omits evidence outside the current tenant context", () => {
@@ -761,6 +783,8 @@ describe("compatibility decision read model", () => {
 
     expect(result.data.lifecycle.state).toBe("Act");
     expect(result.data.recommendation.label).toBe("Respond to the seller reply.");
+    expect(result.data.recommendationBasis.basisType).toBe("seller-reply");
+    expect(result.data.metricsById["recommendation-confidence"].value).toBe("high");
   });
 
   it("does not mutate input while mapping an explicit legacy asset field", () => {
@@ -803,6 +827,12 @@ describe("compatibility decision read model", () => {
     expect(result.data.metricsById["pursuit-score"].value).toBeNull();
     expect(result.data.metricsById["offer-readiness"].value).toBe("needs-verification");
     expect(result.data.lifecycle.state).toBe("Verify");
+    expect(result.data.dataReliabilityResult.grade).toBe("limited");
+    expect(result.data.recommendationBasis).toMatchObject({
+      basisType: "conflict-review",
+      conflictIds: [conflict.conflictId],
+    });
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
   });
 
   it("routes a detected Vacant Land legal-access conflict without residential fallback", () => {
@@ -830,6 +860,8 @@ describe("compatibility decision read model", () => {
     expect(result.data.metricsById["pursuit-score"].value).toBeNull();
     expect(result.data.metricsById["offer-readiness"].value).toBe("needs-verification");
     expect(result.data.residentialStrategyResult).toBeNull();
+    expect(result.data.dataReliabilityResult.grade).toBe("limited");
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
   });
 
   it("omits an optional conflicted scoring input without forcing Verify by itself", () => {
@@ -852,6 +884,8 @@ describe("compatibility decision read model", () => {
 
     expect(result.data.readinessResult.readinessState).toBe("needs-information");
     expect(result.data.readinessResult.recommendedNextAction.actionType).toBe("verify-information");
+    expect(result.data.recommendationBasis.basisType).toBe("conflict-review");
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
   });
 
   it("keeps a real seller reply ahead of detected conflict work", () => {
@@ -869,6 +903,8 @@ describe("compatibility decision read model", () => {
     });
 
     expect(result.data.recommendation.label).toBe("Respond to the seller reply.");
+    expect(result.data.recommendationBasis.basisType).toBe("seller-reply");
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
   });
 
   it("preserves an explicit resolution without rewriting disagreeing CRM aliases", () => {

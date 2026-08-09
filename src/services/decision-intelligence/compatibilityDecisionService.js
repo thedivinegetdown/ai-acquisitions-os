@@ -63,6 +63,14 @@ import {
   evaluateOfferReadiness,
   toOfferReadinessMetric,
 } from "./readiness";
+import {
+  RECOMMENDATION_BASIS_TYPES,
+  evaluateDataReliability,
+  evaluateRecommendationConfidence,
+  normalizeRecommendationBasis,
+  toDataReliabilityMetric,
+  toRecommendationConfidenceMetric,
+} from "./confidence-reliability";
 
 // Distinct responsibility: adapt existing deterministic deal facts into the
 // canonical Decision Intelligence contract without deriving scores from deal fields or mutating data.
@@ -555,24 +563,32 @@ function getRecommendation({
   };
 
   if (!dealId) {
-    return normalizeRecommendation({
-      actionCode: DECISION_ACTION_TAXONOMY.NEEDS_REVIEW,
-      label: "Needs review",
-      explanation: "A stable opportunity record is required before a next action can be evaluated safely.",
-      status: DECISION_EVALUATION_STATES.NOT_EVALUATED,
-      sourceMode: SOURCE_MODE,
-      rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
-      missingInformationIds: missingIds,
-      conflictIds,
-      approvalRequirement,
-      evaluatedTimestamp,
-    });
+    return {
+      recommendation: normalizeRecommendation({
+        actionCode: DECISION_ACTION_TAXONOMY.NEEDS_REVIEW,
+        label: "Needs review",
+        explanation: "A stable opportunity record is required before a next action can be evaluated safely.",
+        status: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+        sourceMode: SOURCE_MODE,
+        rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
+        missingInformationIds: missingIds,
+        conflictIds,
+        approvalRequirement,
+        evaluatedTimestamp,
+      }),
+      recommendationBasis: normalizeRecommendationBasis({
+        basisType: RECOMMENDATION_BASIS_TYPES.UNAVAILABLE,
+        limitations: ["A stable opportunity record is unavailable."],
+        explanation: "No deterministic recommendation basis can be identified without a stable opportunity record.",
+      }),
+    };
   }
 
   let actionCode;
   let label;
   let explanation;
   let supportingEvidence = [];
+  let recommendationBasis = {};
 
   if (sellerReply) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
@@ -581,12 +597,30 @@ function getRecommendation({
     supportingEvidence = evidence
       .filter((entry) => entry.sourceType === "conversation-summary")
       .map((entry) => entry.evidenceId);
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.SELLER_REPLY,
+      triggerId: `seller-reply:deal:${idSegment(dealId)}`,
+      triggerLabel: "Inbound seller reply",
+      relatedCanonicalFields: ["communication.latestInboundMessage"],
+      evidenceIds: supportingEvidence,
+      directTrigger: true,
+      explanation: "A valid linked inbound seller message directly triggers the response recommendation.",
+    };
   } else if (dueContext.isOverdue) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
     label = "Follow up with the seller today and update the next action.";
     explanation = "The current deal follow-up date is overdue.";
     const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
     supportingEvidence = dueEvidence ? [dueEvidence.evidenceId] : [];
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.OVERDUE_ACTION,
+      triggerId: `overdue-action:deal:${idSegment(dealId)}`,
+      triggerLabel: "Overdue follow-up",
+      relatedCanonicalFields: ["deal.followUpDueAt"],
+      evidenceIds: supportingEvidence,
+      directTrigger: true,
+      explanation: "The supplied follow-up date is explicitly overdue.",
+    };
   } else if (taskDue || dueContext.isDue) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
     label = "Complete the due follow-up action.";
@@ -596,6 +630,15 @@ function getRecommendation({
       .map((entry) => entry.evidenceId);
     const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
     if (dueEvidence) supportingEvidence.push(dueEvidence.evidenceId);
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.DUE_ACTION,
+      triggerId: `due-action:deal:${idSegment(dealId)}`,
+      triggerLabel: "Due follow-up action",
+      relatedCanonicalFields: ["deal.followUpDueAt"],
+      evidenceIds: supportingEvidence,
+      directTrigger: true,
+      explanation: "A linked task or stored follow-up date is currently due.",
+    };
   } else if (
     missingInformationReadModel?.highestPriorityAction?.enabled
   ) {
@@ -628,10 +671,30 @@ function getRecommendation({
       informationItem?.reason || "Review the current stored information."
     }`;
     supportingEvidence = informationItem?.evidenceReferenceIds || [];
+    const isConflict = informationItem?.state === "conflicting" || informationAction.actionType === "review-conflict";
+    recommendationBasis = {
+      basisType: isConflict ? RECOMMENDATION_BASIS_TYPES.CONFLICT_REVIEW : RECOMMENDATION_BASIS_TYPES.MISSING_INFORMATION,
+      triggerId: informationItem?.itemId || informationAction.actionId,
+      triggerLabel: informationItem?.label || informationAction.label,
+      relatedCanonicalFields: informationItem?.canonicalField ? [informationItem.canonicalField] : [],
+      evidenceIds: supportingEvidence,
+      missingInformationIds: informationItem?.itemId ? [informationItem.itemId] : [],
+      conflictIds: informationItem?.conflictIds || [],
+      directTrigger: true,
+      explanation: isConflict ? "A deterministic conflicting-information item requires source review." : "A deterministic Missing Information requirement identifies the next fact to collect.",
+    };
   } else if (approvalSummary.pendingCount > 0) {
     actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
     label = "Review the pending approval before continuing.";
     explanation = approvalSummary.reason;
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.PENDING_APPROVAL,
+      triggerId: approvalSummary.approvalReferenceIds[0] || `approval-trigger:deal:${idSegment(dealId)}`,
+      triggerLabel: "Pending approval",
+      approvalReferenceIds: approvalSummary.approvalReferenceIds,
+      directTrigger: true,
+      explanation: "A real linked pending approval record requires review.",
+    };
   } else if (
     readinessResult &&
     [
@@ -645,6 +708,18 @@ function getRecommendation({
     label = readinessResult.recommendedNextAction.label;
     explanation = readinessResult.recommendedNextAction.explanation || readinessResult.explanation;
     supportingEvidence = readinessResult.evidenceIds;
+    recommendationBasis = {
+      basisType: readinessResult.readinessState === READINESS_STATES.MANUAL_REVIEW_REQUIRED ? RECOMMENDATION_BASIS_TYPES.MANUAL_REVIEW : RECOMMENDATION_BASIS_TYPES.READINESS_BLOCKER,
+      triggerId: readinessResult.readinessId,
+      triggerLabel: readinessResult.displayLabel,
+      evidenceIds: supportingEvidence,
+      missingInformationIds: readinessResult.missingInformationIds,
+      conflictIds: readinessResult.conflictIds,
+      readinessGateIds: [...(readinessResult.failedGateResults || []), ...(readinessResult.pendingGates || []), ...(readinessResult.manualReviewGates || [])].map((gate) => gate.gateId),
+      strategyRuleset: readinessResult.rulesetVersion,
+      directTrigger: true,
+      explanation: "The canonical Offer Readiness result identifies required review work.",
+    };
   } else if (
     residentialStrategyResult?.eligible &&
     residentialStrategyResult?.reviewGuidance?.label
@@ -657,6 +732,15 @@ function getRecommendation({
       ...(residentialStrategyResult.pursuitScoreResult
         ?.evidenceReferenceIds || []),
     ]);
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.RESIDENTIAL_STRATEGY_GUIDANCE,
+      triggerId: `residential-guidance:deal:${idSegment(dealId)}`,
+      triggerLabel: residentialStrategyResult.reviewGuidance.label,
+      evidenceIds: supportingEvidence,
+      strategyRuleset: residentialStrategyResult.scoringRulesetVersion,
+      directTrigger: true,
+      explanation: "Residential Strategy v1 produced deterministic review guidance.",
+    };
   } else if (
     vacantLandStrategyResult?.eligible &&
     vacantLandStrategyResult?.reviewGuidance?.label
@@ -668,6 +752,15 @@ function getRecommendation({
       ...(vacantLandStrategyResult.valuation?.inputEvidenceIds || []),
       ...(vacantLandStrategyResult.pursuitScoreResult?.evidenceReferenceIds || []),
     ]);
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.VACANT_LAND_STRATEGY_GUIDANCE,
+      triggerId: `vacant-land-guidance:deal:${idSegment(dealId)}`,
+      triggerLabel: vacantLandStrategyResult.reviewGuidance.label,
+      evidenceIds: supportingEvidence,
+      strategyRuleset: vacantLandStrategyResult.scoringRulesetVersion,
+      directTrigger: true,
+      explanation: "Vacant Land Strategy v1 produced deterministic review guidance.",
+    };
   } else if (
     readinessResult?.readinessState ===
     READINESS_STATES.READY_FOR_OFFER_PREPARATION
@@ -676,11 +769,33 @@ function getRecommendation({
     label = readinessResult.recommendedNextAction.label;
     explanation = readinessResult.recommendedNextAction.explanation;
     supportingEvidence = readinessResult.evidenceIds;
+    recommendationBasis = {
+      basisType: RECOMMENDATION_BASIS_TYPES.READY_FOR_OFFER_PREPARATION,
+      triggerId: readinessResult.readinessId,
+      triggerLabel: readinessResult.displayLabel,
+      evidenceIds: supportingEvidence,
+      readinessGateIds: (readinessResult.passedGateResults || []).map((gate) => gate.gateId),
+      strategyRuleset: readinessResult.rulesetVersion,
+      directTrigger: true,
+      explanation: "All blocking Offer Readiness gates passed for human offer preparation.",
+    };
   } else {
     actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
     label = missingInformationReadModel?.limitations?.[0]?.label || assetStrategyContext.statusSummary;
     explanation = readinessResult?.explanation || "Offer Readiness is unavailable for the selected Asset Strategy.";
     supportingEvidence = assetStrategyContext.classificationEvidence.map((reference) => reference.evidenceId);
+    const classificationReview = assetStrategyContext.classificationState !== ASSET_CLASSIFICATION_STATES.CLASSIFIED;
+    recommendationBasis = {
+      basisType: classificationReview ? RECOMMENDATION_BASIS_TYPES.ASSET_CLASSIFICATION : RECOMMENDATION_BASIS_TYPES.COMPATIBILITY_FALLBACK,
+      triggerId: classificationReview ? `asset-classification:deal:${idSegment(dealId)}` : `compatibility-fallback:deal:${idSegment(dealId)}`,
+      triggerLabel: label,
+      relatedCanonicalFields: classificationReview ? ["asset.classification"] : [],
+      evidenceIds: supportingEvidence,
+      conflictIds,
+      directTrigger: classificationReview,
+      limitations: classificationReview ? [] : ["No more specific deterministic recommendation branch is available."],
+      explanation: classificationReview ? "Asset classification must be resolved before strategy-specific decision analysis." : "The current recommendation is a bounded compatibility fallback.",
+    };
   }
 
   const hasSafeResult = Boolean(
@@ -692,30 +807,33 @@ function getRecommendation({
         vacantLandStrategyResult?.eligible ||
         readinessResult?.evaluationState === "evaluated")
   );
-  return normalizeRecommendation({
-    recommendationId: `recommendation:deal:${idSegment(dealId)}:compatibility`,
-    actionCode,
-    label,
-    explanation,
-    status: hasSafeResult
-      ? DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
-      : DECISION_EVALUATION_STATES.NOT_EVALUATED,
-    sourceMode: SOURCE_MODE,
-    rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
-    evidenceReferenceIds: supportingEvidence,
-    missingInformationIds: missingIds,
-    conflictIds,
-    approvalRequirement,
-    evaluatedTimestamp,
-    actionWindow: dueContext.dueAt
-      ? {
-          label: dueContext.isOverdue ? "Overdue" : `Due ${dueContext.dueKey}`,
-          dueTimestamp: dueContext.dueAt,
-        }
-      : null,
-    confidenceReference: null,
-    overrideReference: null,
-  });
+  return {
+    recommendation: normalizeRecommendation({
+      recommendationId: `recommendation:deal:${idSegment(dealId)}:compatibility`,
+      actionCode,
+      label,
+      explanation,
+      status: hasSafeResult
+        ? DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
+        : DECISION_EVALUATION_STATES.NOT_EVALUATED,
+      sourceMode: SOURCE_MODE,
+      rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
+      evidenceReferenceIds: supportingEvidence,
+      missingInformationIds: missingIds,
+      conflictIds,
+      approvalRequirement,
+      evaluatedTimestamp,
+      actionWindow: dueContext.dueAt
+        ? {
+            label: dueContext.isOverdue ? "Overdue" : `Due ${dueContext.dueKey}`,
+            dueTimestamp: dueContext.dueAt,
+          }
+        : null,
+      confidenceReference: null,
+      overrideReference: null,
+    }),
+    recommendationBasis: normalizeRecommendationBasis(recommendationBasis),
+  };
 }
 
 function buildMetricOutputs({
@@ -725,6 +843,8 @@ function buildMetricOutputs({
   evidence,
   pursuitScoreResult,
   readinessResult,
+  dataReliabilityResult,
+  recommendationConfidenceResult,
 }) {
   const pursuitScoreMetric = toPursuitScoreMetric(pursuitScoreResult, {
     assetStrategyContext,
@@ -739,6 +859,14 @@ function buildMetricOutputs({
 
     if (definition.id === "offer-readiness") {
       return readinessMetric;
+    }
+
+    if (definition.id === "data-reliability") {
+      return toDataReliabilityMetric(dataReliabilityResult);
+    }
+
+    if (definition.id === "recommendation-confidence") {
+      return toRecommendationConfidenceMetric(recommendationConfidenceResult);
     }
 
     if (definition.id === "recommended-action-window") {
@@ -1056,7 +1184,7 @@ function buildReadModel({
     sellerReply,
     taskDue,
   });
-  const recommendation = getRecommendation({
+  const recommendationSelection = getRecommendation({
     approvalSummary,
     assetStrategyContext,
     conflicts: normalizedConflicts,
@@ -1072,6 +1200,37 @@ function buildReadModel({
     sellerReply,
     taskDue,
   });
+  const recommendationBasis = recommendationSelection.recommendationBasis;
+  const dataReliabilityResult = evaluateDataReliability({
+    assetStrategyContext,
+    conflictReadModel,
+    evaluatedTimestamp,
+    evidenceRegistry,
+    missingInformationReadModel,
+    recommendationBasis,
+  });
+  const recommendationConfidenceResult = evaluateRecommendationConfidence({
+    approvalContext: approvalSummary,
+    conflictReadModel,
+    dataReliabilityResult,
+    evaluatedTimestamp,
+    evidenceRegistry,
+    missingInformationReadModel,
+    readinessResult,
+    recommendation: recommendationSelection.recommendation,
+    recommendationBasis,
+  });
+  const recommendation = normalizeRecommendation({
+    ...recommendationSelection.recommendation,
+    confidenceReference: recommendationConfidenceResult.evaluationState === "evaluated"
+      ? recommendationConfidenceResult.confidenceId
+      : null,
+  });
+  const decisionQualityWarnings = uniqueStrings([
+    ...sourceWarnings,
+    ...(dataReliabilityResult.warnings || []),
+    ...(recommendationConfidenceResult.warnings || []),
+  ]).slice(0, 10);
   const metricOutputs = buildMetricOutputs({
     assetStrategyContext,
     dueContext,
@@ -1079,6 +1238,8 @@ function buildReadModel({
     evidence,
     pursuitScoreResult: resolvedPursuitScoreResult,
     readinessResult,
+    dataReliabilityResult,
+    recommendationConfidenceResult,
   });
   const decisionRecord = normalizeDecisionRecord({
     decisionId: dealId ? `decision:deal:${idSegment(dealId)}:compatibility` : null,
@@ -1127,9 +1288,9 @@ function buildReadModel({
     expirationTimestamp: null,
     revalidationState: "not-evaluated",
     sourceMode: SOURCE_MODE,
-    partialDataWarnings: sourceWarnings,
+    partialDataWarnings: decisionQualityWarnings,
     decisionStatus: dealId
-      ? sourceWarnings.length
+      ? decisionQualityWarnings.length
         ? "partial-compatibility-result"
         : "compatibility-result"
       : "incomplete",
@@ -1154,14 +1315,21 @@ function buildReadModel({
     evidenceRegistry,
     evidenceCoverage,
     evidenceLineage,
+    dataReliabilityResult,
+    recommendationConfidenceResult,
+    recommendationBasis,
     recommendationTraceability: {
-      evidenceIds: decisionRecord.recommendation.evidenceReferenceIds,
-      missingInformationIds: decisionRecord.recommendation.missingInformationIds,
-      conflictIds: decisionRecord.recommendation.conflictIds,
+      evidenceIds: recommendationBasis.evidenceIds,
+      missingInformationIds: recommendationBasis.missingInformationIds,
+      conflictIds: recommendationBasis.conflictIds,
+      readinessGateIds: recommendationBasis.readinessGateIds,
+      basisType: recommendationBasis.basisType,
       rulesetVersion: decisionRecord.recommendation.rulesetVersion,
-      limitationCodes: decisionRecord.recommendation.evidenceReferenceIds.length
-        ? []
-        : ["missing-explicit-value"],
+      limitationCodes: recommendationBasis.limitations.length
+        ? recommendationBasis.limitations
+        : recommendationBasis.evidenceIds.length || recommendationBasis.missingInformationIds.length || recommendationBasis.conflictIds.length || recommendationBasis.readinessGateIds.length || recommendationBasis.approvalReferenceIds.length
+          ? []
+          : ["missing-explicit-value"],
     },
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
@@ -1176,8 +1344,8 @@ function buildReadModel({
         ? normalizedPursuitScoreResult
         : null,
     conflictReferences: decisionRecord.conflictReferences,
-    sourceWarnings,
-    sourceStatus: sourceWarnings.length ? "partial" : "complete",
+    sourceWarnings: decisionQualityWarnings,
+    sourceStatus: decisionQualityWarnings.length ? "partial" : "complete",
     ruleset,
     sourceFreshness: buildSourceFreshness(evidence),
     approvalSummary,
