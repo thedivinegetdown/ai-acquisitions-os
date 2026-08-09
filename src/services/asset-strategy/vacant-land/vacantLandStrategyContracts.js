@@ -47,7 +47,7 @@ export const VACANT_LAND_CAPABILITY_SUPPORT = Object.freeze({
   buildabilityConclusion: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
   entitlementFeasibility: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
   subdivisionFeasibility: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
-  offerReadiness: VACANT_LAND_CAPABILITY_STATES.UNAVAILABLE,
+  offerReadiness: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
   offerPreparation: VACANT_LAND_CAPABILITY_STATES.REVIEW_ONLY,
   sellerFinance: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
   legalTitleConclusions: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
@@ -318,8 +318,8 @@ export const VACANT_LAND_ACQUISITION_STRATEGY = Object.freeze(
       ],
       readinessGates: [
         {
-          gateId: "vacant-land-readiness-placeholder-v1",
-          label: "Vacant land readiness remains unfinished until DI-04",
+          gateId: "vacant-land-offer-readiness-v1",
+          label: "Vacant land offer-readiness gate",
           requiredFactIds: REQUIRED_ANALYSIS_FACTS,
           blockingFactIds: REQUIRED_ANALYSIS_FACTS,
           outputMetricIds: ["offer-readiness"],

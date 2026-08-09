@@ -39,6 +39,7 @@ const DocumentVault = lazy(() => import("../../components/DocumentVault"));
 const MessageCenter = lazy(() => import("../../components/MessageCenter"));
 const NegotiationTracker = lazy(() => import("../../components/NegotiationTracker"));
 const OfferEngine = lazy(() => import("../../components/OfferEngine"));
+const OfferReadinessSummary = lazy(() => import("./OfferReadinessSummary"));
 const PropertyIntelligencePanel = lazy(() => import("../../components/PropertyIntelligencePanel"));
 const PursuitScoreSummary = lazy(() => import("./PursuitScoreSummary"));
 const ResidentialStrategySummary = lazy(() => import("./ResidentialStrategySummary"));
@@ -244,14 +245,7 @@ function PrimaryActions({ actions, onAction }) {
   );
 }
 
-function readinessStatus(value) {
-  if (value === "Ready to Offer") return "success";
-  if (value === "Ready to Analyze") return "info";
-  if (value === "Needs Info") return "warning";
-  return "neutral";
-}
-
-function DecisionOverview({ deal, decisionResult, onAction }) {
+function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace }) {
   if (!decisionResult?.success) {
     return (
       <Card>
@@ -296,8 +290,8 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           <StatusBadge status={LIFECYCLE_STATUS[readModel.lifecycle.state] || "neutral"}>
             Lifecycle: {readModel.lifecycle.state || "Not evaluated"}
           </StatusBadge>
-          {readiness?.evaluationState === "compatibility-result" ? (
-            <StatusBadge status={readinessStatus(readiness.displayValue)}>
+          {readiness?.evaluationState === "evaluated" ? (
+            <StatusBadge status={readiness.value === "ready-for-offer-preparation" ? "success" : "warning"}>
               Offer readiness: {readiness.displayValue}
             </StatusBadge>
           ) : null}
@@ -359,12 +353,12 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           {assetStrategyContext.residentialStrategyEligibility ? (
             <div>
               <dt>Offer Readiness</dt>
-              <dd>Compatibility Only until DI-04</dd>
+              <dd>Implemented</dd>
             </div>
           ) : assetStrategyContext.landStrategyEligibility ? (
             <div>
               <dt>Offer Readiness</dt>
-              <dd>Not Final until DI-04</dd>
+              <dd>Implemented</dd>
             </div>
           ) : null}
         </dl>
@@ -403,6 +397,13 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           />
         </LazySection>
       ) : null}
+      <LazySection label="Loading Offer Readiness gates...">
+        <OfferReadinessSummary
+          onNavigateSection={onAction}
+          onNavigateWorkspace={onNavigateWorkspace}
+          result={readModel.readinessResult}
+        />
+      </LazySection>
       {readModel.residentialStrategyResult?.eligible ? (
         <LazySection label="Loading Residential Strategy summary...">
           <ResidentialStrategySummary result={readModel.residentialStrategyResult} />
@@ -979,6 +980,7 @@ export default function DealDecisionRoom({
           deal={deal}
           decisionResult={decisionResult}
           onAction={handlePrimaryAction}
+          onNavigateWorkspace={onNavigateWorkspace}
         />
       );
     }
@@ -1071,8 +1073,8 @@ export default function DealDecisionRoom({
         </div>
         <div className="decision-room__hero-badges">
           <StatusBadge status="info">{stage}</StatusBadge>
-          {readiness?.evaluationState === "compatibility-result" ? (
-            <StatusBadge status={readinessStatus(readiness.displayValue)}>
+          {readiness?.evaluationState === "evaluated" ? (
+            <StatusBadge status={readiness.value === "ready-for-offer-preparation" ? "success" : "warning"}>
               {readiness.displayValue}
             </StatusBadge>
           ) : null}

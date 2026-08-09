@@ -136,15 +136,17 @@ describe("compatibility decision read model", () => {
     expect(JSON.stringify(recommendation).toLowerCase()).not.toContain("ai recommendation");
   });
 
-  it("keeps readiness compatibility-only while integrating production Pursuit Score", () => {
+  it("keeps canonical readiness independent while integrating production Pursuit Score", () => {
     const result = build({ deal: completeDeal() });
     const readiness = result.data.metricsById["offer-readiness"];
 
     expect(readiness.evaluationState).toBe(
-      DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
+      DECISION_EVALUATION_STATES.EVALUATED
     );
-    expect(readiness.value).toBe(100);
-    expect(readiness.displayValue).toBe("Ready to Offer");
+    expect(readiness.value).toBe("ready-for-offer-preparation");
+    expect(readiness.displayValue).toBe("Ready for Offer Preparation");
+    expect(readiness.unit).toBe("readiness-state");
+    expect(readiness.scale).toBeNull();
     expect(result.data.metricsById["pursuit-score"]).toMatchObject({
       evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
       value: 80,
@@ -388,12 +390,23 @@ describe("compatibility decision read model", () => {
     });
   });
 
+  it("uses canonical vacant-land readiness without residential requirements", () => {
+    const result = build({
+      deal: completeDeal({ asset_type: ASSET_TYPES.VACANT_RESIDENTIAL_LAND }),
+    });
+    const readiness = result.data.metricsById["offer-readiness"];
+
+    expect(readiness).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "needs-information",
+      displayValue: "Needs Information",
+    });
+    expect(result.data.missingInformationReferences.map((issue) => issue.label)).not.toEqual(
+      expect.arrayContaining(["Property condition", "Repairs needed", "ARV / comps"])
+    );
+  });
+
   it.each([
-    [
-      "vacant land",
-      ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
-      "vacant-land-acquisition",
-    ],
     [
       "small multifamily",
       ASSET_TYPES.SMALL_MULTIFAMILY,
@@ -406,7 +419,7 @@ describe("compatibility decision read model", () => {
     ],
     ["commercial", ASSET_TYPES.COMMERCIAL, "commercial-acquisition"],
   ])(
-    "keeps %s truthful and unavailable for residential readiness",
+    "keeps %s truthful and unavailable for canonical readiness",
     (_, assetType, strategyId) => {
       const result = build({ deal: completeDeal({ asset_type: assetType }) });
       const readiness = result.data.metricsById["offer-readiness"];
@@ -527,7 +540,7 @@ describe("compatibility decision read model", () => {
       result.data.missingInformationReferences.find((issue) => issue.label === "Property condition")
     ).toMatchObject({ severity: "advisory" });
     expect(readiness.blockingIssueIds.length).toBeGreaterThanOrEqual(1);
-    expect(readiness.advisoryIssueIds).toEqual([]);
+    expect(readiness.advisoryIssueIds).toContain("residential-advisory-signals");
   });
 
   it("uses a real due date as the only compatibility action-window value", () => {
@@ -675,7 +688,10 @@ describe("compatibility decision read model", () => {
     expect(result.data.sourceWarnings).toContain(
       "Asset classification could not be read from the current CRM record."
     );
-    expect(result.data.metricsById["offer-readiness"].value).toBeNull();
+    expect(result.data.metricsById["offer-readiness"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
+      value: null,
+    });
   });
 
   it("returns a partial successful result if one requirement field throws", () => {
@@ -691,13 +707,10 @@ describe("compatibility decision read model", () => {
     expect(result.success).toBe(true);
     expect(result.data.sourceStatus).toBe("partial");
     expect(result.data.metricsById["offer-readiness"]).toMatchObject({
-      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
-      value: null,
-      displayValue: null,
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "ready-for-offer-preparation",
     });
-    expect(result.data.sourceWarnings).toContain(
-      "Residential offer readiness could not be evaluated from one or more stored fields."
-    );
+    expect(result.data.sourceWarnings.some((warning) => /could not be read/i.test(warning))).toBe(true);
     expect(JSON.stringify(result)).not.toContain("service_role");
   });
 
@@ -753,6 +766,9 @@ describe("compatibility decision read model", () => {
     expect(result.data.decisionRecord.assetStrategyIdentifier).toBe(
       "vacant-land-acquisition"
     );
-    expect(result.data.metricsById["offer-readiness"].value).toBeNull();
+    expect(result.data.metricsById["offer-readiness"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "needs-information",
+    });
   });
 });

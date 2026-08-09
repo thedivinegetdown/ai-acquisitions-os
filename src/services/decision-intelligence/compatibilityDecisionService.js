@@ -15,11 +15,6 @@ import {
   evaluateVacantLandValuation,
 } from "../asset-strategy/vacant-land";
 import {
-  OFFER_READINESS_CHECKLIST,
-  analyzeOfferReadiness,
-} from "../offers/offerReadinessService";
-import {
-  RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS,
   evaluateMissingInformation,
   isBlockingInformationState,
   toDecisionIssueReferences,
@@ -57,13 +52,18 @@ import {
   normalizePursuitScoreResult,
   toPursuitScoreMetric,
 } from "./pursuit-scoring";
+import {
+  READINESS_STATES,
+  RESIDENTIAL_READINESS_POLICY,
+  VACANT_LAND_READINESS_POLICY,
+  evaluateOfferReadiness,
+  toOfferReadinessMetric,
+} from "./readiness";
 
 // Distinct responsibility: adapt existing deterministic deal facts into the
 // canonical Decision Intelligence contract without deriving scores from deal fields or mutating data.
 export const COMPATIBILITY_DECISION_RULESET_ID = "deal-decision-compatibility";
 export const COMPATIBILITY_DECISION_RULESET_VERSION = "decision-compatibility-v1";
-export const OFFER_READINESS_COMPATIBILITY_RULESET_VERSION =
-  "offer-readiness-compatibility-v1";
 
 const SOURCE_MODE = DECISION_SOURCE_MODES.DETERMINISTIC_COMPATIBILITY;
 const TARGET_SECTIONS = Object.freeze([
@@ -89,19 +89,6 @@ const TERMINAL_OUTCOMES = new Set([
 const COMPLETED_TASK_STATES = new Set(["complete", "completed", "done", "cancelled", "canceled"]);
 const CRM_COMPATIBILITY_WARNING =
   "Current CRM fields are compatibility evidence without field-level source timestamps or verification metadata.";
-
-const READINESS_ACTION_CODES = {
-  "Ask about repairs and current property condition.":
-    DECISION_ACTION_TAXONOMY.COLLECT_PROPERTY_CONDITION,
-  "Ask what is motivating the seller to consider an offer.":
-    DECISION_ACTION_TAXONOMY.COLLECT_SELLER_MOTIVATION,
-  "Ask about the seller's ideal timeline.":
-    DECISION_ACTION_TAXONOMY.COLLECT_SELLER_TIMELINE,
-  "Ask for the seller's asking price or target number.":
-    DECISION_ACTION_TAXONOMY.COLLECT_ASKING_PRICE,
-  "Run comps before preparing an offer.": DECISION_ACTION_TAXONOMY.RUN_COMPS,
-  "Prepare an offer range.": DECISION_ACTION_TAXONOMY.PREPARE_OFFER_RANGE,
-};
 
 function safeObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -185,19 +172,6 @@ function getFieldEntry(deal, keys) {
   return null;
 }
 
-function safelyAnalyzeOfferReadiness(deal, allowed) {
-  if (!allowed) return { readiness: null, warning: null };
-  try {
-    return { readiness: analyzeOfferReadiness(deal), warning: null };
-  } catch {
-    return {
-      readiness: null,
-      warning:
-        "Residential offer readiness could not be evaluated from one or more stored fields.",
-    };
-  }
-}
-
 function valueSummary(value) {
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return safeText(value, 200) || null;
@@ -245,7 +219,7 @@ function dedupeEvidence(references) {
   return [...byId.values()].slice(0, DECISION_EVIDENCE_LIMIT);
 }
 
-function buildCurrentDealEvidence(deal, readiness, context, dealId) {
+function buildCurrentDealEvidence(deal, context, dealId) {
   const descriptors = [
     { canonicalField: "property.address", keys: DEAL_FIELD_ALIASES.address },
     { canonicalField: "seller.name", keys: DEAL_FIELD_ALIASES.ownerName },
@@ -255,20 +229,6 @@ function buildCurrentDealEvidence(deal, readiness, context, dealId) {
     { canonicalField: "deal.followUpDueAt", keys: ["due_date", "follow_up_date"] },
     { canonicalField: "deal.status", keys: ["status", "negotiation_status"] },
   ];
-
-  const readinessChecklist = Array.isArray(readiness?.checklist)
-    ? readiness.checklist
-    : [];
-  const readinessByLabel = new Map(
-    readinessChecklist.map((item) => [item.label, item])
-  );
-  OFFER_READINESS_CHECKLIST.forEach((item) => {
-    if (!readinessByLabel.get(item.label)?.complete) return;
-    descriptors.push({
-      canonicalField: RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS[item.label],
-      keys: item.keys,
-    });
-  });
 
   return dedupeEvidence(
     descriptors.map((descriptor) => {
@@ -456,6 +416,7 @@ function getLifecycle({
   evaluatedTimestamp,
   missingInformationReadModel,
   previousLifecycle,
+  readinessResult,
   sellerReply,
   taskDue,
 }) {
@@ -513,7 +474,14 @@ function getLifecycle({
       ...actionEvidence.map((entry) => entry.evidenceId),
       dueEvidence?.evidenceId,
     ].filter(Boolean);
-  } else if (blockingInformation.length || conflicts.length) {
+  } else if (
+    blockingInformation.length ||
+    conflicts.length ||
+    [
+      READINESS_STATES.NEEDS_INFORMATION,
+      READINESS_STATES.NEEDS_VERIFICATION,
+    ].includes(readinessResult?.readinessState)
+  ) {
     state = DECISION_LIFECYCLE_STATES.VERIFY;
     const reasons = [
       blockingInformation.length
@@ -522,6 +490,12 @@ function getLifecycle({
           } information or verification`
         : null,
       conflicts.length ? `${conflicts.length} explicit conflict${conflicts.length === 1 ? " is" : "s are"} unresolved` : null,
+      readinessResult?.readinessState === READINESS_STATES.NEEDS_INFORMATION
+        ? "Offer Readiness requires decision-critical information"
+        : null,
+      readinessResult?.readinessState === READINESS_STATES.NEEDS_VERIFICATION
+        ? "Offer Readiness requires critical verification"
+        : null,
     ].filter(Boolean);
     reason = `${reasons.join(" and ")}.`;
     lifecycleEvidence = uniqueStrings([
@@ -530,7 +504,7 @@ function getLifecycle({
     ]);
   } else {
     state = DECISION_LIFECYCLE_STATES.DECIDE;
-    reason = "The existing compatibility checklist is complete enough for human decision review.";
+    reason = "Strategy analysis is available for human decision review; passing readiness does not execute an action.";
     lifecycleEvidence = evidence.map((entry) => entry.evidenceId);
   }
 
@@ -558,9 +532,7 @@ function getRecommendation({
   missingInformation,
   missingInformationReadModel,
   conflicts,
-  readiness,
-  readinessCapability,
-  readinessWarning,
+  readinessResult,
   residentialStrategyResult,
   vacantLandStrategyResult,
   sellerReply,
@@ -654,6 +626,19 @@ function getRecommendation({
     label = "Review the pending approval before continuing.";
     explanation = approvalSummary.reason;
   } else if (
+    readinessResult &&
+    [
+      READINESS_STATES.BLOCKED,
+      READINESS_STATES.NEEDS_INFORMATION,
+      READINESS_STATES.NEEDS_VERIFICATION,
+      READINESS_STATES.MANUAL_REVIEW_REQUIRED,
+    ].includes(readinessResult.readinessState)
+  ) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = readinessResult.recommendedNextAction.label;
+    explanation = readinessResult.recommendedNextAction.explanation || readinessResult.explanation;
+    supportingEvidence = readinessResult.evidenceIds;
+  } else if (
     residentialStrategyResult?.eligible &&
     residentialStrategyResult?.reviewGuidance?.label
   ) {
@@ -676,31 +661,19 @@ function getRecommendation({
       ...(vacantLandStrategyResult.valuation?.inputEvidenceIds || []),
       ...(vacantLandStrategyResult.pursuitScoreResult?.evidenceReferenceIds || []),
     ]);
-  } else if (!readinessCapability.allowed) {
-    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
-    label =
-      missingInformationReadModel?.limitations?.[0]?.label ||
-      assetStrategyContext.statusSummary;
-    explanation = `${readinessCapability.explanation} Maintain seller context and communication without residential calculations.`;
-    supportingEvidence = assetStrategyContext.classificationEvidence.map(
-      (reference) => reference.evidenceId
-    );
-  } else if (!readiness) {
-    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
-    label = "Review residential compatibility inputs.";
-    explanation =
-      readinessWarning ||
-      "Residential offer readiness could not be evaluated safely from the current record.";
+  } else if (
+    readinessResult?.readinessState ===
+    READINESS_STATES.READY_FOR_OFFER_PREPARATION
+  ) {
+    actionCode = DECISION_ACTION_TAXONOMY.PREPARE_OFFER_RANGE;
+    label = readinessResult.recommendedNextAction.label;
+    explanation = readinessResult.recommendedNextAction.explanation;
+    supportingEvidence = readinessResult.evidenceIds;
   } else {
-    actionCode =
-      READINESS_ACTION_CODES[readiness.recommendedNextStep] || DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
-    label = readiness.recommendedNextStep || "Needs review";
-    explanation = readiness.recommendedNextStep
-      ? "The existing deterministic offer-readiness checklist selected this next step."
-      : "The compatibility checklist did not produce a safe next action.";
-    supportingEvidence = evidence
-      .filter((entry) => entry.relatedCanonicalField)
-      .map((entry) => entry.evidenceId);
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = missingInformationReadModel?.limitations?.[0]?.label || assetStrategyContext.statusSummary;
+    explanation = readinessResult?.explanation || "Offer Readiness is unavailable for the selected Asset Strategy.";
+    supportingEvidence = assetStrategyContext.classificationEvidence.map((reference) => reference.evidenceId);
   }
 
   const hasSafeResult = Boolean(
@@ -708,7 +681,9 @@ function getRecommendation({
       (actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
         missingInformationReadModel?.highestPriorityAction?.enabled ||
         approvalSummary.pendingCount > 0 ||
-        residentialStrategyResult?.eligible)
+        residentialStrategyResult?.eligible ||
+        vacantLandStrategyResult?.eligible ||
+        readinessResult?.evaluationState === "evaluated")
   );
   return normalizeRecommendation({
     recommendationId: `recommendation:deal:${idSegment(dealId)}:compatibility`,
@@ -738,96 +713,25 @@ function getRecommendation({
 
 function buildMetricOutputs({
   assetStrategyContext,
-  dealId,
   dueContext,
   evaluatedTimestamp,
   evidence,
-  missingInformation,
-  missingInformationReadModel,
   pursuitScoreResult,
-  readinessWarning,
-  readiness,
-  readinessCapability,
+  readinessResult,
 }) {
   const pursuitScoreMetric = toPursuitScoreMetric(pursuitScoreResult, {
     assetStrategyContext,
     productionOnly: true,
   });
-  const missingIds = missingInformation
-    .filter((issue) =>
-      (missingInformationReadModel?.openItems || []).some(
-        (item) =>
-          item.itemId === issue.issueId &&
-          [
-            "residential-compatibility-requirements-v1",
-            "residential-strategy-requirements-v1",
-          ].includes(item.profileId)
-      )
-    )
-    .map((issue) => issue.issueId);
-  const readinessEvidence = evidence
-    .filter((entry) =>
-      Object.values(RESIDENTIAL_REQUIREMENT_CANONICAL_FIELDS).includes(
-        entry.relatedCanonicalField
-      )
-    )
-    .map((entry) => entry.evidenceId);
-  const completeCount = Array.isArray(readiness?.checklist)
-    ? readiness.checklist.filter((item) => item.complete).length
-    : 0;
-  const classificationIssueIds = missingInformation
-    .filter((issue) => issue.relatedCanonicalField === "property.assetType")
-    .map((issue) => issue.issueId);
-  const classificationEvidenceIds = assetStrategyContext.classificationEvidence.map(
-    (reference) => reference.evidenceId
-  );
+  const readinessMetric = toOfferReadinessMetric(readinessResult);
 
   return DECISION_METRIC_REGISTRY.map((definition) => {
     if (definition.id === "pursuit-score") {
       return pursuitScoreMetric;
     }
 
-    if (
-      definition.id === "offer-readiness" &&
-      dealId &&
-      readinessCapability.allowed &&
-      readiness
-    ) {
-      return normalizeMetricOutput({
-        metricId: definition.id,
-        evaluationState: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
-        value: readiness.score,
-        displayValue: readiness.status,
-        unit: "percent",
-        scale: "0-100 existing checklist completion",
-        explanation: `${completeCount} of ${readiness.checklist.length} existing offer-readiness checklist items are complete.`,
-        inputEvidenceIds: readinessEvidence,
-        blockingIssueIds: missingIds,
-        advisoryIssueIds: [],
-        rulesetVersion: OFFER_READINESS_COMPATIBILITY_RULESET_VERSION,
-        evaluatedTimestamp,
-        sourceMode: SOURCE_MODE,
-        partialDataWarnings: [
-          "This is the existing compatibility checklist, not the future strategy-aware readiness model.",
-        ],
-      });
-    }
-
     if (definition.id === "offer-readiness") {
-      return normalizeMetricOutput({
-        metricId: definition.id,
-        evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
-        value: null,
-        displayValue: null,
-        explanation: readinessWarning || readinessCapability.explanation,
-        inputEvidenceIds: classificationEvidenceIds,
-        blockingIssueIds: classificationIssueIds,
-        advisoryIssueIds: [],
-        rulesetVersion: OFFER_READINESS_COMPATIBILITY_RULESET_VERSION,
-        evaluatedTimestamp,
-        sourceMode: SOURCE_MODE,
-        partialDataWarnings: [readinessWarning || readinessCapability.explanation],
-      });
+      return readinessMetric;
     }
 
     if (definition.id === "recommended-action-window") {
@@ -897,7 +801,7 @@ function buildRuleset(evaluatedTimestamp) {
     compatibility: true,
     generatedTimestamp: evaluatedTimestamp,
     description:
-      "Deterministic compatibility wrapper around current deal facts and existing offer-readiness behavior.",
+      "Deterministic compatibility wrapper around current deal facts with canonical strategy-aware Offer Readiness.",
   });
 }
 
@@ -962,16 +866,7 @@ function buildReadModel({
   const context = getTenantContext(safeDeal);
   const evaluatedTimestamp = normalizeDecisionTimestamp(now);
   const assetStrategyContext = buildAssetStrategyContext(safeDeal);
-  const readinessCapability = canRunAssetCapability(
-    assetStrategyContext,
-    ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_READINESS
-  );
-  const readinessEvaluation = safelyAnalyzeOfferReadiness(
-    safeDeal,
-    readinessCapability.allowed
-  );
-  const readiness = readinessEvaluation.readiness;
-  const currentEvidence = buildCurrentDealEvidence(safeDeal, readiness, context, dealId);
+  const currentEvidence = buildCurrentDealEvidence(safeDeal, context, dealId);
   const externalEvidence = normalizeExternalEvidence(evidenceReferences, context);
   const conversationEvidence = adaptConversationEvidence(
     conversationSignals,
@@ -1079,6 +974,27 @@ function buildReadModel({
     missingInformationReadModel
   );
   const approvalSummary = buildApprovalSummary(approvalItems, context, dealId);
+  const readinessPolicy = assetStrategyContext.residentialStrategyEligibility
+    ? RESIDENTIAL_READINESS_POLICY
+    : assetStrategyContext.landStrategyEligibility
+      ? VACANT_LAND_READINESS_POLICY
+      : null;
+  const strategyResult = residentialStrategyResult || vacantLandStrategyResult;
+  const readinessResult = evaluateOfferReadiness({
+    approvalContext: {
+      required: approvalSummary.required,
+      status: approvalSummary.status,
+      reason: approvalSummary.reason,
+      approvalReferenceIds: approvalSummary.approvalReferenceIds,
+    },
+    assetStrategyContext,
+    conflicts: normalizedConflicts,
+    evaluatedTimestamp,
+    evidenceReferences: evidence,
+    missingInformationReadModel,
+    policy: readinessPolicy,
+    strategyResult,
+  });
   const dueContext = getDueContext(safeDeal, now);
   const sellerReply = hasSellerReply(conversationSignals, context, dealId);
   const taskDue = hasDueTask(tasks, context, dealId, now);
@@ -1089,7 +1005,7 @@ function buildReadModel({
     dealId ? "" : "The loaded opportunity has no stable compatibility identifier.",
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
     ...assetStrategyContext.sourceWarnings,
-    readinessEvaluation.warning || "",
+    ...readinessResult.warnings,
     ...missingInformationReadModel.partialDataWarnings,
     ...(residentialStrategyResult?.partialDataWarnings || []),
     ...(vacantLandStrategyResult?.partialDataWarnings || []),
@@ -1107,6 +1023,7 @@ function buildReadModel({
     evaluatedTimestamp,
     missingInformationReadModel,
     previousLifecycle,
+    readinessResult,
     sellerReply,
     taskDue,
   });
@@ -1120,9 +1037,7 @@ function buildReadModel({
     evidence,
     missingInformation,
     missingInformationReadModel,
-    readiness,
-    readinessCapability,
-    readinessWarning: readinessEvaluation.warning,
+    readinessResult,
     residentialStrategyResult,
     vacantLandStrategyResult,
     sellerReply,
@@ -1130,16 +1045,11 @@ function buildReadModel({
   });
   const metricOutputs = buildMetricOutputs({
     assetStrategyContext,
-    dealId,
     dueContext,
     evaluatedTimestamp,
     evidence,
-    missingInformation,
-    missingInformationReadModel,
     pursuitScoreResult: resolvedPursuitScoreResult,
-    readiness,
-    readinessCapability,
-    readinessWarning: readinessEvaluation.warning,
+    readinessResult,
   });
   const decisionRecord = normalizeDecisionRecord({
     decisionId: dealId ? `decision:deal:${idSegment(dealId)}:compatibility` : null,
@@ -1216,6 +1126,7 @@ function buildReadModel({
     missingInformationReadModel,
     residentialStrategyResult,
     vacantLandStrategyResult,
+    readinessResult,
     pursuitScoreResult:
       pursuitScoreMetric?.evaluationState ===
         DECISION_EVALUATION_STATES.EVALUATED &&

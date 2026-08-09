@@ -999,6 +999,110 @@
   outline-offset: 2px;
 }
 
+.offer-readiness-summary {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.offer-readiness-summary__counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.offer-readiness-summary__counts > div,
+.offer-readiness-summary__next,
+.offer-readiness-summary__approval {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.offer-readiness-summary__counts dt,
+.offer-readiness-summary__next span {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.offer-readiness-summary__counts dd {
+  font-size: var(--font-size-xl);
+  font-weight: var(--weight-bold);
+  margin: var(--space-1) 0 0;
+}
+
+.offer-readiness-summary__next {
+  align-items: center;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+
+.offer-readiness-summary__next div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.offer-readiness-summary__next p,
+.offer-readiness-summary__approval p,
+.offer-readiness-summary__details p {
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.offer-readiness-summary__details summary {
+  cursor: pointer;
+  font-weight: var(--weight-bold);
+}
+
+.offer-readiness-summary__details summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.offer-readiness-summary__details section {
+  margin-top: var(--space-4);
+}
+
+.offer-readiness-summary__details ul {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+
+.offer-readiness-summary__details li {
+  align-items: start;
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.offer-readiness-summary__details li div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.offer-readiness-summary__details li span,
+.offer-readiness-summary__details li small,
+.offer-readiness-summary__disclaimer {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+@media (max-width: 640px) {
+  .offer-readiness-summary__counts {
+    grid-template-columns: 1fr;
+  }
+
+  .offer-readiness-summary__next {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 .residential-offer-review,
 .buyer-blast-review {
   border-top: 1px solid var(--color-border);

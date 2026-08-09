@@ -215,8 +215,8 @@ describe("asset strategy runtime context", () => {
     ).toMatchObject({
       allowed: true,
       reasonCode:
-        ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_COMPATIBILITY_AVAILABLE,
-      compatibilityOnly: true,
+        ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_STRATEGY_AVAILABLE,
+      compatibilityOnly: false,
     });
     expect(
       canRunAssetCapability(
@@ -227,6 +227,24 @@ describe("asset strategy runtime context", () => {
       allowed: false,
       reasonCode: ASSET_CAPABILITY_REASON_CODES.CLASSIFICATION_REQUIRED,
       assetType: null,
+    });
+  });
+
+  it("marks strategy-aware Offer Readiness implemented without enabling autonomous offers", () => {
+    const residential = buildAssetStrategyContext(deal({ asset_type: "residential-home" }));
+    const land = buildAssetStrategyContext(deal({ asset_type: "vacant-residential-land" }));
+
+    expect(canRunAssetCapability(residential, ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_READINESS)).toMatchObject({
+      allowed: true,
+      implementationState: "implemented",
+    });
+    expect(canRunAssetCapability(land, ASSET_CAPABILITY_IDS.LAND_OFFER_READINESS)).toMatchObject({
+      allowed: true,
+      implementationState: "implemented",
+    });
+    expect(canRunAssetCapability(land, ASSET_CAPABILITY_IDS.LAND_OFFER_REVIEW)).toMatchObject({
+      allowed: true,
+      implementationState: "review-only",
     });
   });
 

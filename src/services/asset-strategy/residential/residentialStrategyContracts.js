@@ -42,7 +42,7 @@ export const RESIDENTIAL_CAPABILITY_SUPPORT = Object.freeze({
   pursuitScoring: RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
   exitCandidateReview: RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
   strategyPresentation: RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
-  offerReadiness: RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  offerReadiness: RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
   buyerMatching: RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
   negotiationTools: RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
   buyerMatchingInput: RESIDENTIAL_CAPABILITY_STATES.INPUT_READY,
@@ -245,10 +245,10 @@ export const RESIDENTIAL_ACQUISITION_STRATEGY = Object.freeze(
       ],
       readinessGates: [
         {
-          gateId: "residential-offer-readiness-compatibility-v1",
-          label: "Residential offer-readiness compatibility gate",
+          gateId: "residential-offer-readiness-v1",
+          label: "Residential offer-readiness gate",
           description:
-            "Preserves the existing compatibility checklist until DI-04 defines final readiness.",
+            "Uses the DI-04 Residential Strategy v1 readiness ruleset without a numeric percentage.",
           requiredFactIds: REQUIRED_ANALYSIS_FACTS,
           blockingFactIds: REQUIRED_ANALYSIS_FACTS,
           outputMetricIds: ["offer-readiness"],

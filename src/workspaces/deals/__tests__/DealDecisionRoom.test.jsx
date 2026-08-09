@@ -92,6 +92,9 @@ vi.mock("../ResidentialStrategySummary", () => ({
 vi.mock("../VacantLandStrategySummary", () => ({
   default: () => <div>Vacant Land Strategy Summary</div>,
 }));
+vi.mock("../OfferReadinessSummary", () => ({
+  default: ({ result }) => <div>Offer Readiness Summary: {result.displayLabel}</div>,
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -136,7 +139,8 @@ describe("DealDecisionRoom", () => {
     expect(
       screen.getAllByText("How would you describe the property's current condition?").length
     ).toBeGreaterThan(0);
-    expect(screen.getByText("Offer readiness: Not Ready")).toBeInTheDocument();
+    expect(await screen.findByText("Offer readiness: Needs Information")).toBeInTheDocument();
+    expect(await screen.findByText("Offer Readiness Summary: Needs Information")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
     expect(
       screen.getAllByText("Residential home - Implemented").length

@@ -1,6 +1,9 @@
 import { clampScore } from "../../utils/numbers";
 import { getDealField } from "../../utils/dealFields";
 
+// Legacy compatibility only. Implemented Asset Strategies use the canonical
+// DI-04 readiness gate framework; this checklist percentage is retained solely
+// for isolated legacy consumers and is never canonical Offer Readiness.
 export const OFFER_READINESS_CHECKLIST = [
   {
     label: "Asking price",
