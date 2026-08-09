@@ -3,7 +3,9 @@ import { ASSET_CLASSIFICATION_STATES, ASSET_TYPES } from "../../../asset-strateg
 import { RESIDENTIAL_FACT_IDS } from "../../../asset-strategy/residential/residentialStrategyContracts";
 import { VACANT_LAND_FACT_IDS } from "../../../asset-strategy/vacant-land/vacantLandStrategyContracts";
 import {
+  READINESS_ACTION_TYPES,
   READINESS_CONTRACT_VERSION,
+  READINESS_CRITICALITIES,
   READINESS_GATE_CATEGORIES,
   READINESS_GATE_STATES,
   READINESS_STATES,
@@ -112,6 +114,28 @@ function evaluate(policy, strategyResult, overrides = {}) {
   });
 }
 
+function evaluateGateStates(gateResults) {
+  const policy = {
+    strategyId: RESIDENTIAL_READINESS_POLICY.strategyId,
+    strategyVersion: RESIDENTIAL_READINESS_POLICY.strategyVersion,
+    assetType: RESIDENTIAL_READINESS_POLICY.assetType,
+    rulesetVersion: RESIDENTIAL_READINESS_POLICY.rulesetVersion,
+    label: "Readiness precedence fixture",
+    gates: gateResults.map((_, index) => ({
+      gateId: `fixture-gate-${index}`,
+      label: `Fixture gate ${index}`,
+      category: READINESS_GATE_CATEGORIES.STRATEGY_ANALYSIS,
+      criticality: READINESS_CRITICALITIES.BLOCKING,
+      relatedSection: "decision",
+      safeNextActionType: READINESS_ACTION_TYPES.COLLECT_INFORMATION,
+    })),
+    evaluateGate(definition) {
+      return gateResults[Number(definition.gateId.replace("fixture-gate-", ""))];
+    },
+  };
+  return evaluate(policy, residentialResult());
+}
+
 describe("readiness contracts", () => {
   it("normalizes the versioned non-numeric contract and bounded categories", () => {
     expect(READINESS_CONTRACT_VERSION).toBe("readiness-gate-contract-v1");
@@ -129,6 +153,52 @@ describe("readiness contracts", () => {
 });
 
 describe("generic readiness engine", () => {
+  const passed = { evaluationState: READINESS_GATE_STATES.PASSED, passed: true };
+  const missing = { evaluationState: READINESS_GATE_STATES.PENDING, reason: "A required fact is missing." };
+  const conflict = {
+    evaluationState: READINESS_GATE_STATES.PENDING,
+    conflictIds: ["conflict-1"],
+    safeNextAction: {
+      actionId: "review-conflict",
+      actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION,
+      label: "Review conflict",
+      targetSection: "decision",
+    },
+  };
+  const stale = { evaluationState: READINESS_GATE_STATES.PENDING, staleReferenceIds: ["stale-1"] };
+  const unverified = { evaluationState: READINESS_GATE_STATES.PENDING, unverifiedReferenceIds: ["unverified-1"] };
+  const manual = { evaluationState: READINESS_GATE_STATES.MANUAL_REVIEW };
+  const failed = { evaluationState: READINESS_GATE_STATES.FAILED, passed: false };
+  const unavailable = { evaluationState: READINESS_GATE_STATES.UNAVAILABLE };
+
+  it.each([
+    ["missing only", [missing], READINESS_STATES.NEEDS_INFORMATION],
+    ["conflict only", [conflict], READINESS_STATES.NEEDS_VERIFICATION],
+    ["stale only", [stale], READINESS_STATES.NEEDS_VERIFICATION],
+    ["unverified only", [unverified], READINESS_STATES.NEEDS_VERIFICATION],
+    ["missing and conflict", [missing, conflict], READINESS_STATES.NEEDS_INFORMATION],
+    ["missing and stale", [missing, stale], READINESS_STATES.NEEDS_INFORMATION],
+    ["missing and unverified", [missing, unverified], READINESS_STATES.NEEDS_INFORMATION],
+    ["missing and manual review", [missing, manual], READINESS_STATES.NEEDS_INFORMATION],
+    ["verification and manual review", [conflict, manual], READINESS_STATES.NEEDS_VERIFICATION],
+    ["failed and missing", [failed, missing], READINESS_STATES.BLOCKED],
+    ["unavailable and failed", [unavailable, failed], READINESS_STATES.UNAVAILABLE],
+    ["all passed", [passed, passed], READINESS_STATES.READY_FOR_OFFER_PREPARATION],
+  ])("applies canonical aggregate precedence for %s", (_, gates, expectedState) => {
+    expect(evaluateGateStates(gates).readinessState).toBe(expectedState);
+  });
+
+  it("keeps conflict-first next actions separate from mixed-state aggregation", () => {
+    const result = evaluateGateStates([missing, conflict]);
+    expect(result.readinessState).toBe(READINESS_STATES.NEEDS_INFORMATION);
+    expect(result.recommendedNextAction).toMatchObject({
+      actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION,
+      label: "Review conflict",
+    });
+    expect(result).not.toHaveProperty("score");
+    expect(result).not.toHaveProperty("percentage");
+  });
+
   it("is deterministic and never uses Pursuit Score thresholds", () => {
     const first = evaluate(RESIDENTIAL_READINESS_POLICY, residentialResult());
     const second = evaluate(RESIDENTIAL_READINESS_POLICY, residentialResult());
@@ -189,6 +259,34 @@ describe("generic readiness engine", () => {
 });
 
 describe("strategy readiness policies", () => {
+  it("applies missing-information precedence to mixed Residential verification state", () => {
+    const strategyResult = residentialResult();
+    delete strategyResult.factReadModel.factsById[RESIDENTIAL_FACT_IDS.PROPERTY_CONDITION];
+    strategyResult.factReadModel.factsById[RESIDENTIAL_FACT_IDS.AFTER_REPAIR_VALUE] = fact(
+      RESIDENTIAL_FACT_IDS.AFTER_REPAIR_VALUE,
+      180000,
+      "conflicting",
+      { conflictIds: ["conflict:arv"] }
+    );
+    const result = evaluate(RESIDENTIAL_READINESS_POLICY, strategyResult);
+    expect(result.readinessState).toBe(READINESS_STATES.NEEDS_INFORMATION);
+    expect(result.recommendedNextAction.actionType).toBe(READINESS_ACTION_TYPES.VERIFY_INFORMATION);
+  });
+
+  it("applies missing-information precedence to mixed Vacant Land verification state", () => {
+    const strategyResult = landResult();
+    delete strategyResult.factReadModel.factsById[VACANT_LAND_FACT_IDS.LEGAL_ACCESS];
+    strategyResult.factReadModel.factsById[VACANT_LAND_FACT_IDS.ZONING] = fact(
+      VACANT_LAND_FACT_IDS.ZONING,
+      "R-1",
+      "conflicting",
+      { conflictIds: ["conflict:zoning"] }
+    );
+    const result = evaluate(VACANT_LAND_READINESS_POLICY, strategyResult);
+    expect(result.readinessState).toBe(READINESS_STATES.NEEDS_INFORMATION);
+    expect(result.recommendedNextAction.actionType).toBe(READINESS_ACTION_TYPES.VERIFY_INFORMATION);
+  });
+
   it("allows complete residential gates despite negative spread and low score", () => {
     const result = evaluate(RESIDENTIAL_READINESS_POLICY, residentialResult());
     expect(result.readinessState).toBe(READINESS_STATES.READY_FOR_OFFER_PREPARATION);

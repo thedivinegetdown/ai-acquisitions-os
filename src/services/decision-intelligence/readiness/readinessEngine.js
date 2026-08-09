@@ -57,8 +57,10 @@ function stateForGates(gates) {
   if (blocking.some((gate) => gate.evaluationState === READINESS_GATE_STATES.UNAVAILABLE)) return READINESS_STATES.UNAVAILABLE;
   if (blocking.some((gate) => gate.evaluationState === READINESS_GATE_STATES.FAILED)) return READINESS_STATES.BLOCKED;
   const pending = blocking.filter((gate) => gate.evaluationState === READINESS_GATE_STATES.PENDING);
-  if (pending.some((gate) => gate.conflictIds.length || gate.staleReferenceIds.length || gate.unverifiedReferenceIds.length)) return READINESS_STATES.NEEDS_VERIFICATION;
-  if (pending.length) return READINESS_STATES.NEEDS_INFORMATION;
+  const requiresVerification = (gate) =>
+    gate.conflictIds.length || gate.staleReferenceIds.length || gate.unverifiedReferenceIds.length;
+  if (pending.some((gate) => !requiresVerification(gate))) return READINESS_STATES.NEEDS_INFORMATION;
+  if (pending.some(requiresVerification)) return READINESS_STATES.NEEDS_VERIFICATION;
   if (blocking.some((gate) => gate.evaluationState === READINESS_GATE_STATES.MANUAL_REVIEW)) return READINESS_STATES.MANUAL_REVIEW_REQUIRED;
   return READINESS_STATES.READY_FOR_OFFER_PREPARATION;
 }
