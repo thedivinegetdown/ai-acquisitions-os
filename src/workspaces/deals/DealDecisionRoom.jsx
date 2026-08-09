@@ -37,6 +37,7 @@ const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
 const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
 const DocumentVault = lazy(() => import("../../components/DocumentVault"));
+const EvidenceAndProvenancePanel = lazy(() => import("./EvidenceAndProvenancePanel"));
 const MessageCenter = lazy(() => import("../../components/MessageCenter"));
 const NegotiationTracker = lazy(() => import("../../components/NegotiationTracker"));
 const OfferEngine = lazy(() => import("../../components/OfferEngine"));
@@ -427,6 +428,16 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           />
         </LazySection>
       ) : null}
+      {readModel.evidenceRegistry?.evidenceRecords?.length || readModel.evidenceCoverage?.limitationCodes?.length ? (
+        <LazySection label="Loading Evidence and Provenance...">
+          <EvidenceAndProvenancePanel
+            coverage={readModel.evidenceCoverage}
+            lineage={readModel.evidenceLineage}
+            onNavigateSection={onAction}
+            registry={readModel.evidenceRegistry}
+          />
+        </LazySection>
+      ) : null}
       <Card className="decision-room__basis" muted>
         <details>
           <summary>Decision Basis</summary>
@@ -531,6 +542,22 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
                 <dt>Open advisory conflicts</dt>
                 <dd>{readModel.conflictReadModel?.counts?.advisory || 0}</dd>
               </div>
+              <div>
+                <dt>Evidence records</dt>
+                <dd>{readModel.evidenceRegistry?.counts?.total || 0}</dd>
+              </div>
+              <div>
+                <dt>Supporting / challenging Evidence</dt>
+                <dd>{readModel.evidenceRegistry?.counts?.supporting || 0} / {readModel.evidenceRegistry?.counts?.challenging || 0}</dd>
+              </div>
+              <div>
+                <dt>Limited Evidence</dt>
+                <dd>{readModel.evidenceRegistry?.counts?.limited || 0}</dd>
+              </div>
+              <div>
+                <dt>Evidence ruleset</dt>
+                <dd>{readModel.evidenceRegistry?.rulesetVersion || "Not available"}</dd>
+              </div>
             </dl>
             {readModel.conflictReadModel?.activeConflicts?.length ? (
               <>
@@ -557,27 +584,8 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
             ) : (
               <p>No explicit asset classification value is stored on this record.</p>
             )}
-            <h3>Evidence and Provenance</h3>
-            {readModel.evidenceReferences.length ? (
-              <ul className="decision-room__evidence-list">
-                {readModel.evidenceReferences.map((entry) => (
-                  <li key={entry.evidenceId}>
-                    <strong>{entry.sourceSystem}</strong>
-                    <span>
-                      {entry.sourceType}
-                      {entry.sourceField ? ` / ${entry.sourceField}` : ""}
-                    </span>
-                    <span>{entry.valueSummary || "Current field is present"}</span>
-                    <span>
-                      Source timestamp: {formatSafeDate(entry.sourceTimestamp, "Not available")};
-                      verification: {entry.verificationState}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p>No source evidence is available for this compatibility record.</p>
-            )}
+            <h3>Evidence limitations</h3>
+            <p>{readModel.evidenceCoverage?.limitationCodes?.join(", ") || "No canonical Evidence limitations are recorded."}</p>
             <h3>Classification conflicts</h3>
             {assetStrategyContext.classificationConflicts.length ? (
               <ul className="decision-room__evidence-list">

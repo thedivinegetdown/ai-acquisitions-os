@@ -80,19 +80,23 @@ export function evaluateResidentialUnderwriting({
   const blockers = uniqueStrings([...blockingIssueIds, ...missingFacts]);
 
   if (missingFacts.length || blockers.length) {
-    return normalizeResidentialUnderwritingResult({
+    const inputEvidenceIds = evidenceForFacts(factReadModel, REQUIRED_FACT_IDS);
+    return {
+      ...normalizeResidentialUnderwritingResult({
       evaluationState: "blocked",
       askingPrice,
       afterRepairValue,
       repairEstimate,
-      inputEvidenceIds: evidenceForFacts(factReadModel, REQUIRED_FACT_IDS),
+      inputEvidenceIds,
       blockingIssueIds: blockers,
       evaluatedTimestamp,
       sourceMode: DECISION_SOURCE_MODES.DETERMINISTIC,
       explanation:
         "Residential underwriting requires positive asking price and ARV values plus an explicit valid repair estimate. Missing repairs are not treated as zero.",
       partialDataWarnings: factReadModel?.partialDataWarnings || [],
-    });
+      }),
+      evidenceLineage: { derivedFromEvidenceIds: inputEvidenceIds },
+    };
   }
 
   const acquisitionCeiling =
@@ -194,7 +198,13 @@ export function evaluateResidentialUnderwriting({
         ]),
   ];
 
-  return normalizeResidentialUnderwritingResult({
+  const inputEvidenceIds = evidenceForFacts(factReadModel, [
+    ...REQUIRED_FACT_IDS,
+    RESIDENTIAL_FACT_IDS.RENT_ESTIMATE,
+    RESIDENTIAL_FACT_IDS.MORTGAGE_BALANCE,
+  ]);
+  return {
+    ...normalizeResidentialUnderwritingResult({
     evaluationState: "evaluated",
     askingPrice,
     afterRepairValue,
@@ -207,11 +217,7 @@ export function evaluateResidentialUnderwriting({
     repairToArvRatio,
     rentToPriceRatio,
     mortgageToCeilingRatio,
-    inputEvidenceIds: evidenceForFacts(factReadModel, [
-      ...REQUIRED_FACT_IDS,
-      RESIDENTIAL_FACT_IDS.RENT_ESTIMATE,
-      RESIDENTIAL_FACT_IDS.MORTGAGE_BALANCE,
-    ]),
+    inputEvidenceIds,
     blockingIssueIds: [],
     formulas,
     evaluatedTimestamp,
@@ -222,5 +228,7 @@ export function evaluateResidentialUnderwriting({
       ...(factReadModel?.partialDataWarnings || []),
       RESIDENTIAL_FLIP_EXCLUDED_COSTS_DISCLOSURE,
     ]).slice(0, 16),
-  });
+    }),
+    evidenceLineage: { derivedFromEvidenceIds: inputEvidenceIds },
+  };
 }

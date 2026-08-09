@@ -240,8 +240,9 @@ describe("DealDecisionRoom", () => {
 
     expect(screen.getByRole("heading", { name: "Evidence and Provenance" })).toBeInTheDocument();
     expect(screen.getByText(/deal-decision-compatibility/)).toBeInTheDocument();
-    expect(screen.getAllByText("Deal record").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Source timestamp: Not available/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Evidence records")).toBeInTheDocument();
+    expect(screen.getByText("Evidence ruleset")).toBeInTheDocument();
+    expect(screen.getByText("evidence-provenance-ruleset-v1")).toBeInTheDocument();
     expect(screen.getByText("Pursuit Scoring Framework")).toBeInTheDocument();
     expect(screen.getByText("Production Strategy Profile")).toBeInTheDocument();
     expect(screen.getByText("residential-pursuit-profile-v1")).toBeInTheDocument();

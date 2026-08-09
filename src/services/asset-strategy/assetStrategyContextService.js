@@ -456,6 +456,12 @@ export function adaptAssetClassificationEvidence({ classification, deal } = {}) 
             : "unknown",
         freshnessState: "unknown",
         relatedCanonicalField: "property.assetType",
+        factId: "asset-classification",
+        normalizedValue: sourceValue.mappedAssetType || sourceValue.rawValue,
+        relationship:
+          normalizedClassification.state === ASSET_CLASSIFICATION_STATES.AMBIGUOUS
+            ? "challenges"
+            : "supports",
         valueSummary: mappedDefinition
           ? `Stored value "${sourceValue.rawValue}" maps to ${mappedDefinition.label}.`
           : `Stored value "${sourceValue.rawValue}" does not map to one canonical asset type.`,

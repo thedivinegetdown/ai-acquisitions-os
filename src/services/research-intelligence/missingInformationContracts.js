@@ -398,6 +398,8 @@ export function normalizeMissingInformationItem(value) {
     currentValueSummary: nullableText(source.currentValueSummary, 320),
     matchedSourceField: nullableText(source.matchedSourceField, 160),
     evidenceReferenceIds: normalizeStrings(source.evidenceReferenceIds),
+    evidenceStatus: nullableText(source.evidenceStatus, 80),
+    evidenceLimitationCodes: normalizeStrings(source.evidenceLimitationCodes),
     conflictIds: normalizeStrings(source.conflictIds),
     verificationState: nullableText(source.verificationState, 80),
     freshnessState: nullableText(source.freshnessState, 80),

@@ -209,6 +209,27 @@ describe("Missing Information detection", () => {
     expect(price.sourceTimestamp).toBeNull();
   });
 
+  it("keeps a present fact distinct from its limited Evidence status", () => {
+    const deal = completeResidential();
+    const result = evaluateMissingInformation({
+      assetStrategyContext: buildAssetStrategyContext(deal),
+      deal,
+      evaluatedTimestamp: EVALUATED_AT,
+      evidenceCoverage: {
+        coverageByCanonicalField: {
+          "deal.askingPrice": {
+            evidenceStatus: "limited",
+            limitationCodes: ["compatibility-only", "verification-unknown"],
+          },
+        },
+      },
+    });
+    const askingPrice = result.allItems.find((item) => item.canonicalField === "deal.askingPrice");
+    expect(askingPrice.state).toBe("present");
+    expect(askingPrice.evidenceStatus).toBe("limited");
+    expect(askingPrice.evidenceLimitationCodes).toContain("compatibility-only");
+  });
+
   it("prioritizes classification, contact, and legal land facts deterministically", () => {
     const unknown = evaluate(
       completeResidential({ asset_type: undefined, phone: undefined })

@@ -1,5 +1,9 @@
 import { toSafeDate } from "../../utils/dates";
 import { compactText, uniqueStrings } from "../../utils/text";
+import {
+  createCanonicalEvidenceId,
+  normalizeCanonicalEvidence,
+} from "../research-intelligence/evidence/evidenceContracts";
 
 // Distinct responsibility: define and normalize the versioned, provider-neutral
 // Decision Intelligence language without evaluating an opportunity.
@@ -125,74 +129,17 @@ function normalizeMetricValue(value) {
   return nullableText(value);
 }
 
-function identitySegment(value) {
-  const text = safeText(value, 160);
-  return text ? encodeURIComponent(text) : "";
-}
-
 export function createEvidenceReferenceId({
   sourceField,
   sourceRecordId,
   sourceSystem,
   sourceType,
 } = {}) {
-  const identity = [sourceType, sourceSystem, sourceRecordId]
-    .map(identitySegment)
-    .filter(Boolean);
-  if (identity.length !== 3) return null;
-  const field = identitySegment(sourceField) || "record";
-  return `evidence:${identity.join(":")}:${field}`;
-}
-
-function normalizeProvenanceDetails(value) {
-  const source = safeObject(value);
-  return Object.fromEntries(
-    Object.entries(source)
-      .filter(([, entry]) =>
-        ["string", "number", "boolean"].includes(typeof entry)
-      )
-      .slice(0, 12)
-      .map(([key, entry]) => [safeText(key, 80), entry])
-      .filter(([key]) => Boolean(key))
-  );
+  return createCanonicalEvidenceId({ sourceField, sourceRecordId, sourceSystem, sourceType });
 }
 
 export function normalizeEvidenceReference(value) {
-  const source = safeObject(value);
-  const sourceType = safeText(source.sourceType, 80);
-  const sourceSystem = safeText(source.sourceSystem, 120);
-  const sourceRecordId = safeText(source.sourceRecordId, 160);
-  if (!sourceType || !sourceSystem || !sourceRecordId) return null;
-
-  const sourceField = nullableText(source.sourceField, 120);
-  const evidenceId =
-    nullableText(source.evidenceId || source.id, 320) ||
-    createEvidenceReferenceId({ sourceField, sourceRecordId, sourceSystem, sourceType });
-  if (!evidenceId) return null;
-
-  return {
-    evidenceId,
-    contractVersion: DECISION_CONTRACT_VERSION,
-    sourceType,
-    sourceSystem,
-    sourceRecordId,
-    sourceField,
-    sourceTimestamp: normalizeDecisionTimestamp(source.sourceTimestamp),
-    observedTimestamp: normalizeDecisionTimestamp(source.observedTimestamp),
-    importedTimestamp: normalizeDecisionTimestamp(source.importedTimestamp),
-    extractionMethod: nullableText(source.extractionMethod, 120),
-    trustLevel: nullableText(source.trustLevel, 80) || "unknown",
-    verificationState: nullableText(source.verificationState, 80) || "unknown",
-    conflictState: nullableText(source.conflictState, 80) || "unknown",
-    freshnessState: nullableText(source.freshnessState, 80) || "unknown",
-    relatedCanonicalField: nullableText(source.relatedCanonicalField, 120),
-    valueSummary: nullableText(source.valueSummary, 240),
-    organizationId: nullableText(source.organizationId, 160),
-    tenantId: nullableText(source.tenantId, 160),
-    reliabilityLabel: nullableText(source.reliabilityLabel, 120),
-    provenanceDetails: normalizeProvenanceDetails(source.provenanceDetails),
-    partialDataWarning: nullableText(source.partialDataWarning, 240),
-  };
+  return normalizeCanonicalEvidence(value);
 }
 
 export function normalizeRulesetDescriptor(value) {

@@ -66,6 +66,7 @@ describe("Vacant Land Acquisition Strategy v1", () => {
     expect(valuation.medianComparablePricePerAcre).toBe(25000);
     expect(valuation.indicatedLandValue).toBe(125000);
     expect(valuation.grossLandSpread).toBe(75000);
+    expect(valuation.evidenceLineage.derivedFromEvidenceIds).toEqual(valuation.inputEvidenceIds);
     expect(JSON.stringify(valuation).toLowerCase()).not.toContain("mao");
   });
 

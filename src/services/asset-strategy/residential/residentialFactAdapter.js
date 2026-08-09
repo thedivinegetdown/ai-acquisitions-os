@@ -424,6 +424,8 @@ function createCompatibilityEvidence({
     conflictState: "unknown",
     freshnessState: "unknown",
     relatedCanonicalField: descriptor.canonicalField,
+    factId: descriptor.factId,
+    relationship: "supports",
     valueSummary: summary || "Current field is represented",
     organizationId: context.organizationId,
     tenantId: context.tenantId,

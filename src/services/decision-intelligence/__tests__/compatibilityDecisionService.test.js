@@ -575,6 +575,18 @@ describe("compatibility decision read model", () => {
     expect(result.data.sourceFreshness.latestSourceTimestamp).toBeNull();
   });
 
+  it("exposes canonical Evidence coverage and traceability without reliability or confidence", () => {
+    const result = build({ deal: completeDeal() });
+    expect(result.data.evidenceRegistry.contractVersion).toBe("evidence-provenance-contract-v1");
+    expect(result.data.evidenceCoverage.counts.representedFields).toBeGreaterThan(0);
+    expect(result.data.evidenceLineage.outputs.map((output) => output.outputId)).toEqual(
+      expect.arrayContaining(["residential-underwriting", "pursuit-score", "offer-readiness"])
+    );
+    expect(result.data.recommendationTraceability).toMatchObject({ rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION });
+    expect(result.data.metricsById["data-reliability"].value).toBeNull();
+    expect(result.data.metricsById["recommendation-confidence"].value).toBeNull();
+  });
+
   it("bounds evidence and omits evidence outside the current tenant context", () => {
     const references = Array.from({ length: 40 }, (_, index) => ({
       sourceType: "document-record",

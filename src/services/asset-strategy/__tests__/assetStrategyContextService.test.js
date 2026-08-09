@@ -302,7 +302,7 @@ describe("asset strategy runtime context", () => {
       sourceRecordId: "deal-1",
       sourceField: "asset_type",
       sourceTimestamp: "2026-08-04T10:30:00.000Z",
-      extractionMethod: "explicit-field-compatibility-mapping",
+      extractionMethod: "compatibility-adapter",
       verificationState: "unknown",
       trustLevel: "unknown",
       organizationId: "org-1",

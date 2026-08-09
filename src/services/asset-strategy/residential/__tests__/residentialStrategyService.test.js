@@ -73,6 +73,7 @@ describe("Residential Strategy runtime", () => {
     expect(underwriting.excludedCostDisclosure).toBe(
       RESIDENTIAL_FLIP_EXCLUDED_COSTS_DISCLOSURE
     );
+    expect(underwriting.evidenceLineage.derivedFromEvidenceIds).toEqual(underwriting.inputEvidenceIds);
   });
 
   it("retains legitimate negative outputs", () => {

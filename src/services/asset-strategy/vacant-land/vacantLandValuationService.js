@@ -76,6 +76,8 @@ function createComparableEvidence(comparable, context) {
     conflictState: "unknown",
     freshnessState: "unknown",
     relatedCanonicalField: "property.landComps",
+    factId: VACANT_LAND_FACT_IDS.COMPARABLE_LAND_VALUE,
+    relationship: "supports",
     valueSummary: `${comparable.salePrice} sale price / ${comparable.acreage} acres = ${pricePerAcre} per acre`,
     organizationId: context.organizationId,
     tenantId: context.tenantId,
@@ -259,6 +261,7 @@ export function evaluateVacantLandValuation({
         ? DECISION_SOURCE_MODES.DETERMINISTIC_COMPATIBILITY
         : DECISION_SOURCE_MODES.DETERMINISTIC,
     }),
+    evidenceLineage: { derivedFromEvidenceIds: inputEvidenceIds },
     evidenceReferences: comparableContext.evidenceReferences,
   };
 }

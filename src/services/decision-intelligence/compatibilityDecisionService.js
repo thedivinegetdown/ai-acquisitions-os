@@ -15,6 +15,9 @@ import {
   evaluateVacantLandValuation,
 } from "../asset-strategy/vacant-land";
 import {
+  buildDecisionOutputLineage,
+  buildEvidenceCoverage,
+  buildEvidenceRegistry,
   evaluateConflictingData,
   evaluateMissingInformation,
   isBlockingInformationState,
@@ -200,6 +203,7 @@ function createCurrentDealEvidence({
     conflictState: "unknown",
     freshnessState: "unknown",
     relatedCanonicalField: canonicalField,
+    relationship: "supports",
     valueSummary: valueSummary(value),
     organizationId: context.organizationId,
     tenantId: context.tenantId,
@@ -267,6 +271,7 @@ function adaptConversationEvidence(signals, context, dealId) {
         conflictState: "unknown",
         freshnessState: "unknown",
         relatedCanonicalField: "communication.lastInboundMessage",
+        relationship: "contextual",
         valueSummary: getConversationMessageBody(signal),
         organizationId: context.organizationId,
         tenantId: context.tenantId,
@@ -301,6 +306,7 @@ function adaptTaskEvidence(tasks, context, dealId) {
         conflictState: "unknown",
         freshnessState: "unknown",
         relatedCanonicalField: "task.dueAt",
+        relationship: "contextual",
         valueSummary: safeText(task.title || task.label, 200) || "Task due",
         organizationId: context.organizationId,
         tenantId: context.tenantId,
@@ -918,7 +924,7 @@ function buildReadModel({
         factReadModel: vacantLandFactReadModel,
       })
     : null;
-  const evidence = dedupeEvidence([
+  const collectedEvidence = dedupeEvidence([
     ...assetStrategyContext.classificationEvidence,
     ...conversationEvidence,
     ...taskEvidence,
@@ -928,12 +934,21 @@ function buildReadModel({
     ...currentEvidence,
     ...externalEvidence,
   ]);
+  const evidenceRegistry = buildEvidenceRegistry({
+    context,
+    conflictReadModel,
+    evidenceReferences: collectedEvidence,
+    evaluatedTimestamp,
+  });
+  const evidence = evidenceRegistry.evidenceRecords;
+  const evidenceCoverage = buildEvidenceCoverage(evidenceRegistry);
   const missingInformationReadModel = evaluateMissingInformation({
     assetStrategyContext,
     conflicts: normalizedConflicts,
     deal: safeDeal,
     evaluatedTimestamp,
     evidenceReferences: evidence,
+    evidenceCoverage,
     freshnessStates:
       residentialFactReadModel?.explicitFreshnessStates ||
       vacantLandFactReadModel?.explicitFreshnessStates || {},
@@ -1001,6 +1016,12 @@ function buildReadModel({
     policy: readinessPolicy,
     strategyResult,
   });
+  const evidenceLineage = buildDecisionOutputLineage({
+    readinessResult,
+    residentialStrategyResult,
+    pursuitScoreResult: resolvedPursuitScoreResult,
+    vacantLandStrategyResult,
+  });
   const dueContext = getDueContext(safeDeal, now);
   const sellerReply = hasSellerReply(conversationSignals, context, dealId);
   const taskDue = hasDueTask(tasks, context, dealId, now);
@@ -1011,6 +1032,7 @@ function buildReadModel({
     dealId ? "" : "The loaded opportunity has no stable compatibility identifier.",
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
     ...assetStrategyContext.sourceWarnings,
+    ...evidenceRegistry.warnings,
     ...conflictReadModel.partialDataWarnings,
     ...readinessResult.warnings,
     ...missingInformationReadModel.partialDataWarnings,
@@ -1129,6 +1151,18 @@ function buildReadModel({
       decisionRecord.metricOutputs.map((metric) => [metric.metricId, metric])
     ),
     evidenceReferences: decisionRecord.evidenceReferences,
+    evidenceRegistry,
+    evidenceCoverage,
+    evidenceLineage,
+    recommendationTraceability: {
+      evidenceIds: decisionRecord.recommendation.evidenceReferenceIds,
+      missingInformationIds: decisionRecord.recommendation.missingInformationIds,
+      conflictIds: decisionRecord.recommendation.conflictIds,
+      rulesetVersion: decisionRecord.recommendation.rulesetVersion,
+      limitationCodes: decisionRecord.recommendation.evidenceReferenceIds.length
+        ? []
+        : ["missing-explicit-value"],
+    },
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
     conflictReadModel,

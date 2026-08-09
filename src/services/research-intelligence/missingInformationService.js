@@ -431,6 +431,7 @@ function evaluateRequirement({
   requirement,
   tenantContext,
   verificationStates,
+  evidenceCoverage,
 }) {
   const dealId = assetStrategyContext.dealId || null;
   const itemId = createItemId(dealId, requirement.requirementId);
@@ -472,6 +473,7 @@ function evaluateRequirement({
   }
 
   const evidenceReferenceIds = matchingEvidence.map((entry) => entry.evidenceId);
+  const fieldCoverage = evidenceCoverage?.coverageByCanonicalField?.[requirement.canonicalField];
   const sourceTimestamp =
     matchingEvidence.find((entry) => entry.sourceTimestamp)?.sourceTimestamp || null;
   return normalizeMissingInformationItem({
@@ -493,6 +495,8 @@ function evaluateRequirement({
     currentValueSummary: summarizeValue(read.value),
     matchedSourceField: read.field,
     evidenceReferenceIds,
+    evidenceStatus: fieldCoverage?.evidenceStatus || null,
+    evidenceLimitationCodes: fieldCoverage?.limitationCodes || [],
     conflictIds,
     verificationState: explicitState?.verificationState || null,
     freshnessState: explicitState?.freshnessState || null,
@@ -621,6 +625,7 @@ export function evaluateMissingInformation({
   requirementProfiles = [],
   sourceErrors = [],
   verificationStates = {},
+  evidenceCoverage = null,
 } = {}) {
   const safeDeal = safeObject(deal);
   const assetStrategyContext = suppliedContext || buildAssetStrategyContext(safeDeal);
@@ -651,6 +656,7 @@ export function evaluateMissingInformation({
         requirement,
         tenantContext,
         verificationStates: safeObject(verificationStates),
+        evidenceCoverage,
       });
       if (item) evaluatedItems.push(item);
     } catch {
