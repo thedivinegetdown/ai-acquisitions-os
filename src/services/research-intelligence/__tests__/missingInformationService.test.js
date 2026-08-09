@@ -45,7 +45,7 @@ describe("Missing Information detection", () => {
     const result = evaluate(completeResidential());
 
     expect(result.selectedProfile.label).toBe(
-      "Residential Compatibility Requirements"
+      "Residential Strategy Requirements"
     );
     expect(result.openItems).toEqual([]);
     expect(result.presentRequirements.length).toBeGreaterThan(0);

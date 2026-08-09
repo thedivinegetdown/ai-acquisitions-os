@@ -1,159 +1,57 @@
-function money(value) {
-  const num = Number(value || 0);
+import { useMemo, useState } from "react";
+import { Badge, StatusBadge } from "../design-system";
+import { evaluateResidentialStrategyPreview } from "../services/asset-strategy";
+import { formatUsd } from "../utils/currency";
 
-  return num.toLocaleString(
-    "en-US",
-    {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }
+export default function OfferEngine({ deal, strategyResult = null }) {
+  const [evaluatedTimestamp] = useState(() => new Date().toISOString());
+  const fallbackResult = useMemo(
+    () =>
+      strategyResult ||
+      evaluateResidentialStrategyPreview({ deal, evaluatedTimestamp }),
+    [deal, evaluatedTimestamp, strategyResult]
   );
-}
-
-export default function OfferEngine({
-  deal,
-}) {
-  const arv =
-    Number(deal.arv || 0);
-
-  const repairs =
-    Number(
-      deal.repairs || 0
-    );
-
-  const price =
-    Number(deal.price || 0);
-
-  const mao =
-    arv > 0
-      ? arv * 0.7 -
-        repairs
-      : 0;
-
-  const cashOffer =
-    mao;
-
-  const wholesaleTarget =
-    mao - 10000;
-
-  const creativeDown =
-    price > 0
-      ? price * 0.1
-      : 0;
-
-  const creativePayment =
-    price > 0
-      ? price * 0.0065
-      : 0;
-
-  const sellerFinance =
-    price > 0
-      ? `Offer ${money(
-          creativeDown
-        )} down and ${money(
-          creativePayment
-        )}/mo`
-      : "Enter purchase price";
+  const underwriting = fallbackResult?.underwriting;
+  const evaluated = underwriting?.evaluationState === "evaluated";
+  const creativeCandidates = (fallbackResult?.exitCandidates || []).filter(
+    (candidate) =>
+      ["seller-finance-exploration", "subject-to-exploration"].includes(
+        candidate.candidateId
+      )
+  );
 
   return (
-    <div
-      style={{
-        marginTop: 24,
-        paddingTop: 20,
-        borderTop:
-          "1px solid #e5e7eb",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>
-        Offer Engine
-      </h3>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            background:
-              "#ffffff",
-            border:
-              "1px solid #e5e7eb",
-            borderRadius: 12,
-            padding: 14,
-          }}
-        >
-          <strong>
-            Cash Offer
-          </strong>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 22,
-              fontWeight: 800,
-            }}
-          >
-            {money(
-              cashOffer
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background:
-              "#ffffff",
-            border:
-              "1px solid #e5e7eb",
-            borderRadius: 12,
-            padding: 14,
-          }}
-        >
-          <strong>
-            Wholesale Target
-          </strong>
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 22,
-              fontWeight: 800,
-            }}
-          >
-            {money(
-              wholesaleTarget
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            background:
-              "#ffffff",
-            border:
-              "1px solid #e5e7eb",
-            borderRadius: 12,
-            padding: 14,
-          }}
-        >
-          <strong>
-            Seller Finance
-          </strong>
-
-          <div
-            style={{
-              marginTop: 8,
-              fontSize: 15,
-              lineHeight: 1.6,
-            }}
-          >
-            {sellerFinance}
-          </div>
-        </div>
+    <section aria-labelledby="offer-engine-title" className="residential-offer-review">
+      <div className="residential-analyzer__header">
+        <h3 id="offer-engine-title">Offer review</h3>
+        <Badge>Review only</Badge>
       </div>
-    </div>
+      {evaluated ? (
+        <dl aria-label="Residential offer review values" className="residential-analyzer__results">
+          <div>
+            <dt>Acquisition ceiling</dt>
+            <dd>{formatUsd(underwriting.acquisitionCeiling)}</dd>
+          </div>
+          <div>
+            <dt>Wholesale target</dt>
+            <dd>{formatUsd(underwriting.wholesaleTarget)}</dd>
+          </div>
+        </dl>
+      ) : (
+        <p>Offer review is not evaluated until the required residential facts are present.</p>
+      )}
+      <p className="residential-analyzer__notice">
+        These internal estimates prepare human review. They do not submit or approve an offer.
+      </p>
+      <div className="residential-offer-review__creative">
+        {creativeCandidates.map((candidate) => (
+          <div key={candidate.candidateId}>
+            <StatusBadge status="info">Manual Review Required</StatusBadge>
+            <strong>{candidate.label}</strong>
+            <p>{candidate.explanation}</p>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

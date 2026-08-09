@@ -98,6 +98,20 @@ export default function PursuitScoreSummary({
             <dd>{result.evidenceReferenceIds.length}</dd>
           </div>
         </dl>
+        <h3>Factor explanations</h3>
+        <ul className="pursuit-score-summary__factors">
+          {result.factorResults.map((factor) => (
+            <li key={factor.factorId}>
+              <strong>{factor.label || factor.factorId}</strong>
+              <span>
+                {Number.isFinite(factor.normalizedScore)
+                  ? `${displayNumber(factor.normalizedScore)}/100`
+                  : "Not evaluated"}
+              </span>
+              <small>{factor.explanation}</small>
+            </li>
+          ))}
+        </ul>
         <ul
           aria-label="Pursuit Score Evidence and Provenance references"
           className="pursuit-score-summary__evidence"

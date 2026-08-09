@@ -15,6 +15,13 @@ import {
   getAssetTypeDefinition,
   normalizeAssetClassification,
 } from "./assetStrategyContracts";
+import {
+  RESIDENTIAL_ACQUISITION_STRATEGY,
+  RESIDENTIAL_CAPABILITY_STATES,
+  RESIDENTIAL_PURSUIT_PROFILE_ID,
+  RESIDENTIAL_PURSUIT_RULESET_VERSION,
+  RESIDENTIAL_STRATEGY_VERSION,
+} from "./residential/residentialStrategyContracts";
 
 // Distinct responsibility: turn explicit CRM asset fields into one runtime
 // strategy context used by Decision Intelligence and capability-aware UI.
@@ -49,6 +56,9 @@ export const ASSET_CAPABILITY_IDS = Object.freeze({
     "residential-negotiation-calculations",
   RESIDENTIAL_BUYER_MATCHING: "residential-buyer-matching",
   RESIDENTIAL_BUYER_BLAST: "residential-buyer-blast",
+  RESIDENTIAL_PURSUIT_SCORING: "residential-pursuit-scoring",
+  RESIDENTIAL_RISK_SIGNALS: "residential-risk-signals",
+  RESIDENTIAL_EXIT_CANDIDATES: "residential-exit-candidates",
 });
 
 export const GENERIC_ASSET_CAPABILITY_IDS = Object.freeze([
@@ -75,10 +85,19 @@ export const RESIDENTIAL_COMPATIBILITY_CAPABILITY_IDS = Object.freeze([
   ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_BLAST,
 ]);
 
+export const RESIDENTIAL_STRATEGY_CAPABILITY_IDS = Object.freeze([
+  ...RESIDENTIAL_COMPATIBILITY_CAPABILITY_IDS,
+  ASSET_CAPABILITY_IDS.RESIDENTIAL_PURSUIT_SCORING,
+  ASSET_CAPABILITY_IDS.RESIDENTIAL_RISK_SIGNALS,
+  ASSET_CAPABILITY_IDS.RESIDENTIAL_EXIT_CANDIDATES,
+]);
+
 export const ASSET_CAPABILITY_REASON_CODES = Object.freeze({
   GENERIC_AVAILABLE: "generic-capability-available",
   RESIDENTIAL_COMPATIBILITY_AVAILABLE:
     "residential-compatibility-available",
+  RESIDENTIAL_STRATEGY_AVAILABLE: "residential-strategy-available",
+  RESIDENTIAL_REVIEW_AVAILABLE: "residential-review-available",
   CLASSIFICATION_REQUIRED: "asset-classification-required",
   CLASSIFICATION_REVIEW_REQUIRED: "asset-classification-review-required",
   STRATEGY_NOT_IMPLEMENTED: "asset-strategy-not-implemented",
@@ -91,7 +110,7 @@ export const CLASSIFICATION_COMPATIBILITY_WARNING =
   "Stored asset classification is compatibility evidence and has not been independently verified.";
 
 export const RESIDENTIAL_COMPATIBILITY_WARNING =
-  "Existing residential calculations are compatibility analysis, not the completed Residential Acquisition Strategy.";
+  "This existing residential capability remains compatibility-only inside Residential Acquisition Strategy v1.";
 
 export const PURSUIT_SCORING_FRAMEWORK_STATUS = Object.freeze({
   frameworkAvailable: true,
@@ -105,7 +124,7 @@ export const PURSUIT_SCORING_FRAMEWORK_STATUS = Object.freeze({
 
 const GENERIC_CAPABILITIES = new Set(GENERIC_ASSET_CAPABILITY_IDS);
 const RESIDENTIAL_CAPABILITIES = new Set(
-  RESIDENTIAL_COMPATIBILITY_CAPABILITY_IDS
+  RESIDENTIAL_STRATEGY_CAPABILITY_IDS
 );
 const CLASSIFICATION_STATES = new Set(
   Object.values(ASSET_CLASSIFICATION_STATES)
@@ -139,14 +158,46 @@ const CAPABILITY_LABELS = Object.freeze({
     "residential buyer matching",
   [ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_BLAST]:
     "residential buyer blast",
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_PURSUIT_SCORING]:
+    "residential Pursuit Scoring",
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_RISK_SIGNALS]:
+    "residential risk signals",
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_EXIT_CANDIDATES]:
+    "residential exit-candidate review",
+});
+
+const RESIDENTIAL_CAPABILITY_RUNTIME_STATE = Object.freeze({
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_PROPERTY_INTELLIGENCE]:
+    RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_COMPS]:
+    RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_UNDERWRITING]:
+    RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_READINESS]:
+    RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_GENERATION]:
+    RESIDENTIAL_CAPABILITY_STATES.REVIEW_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_NEGOTIATION_CALCULATIONS]:
+    RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_MATCHING]:
+    RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_BUYER_BLAST]:
+    RESIDENTIAL_CAPABILITY_STATES.REVIEW_ONLY,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_PURSUIT_SCORING]:
+    RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_RISK_SIGNALS]:
+    RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.RESIDENTIAL_EXIT_CANDIDATES]:
+    RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
 });
 
 const SUPPORT_BY_ASSET_TYPE = Object.freeze({
   [ASSET_TYPES.RESIDENTIAL_HOME]: Object.freeze({
-    strategyLabel: "Residential Acquisition Strategy",
-    supportState: ASSET_STRATEGY_SUPPORT_STATES.COMPATIBILITY_ONLY,
-    supportLabel: "Compatibility Analysis",
-    lifecycleStatus: null,
+    strategyLabel: "Residential Acquisition Strategy v1",
+    supportState: ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED,
+    supportLabel: "Implemented",
+    lifecycleStatus: ASSET_STRATEGY_STATUSES.ACTIVE,
+    strategyVersion: RESIDENTIAL_STRATEGY_VERSION,
   }),
   [ASSET_TYPES.VACANT_RESIDENTIAL_LAND]: Object.freeze({
     strategyLabel: "Vacant Land Acquisition Strategy",
@@ -462,12 +513,16 @@ export function canRunAssetCapability(assetStrategyContext, capabilityId) {
       : ASSET_STRATEGY_SUPPORT_STATES.UNASSIGNED,
   };
   const capabilityLabel = CAPABILITY_LABELS[capabilityId] || capabilityId;
+  const implementationState =
+    RESIDENTIAL_CAPABILITY_RUNTIME_STATE[capabilityId] || null;
   const base = {
     capabilityId,
     supportState: runtimeContext.strategySupportState,
     classificationState: runtimeContext.classificationState,
     assetType: runtimeContext.assetType,
-    compatibilityOnly: RESIDENTIAL_CAPABILITIES.has(capabilityId),
+    compatibilityOnly:
+      implementationState === RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+    implementationState,
   };
 
   if (GENERIC_CAPABILITIES.has(capabilityId)) {
@@ -488,23 +543,37 @@ export function canRunAssetCapability(assetStrategyContext, capabilityId) {
     };
   }
 
-  const residentialCompatibilityEligible = Boolean(
+  const residentialStrategyEligible = Boolean(
     runtimeContext.compatibilityAnalysisEligibility === true &&
       runtimeContext.classificationState ===
         ASSET_CLASSIFICATION_STATES.CLASSIFIED &&
       runtimeContext.assetType === ASSET_TYPES.RESIDENTIAL_HOME &&
       runtimeContext.manualReviewRequired === false &&
-      runtimeContext.strategySupportState ===
-        ASSET_STRATEGY_SUPPORT_STATES.COMPATIBILITY_ONLY
+      [
+        ASSET_STRATEGY_SUPPORT_STATES.COMPATIBILITY_ONLY,
+        ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED,
+      ].includes(runtimeContext.strategySupportState)
   );
 
-  if (residentialCompatibilityEligible) {
+  if (residentialStrategyEligible) {
+    const compatibilityOnly =
+      implementationState ===
+      RESIDENTIAL_CAPABILITY_STATES.COMPATIBILITY_ONLY;
+    const reviewOnly =
+      implementationState === RESIDENTIAL_CAPABILITY_STATES.REVIEW_ONLY;
     return {
       ...base,
       allowed: true,
-      reasonCode:
-        ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_COMPATIBILITY_AVAILABLE,
-      explanation: RESIDENTIAL_COMPATIBILITY_WARNING,
+      reasonCode: compatibilityOnly
+        ? ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_COMPATIBILITY_AVAILABLE
+        : reviewOnly
+          ? ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_REVIEW_AVAILABLE
+          : ASSET_CAPABILITY_REASON_CODES.RESIDENTIAL_STRATEGY_AVAILABLE,
+      explanation: compatibilityOnly
+        ? RESIDENTIAL_COMPATIBILITY_WARNING
+        : reviewOnly
+          ? `${capabilityLabel} is review-only and cannot execute an external action automatically.`
+          : `${capabilityLabel} is implemented by Residential Acquisition Strategy v1.`,
     };
   }
 
@@ -553,6 +622,26 @@ export function buildAssetStrategyContext(deal, options = {}) {
       classification.assetType === ASSET_TYPES.RESIDENTIAL_HOME &&
       !classification.requiresHumanReview
   );
+  const residentialStrategyEligibility = Boolean(
+    compatibilityAnalysisEligibility &&
+      support.supportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+  );
+  const pursuitScoring = residentialStrategyEligibility
+    ? {
+        frameworkAvailable: true,
+        strategyHookContractAvailable: true,
+        concreteProfileAvailable: true,
+        productionProfileAvailable: true,
+        profileId: RESIDENTIAL_PURSUIT_PROFILE_ID,
+        profileVersion: RESIDENTIAL_PURSUIT_PROFILE_ID,
+        rulesetVersion: RESIDENTIAL_PURSUIT_RULESET_VERSION,
+        strategyId: assetDefinition?.strategyId || null,
+        strategyVersion: RESIDENTIAL_STRATEGY_VERSION,
+        evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+        explanation:
+          "Residential Acquisition Strategy v1 supplies an active production Pursuit Scoring profile; evaluation still requires complete evidence-linked factors.",
+      }
+    : { ...PURSUIT_SCORING_FRAMEWORK_STATUS };
   const sourceWarnings = uniqueStrings([
     ...classification.partialDataWarnings,
     ...(classification.sourceValues.length
@@ -562,9 +651,6 @@ export function buildAssetStrategyContext(deal, options = {}) {
       ? [
           "Classification evidence could not be linked because the opportunity has no stable record identifier.",
         ]
-      : []),
-    ...(compatibilityAnalysisEligibility
-      ? [RESIDENTIAL_COMPATIBILITY_WARNING]
       : []),
   ]).slice(0, 10);
   const baseContext = {
@@ -596,25 +682,32 @@ export function buildAssetStrategyContext(deal, options = {}) {
     selectedStrategyId: assetDefinition?.strategyId || null,
     strategyLabel: support.strategyLabel,
     strategyLifecycleStatus: support.lifecycleStatus,
+    strategyVersion: support.strategyVersion || null,
     strategySupportState: support.supportState,
     strategySupportLabel: support.supportLabel,
     compatibilityAnalysisEligibility,
-    compatibilityWarning: compatibilityAnalysisEligibility
+    residentialStrategyEligibility,
+    compatibilityWarning:
+      compatibilityAnalysisEligibility && !residentialStrategyEligibility
       ? RESIDENTIAL_COMPATIBILITY_WARNING
       : null,
-    pursuitScoring: { ...PURSUIT_SCORING_FRAMEWORK_STATUS },
+    pursuitScoring,
     genericCapabilityAvailability: Object.fromEntries(
       GENERIC_ASSET_CAPABILITY_IDS.map((capabilityId) => [capabilityId, true])
     ),
     genericCapabilitiesAvailable: true,
     sourceWarnings,
   };
-  const blockedCapabilityReasons = RESIDENTIAL_COMPATIBILITY_CAPABILITY_IDS.map(
+  const blockedCapabilityReasons = RESIDENTIAL_STRATEGY_CAPABILITY_IDS.map(
     (capabilityId) => canRunAssetCapability(baseContext, capabilityId)
   ).filter((result) => !result.allowed);
   const strategyAnalysisGate = evaluateAssetStrategyAnalysisGate({
     classification,
-    strategy: options.strategyContract || null,
+    strategy:
+      options.strategyContract ||
+      (residentialStrategyEligibility
+        ? RESIDENTIAL_ACQUISITION_STRATEGY
+        : null),
   });
 
   return {
@@ -634,7 +727,8 @@ export function buildAssetStrategyContext(deal, options = {}) {
       assetStrategyIdentifier: assetDefinition?.strategyId || null,
       evidenceReferences: classificationEvidence,
       conflictReferences: classificationConflicts,
-      pursuitScoring: { ...PURSUIT_SCORING_FRAMEWORK_STATUS },
+      strategyVersion: support.strategyVersion || null,
+      pursuitScoring,
       partialDataWarnings: sourceWarnings,
     },
   };

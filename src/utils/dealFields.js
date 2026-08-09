@@ -19,10 +19,16 @@ export const DEAL_FIELD_ALIASES = {
     "repair_estimate",
   ],
   mortgageBalance: ["mortgage_balance", "mortgage", "loan_balance"],
+  mortgageStatus: ["mortgage_status", "loan_status"],
   timeline: ["seller_timeline", "timeline", "timeline_to_sell"],
   occupancy: ["occupancy_status", "occupancy"],
   condition: ["property_condition", "condition"],
   rent: ["rent", "rent_estimate", "monthly_rent"],
+  bedrooms: ["bedrooms", "beds"],
+  bathrooms: ["bathrooms", "baths"],
+  squareFootage: ["square_footage", "sqft", "living_area"],
+  comparableSales: ["comps", "comparable_sales", "comparable_sale_evidence"],
+  buyerMatches: ["buyer_matches", "matched_buyers"],
 };
 
 export function getDealField(deal, keys, fallback = null) {

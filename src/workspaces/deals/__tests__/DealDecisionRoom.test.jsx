@@ -86,6 +86,9 @@ vi.mock("../DealTimeline", () => ({
 vi.mock("../PursuitScoreSummary", () => ({
   default: () => <div>Future Pursuit Score Summary</div>,
 }));
+vi.mock("../ResidentialStrategySummary", () => ({
+  default: () => <div>Residential Strategy Summary</div>,
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -133,11 +136,12 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByText("Offer readiness: Not Ready")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
     expect(
-      screen.getAllByText("Residential home - Compatibility Analysis").length
+      screen.getAllByText("Residential home - Implemented").length
     ).toBeGreaterThan(0);
     expect(
-      screen.getAllByText("Residential Compatibility Analysis").length
+      screen.getAllByText("Residential Acquisition Strategy v1").length
     ).toBeGreaterThan(0);
+    expect(await screen.findByText("Residential Strategy Summary")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
   });
 
@@ -224,7 +228,8 @@ describe("DealDecisionRoom", () => {
     expect(screen.getAllByText(/Source timestamp: Not available/).length).toBeGreaterThan(0);
     expect(screen.getByText("Pursuit Scoring Framework")).toBeInTheDocument();
     expect(screen.getByText("Production Strategy Profile")).toBeInTheDocument();
-    expect(screen.getByText("Not yet implemented")).toBeInTheDocument();
+    expect(screen.getByText("residential-pursuit-profile-v1")).toBeInTheDocument();
+    expect(screen.getByText("residential-underwriting-policy-v1")).toBeInTheDocument();
     expect(screen.queryByText("Pursuit Score")).not.toBeInTheDocument();
     expect(screen.queryByText("Future Pursuit Score Summary")).not.toBeInTheDocument();
     expect(screen.queryByText("Recommendation Confidence")).not.toBeInTheDocument();
@@ -240,13 +245,34 @@ describe("DealDecisionRoom", () => {
     expect(screen.queryByText("100/100")).not.toBeInTheDocument();
   });
 
+  it("renders the production Pursuit Score only when residential factors are complete", async () => {
+    renderRoom({
+      deals: [
+        {
+          ...deal,
+          asking_price: 120000,
+          arv: 210000,
+          repairs_needed: 25000,
+          motivation_score: 8,
+          seller_timeline: "within 30 days",
+          mortgage_balance: 90000,
+          mortgage_status: "Current",
+          occupancy_status: "Vacant",
+        },
+      ],
+    });
+
+    expect(await screen.findByText("Future Pursuit Score Summary")).toBeInTheDocument();
+    expect(screen.getByText("Residential Strategy Summary")).toBeInTheDocument();
+  });
+
   it("keeps deterministic Decision Intelligence separate from optional AI-assisted insight", async () => {
     renderRoom();
 
-    expect(screen.getAllByText("Deterministic compatibility").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Deterministic Residential Strategy|Deterministic strategy/).length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "AI-assisted insight" })).toBeInTheDocument();
     expect(
-      screen.getByText(/separate from the deterministic compatibility recommendation/i)
+      screen.getByText(/separate from deterministic Residential Strategy underwriting/i)
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
   });
@@ -277,7 +303,7 @@ describe("DealDecisionRoom", () => {
     expect(screen.queryByText("Decision information unavailable")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("service_role");
     expect(
-      screen.getAllByText("Residential home - Compatibility Analysis").length
+      screen.getAllByText("Residential home - Implemented").length
     ).toBeGreaterThan(0);
   });
 

@@ -136,7 +136,7 @@ describe("compatibility decision read model", () => {
     expect(JSON.stringify(recommendation).toLowerCase()).not.toContain("ai recommendation");
   });
 
-  it("normalizes current offer readiness and leaves future metrics unevaluated", () => {
+  it("keeps readiness compatibility-only while integrating production Pursuit Score", () => {
     const result = build({ deal: completeDeal() });
     const readiness = result.data.metricsById["offer-readiness"];
 
@@ -145,8 +145,17 @@ describe("compatibility decision read model", () => {
     );
     expect(readiness.value).toBe(100);
     expect(readiness.displayValue).toBe("Ready to Offer");
+    expect(result.data.metricsById["pursuit-score"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: 80,
+      displayValue: "80/100",
+    });
+    expect(result.data.pursuitScoreResult).toMatchObject({
+      scoringProfileId: "residential-pursuit-profile-v1",
+      evaluationState: "partial",
+      productionEligible: true,
+    });
     for (const id of [
-      "pursuit-score",
       "recommendation-confidence",
       "data-completeness",
       "data-reliability",
@@ -166,18 +175,20 @@ describe("compatibility decision read model", () => {
   });
 
   it("never converts an existing lead_score into Pursuit Score", () => {
+    const baseline = build({ deal: completeDeal() });
     const result = build({
       deal: completeDeal({ lead_score: 100 }),
     });
     expect(result.data.metricsById["pursuit-score"]).toMatchObject({
-      evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
-      value: null,
-      displayValue: null,
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: baseline.data.metricsById["pursuit-score"].value,
     });
-    expect(result.data.pursuitScoreResult).toBeNull();
+    expect(result.data.pursuitScoreResult.factorResults.map((factor) => factor.factorId)).not.toContain(
+      "lead_score"
+    );
   });
 
-  it("rejects a supplied score when the live Asset Strategy remains compatibility-only", () => {
+  it("uses the registered Residential Strategy result instead of a supplied test fixture", () => {
     const profile = createResidentialScoringProfile({
       status: PURSUIT_SCORING_PROFILE_STATUSES.ACTIVE,
     });
@@ -191,15 +202,104 @@ describe("compatibility decision read model", () => {
     });
 
     expect(scoringResult.evaluationState).toBe("evaluated");
-    expect(result.data.assetStrategyContext.strategySupportState).toBe(
-      "compatibility-only"
+    expect(result.data.assetStrategyContext.strategySupportState).toBe("implemented");
+    expect(result.data.metricsById["pursuit-score"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: 80,
+    });
+    expect(result.data.pursuitScoreResult.scoringProfileId).toBe(
+      "residential-pursuit-profile-v1"
     );
+  });
+
+  it("integrates residential underwriting, signals, exits, and review guidance", () => {
+    const result = build({ deal: completeDeal() });
+    const strategy = result.data.residentialStrategyResult;
+
+    expect(strategy).toMatchObject({
+      eligible: true,
+      strategyId: "residential-acquisition",
+      strategyVersion: "residential-strategy-v1",
+      scoringProfileId: "residential-pursuit-profile-v1",
+      evaluationState: "partial",
+    });
+    expect(strategy.underwriting.acquisitionCeiling).toBe(122000);
+    expect(strategy.riskSignals.length).toBeGreaterThan(0);
+    expect(strategy.exitCandidates).toHaveLength(5);
+    expect(strategy.reviewGuidance.label).toMatch(/Review/i);
+    expect(result.data.recommendation.status).toBe(
+      DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
+    );
+    expect(result.data.metricsById["recommendation-confidence"].value).toBeNull();
+    expect(result.data.metricsById["data-reliability"].value).toBeNull();
+    expect(result.data.metricsById["risk-level"].value).toBeNull();
+  });
+
+  it("keeps blocked residential Pursuit Score null", () => {
+    const result = build({ deal: completeDeal({ motivation_score: undefined }) });
+
+    expect(result.data.residentialStrategyResult.pursuitScoreResult).toMatchObject({
+      evaluationState: "blocked",
+      score: null,
+      displayValue: null,
+    });
     expect(result.data.metricsById["pursuit-score"]).toMatchObject({
       evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
       value: null,
       displayValue: null,
     });
     expect(result.data.pursuitScoreResult).toBeNull();
+  });
+
+  it("keeps seller replies and due actions ahead of Residential Strategy guidance", () => {
+    const sellerReply = build({
+      conversationSignals: [
+        {
+          compatibilityKey: "phone:5551112222",
+          linkedDealId: "deal-1",
+          lastMessageDirection: "inbound",
+          lastMessagePreview: "Can we talk today?",
+          lastMessageTimestamp: "2026-08-05T14:00:00Z",
+          organizationId: "org-1",
+          tenantId: "tenant-1",
+        },
+      ],
+      deal: completeDeal(),
+    });
+    const due = build({ deal: completeDeal({ due_date: "2026-08-05" }) });
+
+    expect(sellerReply.data.recommendation.label).toBe("Respond to the seller reply.");
+    expect(due.data.recommendation.label).toBe("Complete the due follow-up action.");
+  });
+
+  it("keeps a seller reply ahead of an overdue follow-up on the same deal", () => {
+    const result = build({
+      conversationSignals: [
+        {
+          compatibilityKey: "phone:5551112222",
+          linkedDealId: "deal-1",
+          lastMessageDirection: "inbound",
+          lastMessagePreview: "Can we talk today?",
+          lastMessageTimestamp: "2026-08-05T14:00:00Z",
+          organizationId: "org-1",
+          tenantId: "tenant-1",
+        },
+      ],
+      deal: completeDeal({ due_date: "2026-08-01" }),
+    });
+
+    expect(result.data.recommendation).toMatchObject({
+      label: "Respond to the seller reply.",
+      status: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
+    });
+    const evidenceIds = new Set(
+      result.data.evidenceReferences.map((entry) => entry.evidenceId)
+    );
+    expect(
+      result.data.recommendation.evidenceReferenceIds.every((id) =>
+        evidenceIds.has(id)
+      )
+    ).toBe(true);
   });
 
   it("integrates classified residential strategy context and provenance", () => {
@@ -214,8 +314,10 @@ describe("compatibility decision read model", () => {
       assetStrategyIdentifier: "residential-acquisition",
     });
     expect(result.data.assetStrategyContext).toMatchObject({
-      strategySupportState: "compatibility-only",
+      strategySupportState: "implemented",
       compatibilityAnalysisEligibility: true,
+      residentialStrategyEligibility: true,
+      strategyVersion: "residential-strategy-v1",
     });
     expect(classificationEvidence).toMatchObject({
       sourceField: "asset_type",
@@ -364,7 +466,7 @@ describe("compatibility decision read model", () => {
     }
   );
 
-  it("maps current missing checklist items to blocking compatibility issues", () => {
+  it("maps strategy requirements to blocking and advisory issue references", () => {
     const result = build({
       deal: completeDeal({ asking_price: null, property_condition: null }),
     });
@@ -374,9 +476,12 @@ describe("compatibility decision read model", () => {
       expect.arrayContaining(["Asking price", "Property condition"])
     );
     expect(
-      result.data.missingInformationReferences.every((issue) => issue.severity === "blocking")
-    ).toBe(true);
-    expect(readiness.blockingIssueIds.length).toBeGreaterThanOrEqual(2);
+      result.data.missingInformationReferences.find((issue) => issue.label === "Asking price")
+    ).toMatchObject({ severity: "blocking" });
+    expect(
+      result.data.missingInformationReferences.find((issue) => issue.label === "Property condition")
+    ).toMatchObject({ severity: "advisory" });
+    expect(readiness.blockingIssueIds.length).toBeGreaterThanOrEqual(1);
     expect(readiness.advisoryIssueIds).toEqual([]);
   });
 
@@ -454,6 +559,26 @@ describe("compatibility decision read model", () => {
     expect(result.data.conflictReferences).toHaveLength(1);
     expect(result.data.approvalSummary.status).toBe("pending");
     expect(result.data.recommendation.approvalRequirement.required).toBe(true);
+  });
+
+  it("represents a linked pending approval as a real deterministic recommendation", () => {
+    const result = build({
+      approvalItems: [
+        {
+          id: "approval-1",
+          relatedDeal: { id: "deal-1" },
+          status: "pending",
+          organizationId: "org-1",
+          tenantId: "tenant-1",
+        },
+      ],
+      deal: completeDeal(),
+    });
+
+    expect(result.data.recommendation).toMatchObject({
+      label: "Review the pending approval before continuing.",
+      status: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
+    });
   });
 
   it("uses an approved existing action for Act without calling the recommendation approved", () => {

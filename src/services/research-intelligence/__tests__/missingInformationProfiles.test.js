@@ -4,6 +4,7 @@ import { OFFER_READINESS_CHECKLIST } from "../../offers/offerReadinessService";
 import {
   COMMON_ACQUISITION_CORE_PROFILE,
   RESIDENTIAL_COMPATIBILITY_PROFILE,
+  RESIDENTIAL_STRATEGY_REQUIREMENTS_PROFILE,
   VACANT_LAND_PREFLIGHT_PROFILE,
   selectMissingInformationProfiles,
 } from "../index";
@@ -108,13 +109,23 @@ describe("Missing Information profiles", () => {
     expect(conflict.limitations[0].type).toBe("capability-blocked");
   });
 
-  it("selects residential compatibility and land preflight independently", () => {
+  it("selects the implemented residential profile and land preflight independently", () => {
     expect(
       selection("residential-home").profiles.map((entry) => entry.label)
     ).toEqual([
       "Common Acquisition Core",
-      "Residential Compatibility Requirements",
+      "Residential Strategy Requirements",
     ]);
+    expect(selection("residential-home").activeProfile.profileId).toBe(
+      "residential-strategy-requirements-v1"
+    );
+    expect(RESIDENTIAL_STRATEGY_REQUIREMENTS_PROFILE.requirements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ requirementId: "residential-strategy-asking-price", criticality: "blocking" }),
+        expect.objectContaining({ requirementId: "residential-strategy-after-repair-value", criticality: "blocking" }),
+        expect.objectContaining({ requirementId: "residential-strategy-mortgage-status", criticality: "advisory" }),
+      ])
+    );
     const land = selection("vacant-residential-land");
     expect(land.profiles.map((entry) => entry.label)).toEqual([
       "Common Acquisition Core",

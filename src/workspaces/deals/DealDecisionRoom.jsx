@@ -41,6 +41,7 @@ const NegotiationTracker = lazy(() => import("../../components/NegotiationTracke
 const OfferEngine = lazy(() => import("../../components/OfferEngine"));
 const PropertyIntelligencePanel = lazy(() => import("../../components/PropertyIntelligencePanel"));
 const PursuitScoreSummary = lazy(() => import("./PursuitScoreSummary"));
+const ResidentialStrategySummary = lazy(() => import("./ResidentialStrategySummary"));
 const SequenceEngine = lazy(() => import("../../components/SequenceEngine"));
 const TaskPanel = lazy(() => import("../../components/TaskPanel"));
 const TeamPanel = lazy(() => import("../../components/TeamPanel"));
@@ -287,7 +288,7 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
     <div className="decision-room__decision">
       <Card>
         <SectionHeader
-          description="Deterministic compatibility summary from the currently loaded CRM fields."
+          description="Deterministic decision summary from the currently loaded, evidence-linked CRM fields."
           title="Decision Snapshot"
         />
         <div className="decision-room__decision-statuses" aria-label="Current decision states">
@@ -309,8 +310,10 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
             {assetStrategyContext.statusSummary}
           </StatusBadge>
           <Badge>
-            {assetStrategyContext.compatibilityAnalysisEligibility
-              ? "Deterministic compatibility"
+            {assetStrategyContext.residentialStrategyEligibility
+              ? "Deterministic Residential Strategy"
+              : assetStrategyContext.compatibilityAnalysisEligibility
+                ? "Deterministic compatibility"
               : "Deterministic decision context"}
           </Badge>
         </div>
@@ -334,10 +337,21 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
             <dt>Strategy Support</dt>
             <dd>{assetStrategyContext.strategySupportLabel}</dd>
           </div>
-          {assetStrategyContext.compatibilityAnalysisEligibility ? (
+          {assetStrategyContext.residentialStrategyEligibility ? (
+            <div>
+              <dt>Strategy Mode</dt>
+              <dd>Residential Acquisition Strategy v1</dd>
+            </div>
+          ) : assetStrategyContext.compatibilityAnalysisEligibility ? (
             <div>
               <dt>Compatibility Mode</dt>
               <dd>Residential Compatibility Analysis</dd>
+            </div>
+          ) : null}
+          {assetStrategyContext.residentialStrategyEligibility ? (
+            <div>
+              <dt>Offer Readiness</dt>
+              <dd>Compatibility Only until DI-04</dd>
             </div>
           ) : null}
         </dl>
@@ -376,6 +390,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           />
         </LazySection>
       ) : null}
+      {readModel.residentialStrategyResult?.eligible ? (
+        <LazySection label="Loading Residential Strategy summary...">
+          <ResidentialStrategySummary result={readModel.residentialStrategyResult} />
+        </LazySection>
+      ) : null}
       <MissingInformationAutopilot
         onNavigateSection={onAction}
         readModel={readModel.missingInformationReadModel}
@@ -393,7 +412,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               </div>
               <div>
                 <dt>Source mode</dt>
-                <dd>Deterministic compatibility</dd>
+                <dd>
+                  {readModel.residentialStrategyResult?.eligible
+                    ? "Deterministic strategy with compatibility Evidence"
+                    : "Deterministic compatibility"}
+                </dd>
               </div>
               <div>
                 <dt>Source freshness</dt>
@@ -438,6 +461,10 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                 <dd>{assetStrategyContext.strategySupportState}</dd>
               </div>
               <div>
+                <dt>Strategy version</dt>
+                <dd>{readModel.residentialStrategyResult?.strategyVersion || "Not available"}</dd>
+              </div>
+              <div>
                 <dt>Pursuit Scoring Framework</dt>
                 <dd>
                   {assetStrategyContext.pursuitScoring.frameworkAvailable
@@ -450,9 +477,21 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                 <dd>
                   {assetStrategyContext.pursuitScoring
                     .productionProfileAvailable
-                    ? "Available"
+                    ? assetStrategyContext.pursuitScoring.profileId
                     : "Not yet implemented"}
                 </dd>
+              </div>
+              <div>
+                <dt>Underwriting policy</dt>
+                <dd>{readModel.residentialStrategyResult?.underwriting?.policyVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Scoring ruleset</dt>
+                <dd>{readModel.residentialStrategyResult?.scoringRulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Offer readiness capability</dt>
+                <dd>{readModel.residentialStrategyResult?.capabilitySupport?.offerReadiness || "Not available"}</dd>
               </div>
             </dl>
             <h3>Classification sources</h3>
@@ -515,8 +554,15 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                 ))}
               </ul>
             ) : (
-              <p>No residential compatibility capability is blocked by classification.</p>
+              <p>No registered residential capability is blocked by classification.</p>
             )}
+            {readModel.residentialStrategyResult?.eligible ? (
+              <>
+                <h3>Residential Strategy assumptions</h3>
+                <p>{readModel.residentialStrategyResult.underwriting?.assumptionDisclosure}</p>
+                <p>{readModel.residentialStrategyResult.underwriting?.excludedCostDisclosure}</p>
+              </>
+            ) : null}
             {assetStrategyContext.compatibilityWarning ? (
               <p className="decision-room__partial-warning" role="status">
                 {assetStrategyContext.compatibilityWarning}
@@ -545,7 +591,7 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
         <SectionHeader
           description={
             insightGate.allowed
-              ? "This existing optional residential panel is separate from the deterministic compatibility recommendation above."
+              ? "This existing optional panel remains separate from deterministic Residential Strategy underwriting and Pursuit Scoring."
               : "Asset classification controls whether the existing residential insight panel can run."
           }
           eyebrow={insightGate.allowed ? "Optional" : "Asset Strategy"}
@@ -557,7 +603,7 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
         />
         {insightGate.allowed ? (
           <>
-            <Badge>Residential Compatibility Analysis</Badge>
+            <Badge>Optional AI - Not Used by Residential Strategy</Badge>
             <LazySection label="Loading existing insights...">
               <AIInsights deal={deal} />
             </LazySection>
@@ -611,7 +657,7 @@ function PropertySection({
       <FactGrid deal={deal} />
       {!blockedPropertyGate ? (
         <>
-          <Badge>Residential Compatibility Analysis</Badge>
+          <Badge>Residential Property Intelligence - Compatibility Only</Badge>
           <LazySection label="Loading property intelligence...">
             <PropertyIntelligencePanel deal={deal} />
           </LazySection>
@@ -636,6 +682,7 @@ function NumbersSection({
   deal,
   onNavigateSection,
   refresh,
+  residentialStrategyResult,
 }) {
   const numbersGates = [
     capabilityGates.underwriting,
@@ -651,13 +698,14 @@ function NumbersSection({
     >
       {!blockedGate ? (
         <>
-          <Badge>Residential Compatibility Analysis</Badge>
+          <Badge>Residential Acquisition Strategy v1</Badge>
           <LazySection label="Loading deal analyzer...">
             <DealAnalyzer deal={deal} refresh={refresh} />
           </LazySection>
           <LazySection label="Loading offer engine...">
-            <OfferEngine deal={deal} />
+            <OfferEngine deal={deal} strategyResult={residentialStrategyResult} />
           </LazySection>
+          <Badge>Negotiation Tracking - Compatibility Only</Badge>
           <LazySection label="Loading negotiation tracker...">
             <NegotiationTracker deal={deal} refresh={refresh} />
           </LazySection>
@@ -733,6 +781,7 @@ function ClosingSection({
   deal,
   onNavigateSection,
   refresh,
+  residentialStrategyResult,
 }) {
   const buyerGates = [
     capabilityGates.buyerMatching,
@@ -747,12 +796,12 @@ function ClosingSection({
     >
       {!blockedBuyerGate ? (
         <>
-          <Badge>Residential Compatibility Analysis</Badge>
+          <Badge>Residential Buyer Tools - Compatibility Only</Badge>
           <LazySection label="Loading buyer matches...">
             <BuyerMatches deal={deal} />
           </LazySection>
           <LazySection label="Loading buyer blast...">
-            <BuyerBlast deal={deal} />
+            <BuyerBlast deal={deal} strategyResult={residentialStrategyResult} />
           </LazySection>
         </>
       ) : (
@@ -916,6 +965,7 @@ export default function DealDecisionRoom({
           deal={deal}
           onNavigateSection={handlePrimaryAction}
           refresh={refresh}
+          residentialStrategyResult={decisionReadModel?.residentialStrategyResult}
         />
       );
     }
@@ -938,6 +988,7 @@ export default function DealDecisionRoom({
         deal={deal}
         onNavigateSection={handlePrimaryAction}
         refresh={refresh}
+        residentialStrategyResult={decisionReadModel?.residentialStrategyResult}
       />
     );
   }

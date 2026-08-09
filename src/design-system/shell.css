@@ -804,11 +804,22 @@
 }
 
 .pursuit-score-summary__evidence,
-.pursuit-score-summary__warnings {
+.pursuit-score-summary__warnings,
+.pursuit-score-summary__factors {
   display: grid;
   gap: var(--space-2);
   overflow-wrap: anywhere;
   padding-left: var(--space-5);
+}
+
+.pursuit-score-summary__factors li {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.pursuit-score-summary__factors span,
+.pursuit-score-summary__factors small {
+  color: var(--color-text-muted);
 }
 
 .pursuit-score-summary__disclaimer {
@@ -882,6 +893,136 @@
 .decision-room__ai-separation {
   display: grid;
   gap: var(--space-3);
+}
+
+.residential-strategy,
+.residential-analyzer,
+.residential-offer-review,
+.buyer-blast-review {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.residential-strategy__status,
+.residential-analyzer__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.residential-analyzer__header h3,
+.buyer-blast-review h3,
+.residential-strategy h3 {
+  color: var(--color-text);
+  font-size: var(--text-md);
+  margin: 0;
+}
+
+.residential-strategy__metrics,
+.residential-analyzer__results,
+.residential-analyzer__inputs {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin: 0;
+}
+
+.residential-strategy__metrics > div,
+.residential-analyzer__results > div {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.residential-strategy__metrics dt,
+.residential-analyzer__results dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+}
+
+.residential-strategy__metrics dd,
+.residential-analyzer__results dd {
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  margin: var(--space-2) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.residential-strategy__list {
+  display: grid;
+  gap: var(--space-2);
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+}
+
+.residential-strategy__list li {
+  align-items: start;
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-top: var(--space-3);
+}
+
+.residential-strategy__list p,
+.residential-strategy__list small,
+.residential-strategy__unavailable,
+.residential-analyzer__notice,
+.residential-analyzer__status {
+  color: var(--color-text-muted);
+  margin: var(--space-1) 0 0;
+}
+
+.residential-strategy__details {
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text);
+  padding-top: var(--space-3);
+}
+
+.residential-strategy__details summary {
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-weight: var(--weight-bold);
+  padding: var(--space-2);
+}
+
+.residential-strategy__details summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.residential-offer-review,
+.buyer-blast-review {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-4);
+}
+
+.residential-offer-review__creative {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.residential-offer-review__creative > div {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.residential-offer-review__creative p {
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
 @media (max-width: 1024px) {

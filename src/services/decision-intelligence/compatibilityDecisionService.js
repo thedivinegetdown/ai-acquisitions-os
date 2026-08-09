@@ -6,6 +6,10 @@ import {
 } from "../asset-strategy/assetStrategyContextService";
 import { ASSET_CLASSIFICATION_STATES } from "../asset-strategy/assetStrategyContracts";
 import {
+  adaptResidentialFacts,
+  evaluateResidentialStrategy,
+} from "../asset-strategy/residential";
+import {
   OFFER_READINESS_CHECKLIST,
   analyzeOfferReadiness,
 } from "../offers/offerReadinessService";
@@ -552,6 +556,7 @@ function getRecommendation({
   readiness,
   readinessCapability,
   readinessWarning,
+  residentialStrategyResult,
   sellerReply,
   taskDue,
 }) {
@@ -584,19 +589,19 @@ function getRecommendation({
   let explanation;
   let supportingEvidence = [];
 
-  if (dueContext.isOverdue) {
-    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
-    label = "Follow up with the seller today and update the next action.";
-    explanation = "The current deal follow-up date is overdue.";
-    const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
-    supportingEvidence = dueEvidence ? [dueEvidence.evidenceId] : [];
-  } else if (sellerReply) {
+  if (sellerReply) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
     label = "Respond to the seller reply.";
     explanation = "The latest valid linked seller message is inbound and needs a response.";
     supportingEvidence = evidence
       .filter((entry) => entry.sourceType === "conversation-summary")
       .map((entry) => entry.evidenceId);
+  } else if (dueContext.isOverdue) {
+    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
+    label = "Follow up with the seller today and update the next action.";
+    explanation = "The current deal follow-up date is overdue.";
+    const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
+    supportingEvidence = dueEvidence ? [dueEvidence.evidenceId] : [];
   } else if (taskDue || dueContext.isDue) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
     label = "Complete the due follow-up action.";
@@ -621,6 +626,8 @@ function getRecommendation({
       "seller.timeline": DECISION_ACTION_TAXONOMY.COLLECT_SELLER_TIMELINE,
       "deal.askingPrice": DECISION_ACTION_TAXONOMY.COLLECT_ASKING_PRICE,
       "property.arvOrComps": DECISION_ACTION_TAXONOMY.RUN_COMPS,
+      "property.afterRepairValue": DECISION_ACTION_TAXONOMY.RUN_COMPS,
+      "property.marketValueSupport": DECISION_ACTION_TAXONOMY.RUN_COMPS,
     };
     actionCode =
       actionCodesByField[informationItem?.canonicalField] ||
@@ -636,6 +643,22 @@ function getRecommendation({
       informationItem?.reason || "Review the current stored information."
     }`;
     supportingEvidence = informationItem?.evidenceReferenceIds || [];
+  } else if (approvalSummary.pendingCount > 0) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = "Review the pending approval before continuing.";
+    explanation = approvalSummary.reason;
+  } else if (
+    residentialStrategyResult?.eligible &&
+    residentialStrategyResult?.reviewGuidance?.label
+  ) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = residentialStrategyResult.reviewGuidance.label;
+    explanation = residentialStrategyResult.reviewGuidance.explanation;
+    supportingEvidence = uniqueStrings([
+      ...(residentialStrategyResult.underwriting?.inputEvidenceIds || []),
+      ...(residentialStrategyResult.pursuitScoreResult
+        ?.evidenceReferenceIds || []),
+    ]);
   } else if (!readinessCapability.allowed) {
     actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
     label =
@@ -666,7 +689,9 @@ function getRecommendation({
   const hasSafeResult = Boolean(
     label &&
       (actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
-        missingInformationReadModel?.highestPriorityAction?.enabled)
+        missingInformationReadModel?.highestPriorityAction?.enabled ||
+        approvalSummary.pendingCount > 0 ||
+        residentialStrategyResult?.eligible)
   );
   return normalizeRecommendation({
     recommendationId: `recommendation:deal:${idSegment(dealId)}:compatibility`,
@@ -716,7 +741,10 @@ function buildMetricOutputs({
       (missingInformationReadModel?.openItems || []).some(
         (item) =>
           item.itemId === issue.issueId &&
-          item.profileId === "residential-compatibility-requirements-v1"
+          [
+            "residential-compatibility-requirements-v1",
+            "residential-strategy-requirements-v1",
+          ].includes(item.profileId)
       )
     )
     .map((issue) => issue.issueId);
@@ -934,13 +962,6 @@ function buildReadModel({
     dealId
   );
   const taskEvidence = adaptTaskEvidence(tasks, context, dealId);
-  const evidence = dedupeEvidence([
-    ...assetStrategyContext.classificationEvidence,
-    ...currentEvidence,
-    ...externalEvidence,
-    ...conversationEvidence,
-    ...taskEvidence,
-  ]);
   const providedConflicts = (Array.isArray(conflicts) ? conflicts : [])
     .map(normalizeConflictReference)
     .filter(Boolean)
@@ -955,14 +976,49 @@ function buildReadModel({
     }
   });
   const normalizedConflicts = [...conflictById.values()].slice(0, SOURCE_LIMIT);
+  const residentialFactReadModel = assetStrategyContext.residentialStrategyEligibility
+    ? adaptResidentialFacts({
+        assetStrategyContext,
+        conflicts: normalizedConflicts,
+        deal: safeDeal,
+        evaluatedTimestamp,
+        evidenceReferences: externalEvidence,
+      })
+    : null;
+  const evidence = dedupeEvidence([
+    ...assetStrategyContext.classificationEvidence,
+    ...conversationEvidence,
+    ...taskEvidence,
+    ...(residentialFactReadModel?.evidenceReferences || []),
+    ...currentEvidence,
+    ...externalEvidence,
+  ]);
   const missingInformationReadModel = evaluateMissingInformation({
     assetStrategyContext,
     conflicts: normalizedConflicts,
     deal: safeDeal,
     evaluatedTimestamp,
     evidenceReferences: evidence,
+    freshnessStates:
+      residentialFactReadModel?.explicitFreshnessStates || {},
+    informationStates: residentialFactReadModel?.informationStates || {},
     sourceErrors,
+    verificationStates:
+      residentialFactReadModel?.explicitVerificationStates || {},
   });
+  const residentialStrategyResult = assetStrategyContext.residentialStrategyEligibility
+    ? evaluateResidentialStrategy({
+        assetStrategyContext,
+        conflicts: normalizedConflicts,
+        deal: safeDeal,
+        evaluatedTimestamp,
+        evidenceReferences: evidence,
+        factReadModel: residentialFactReadModel,
+        missingInformationReadModel,
+      })
+    : null;
+  const resolvedPursuitScoreResult =
+    residentialStrategyResult?.pursuitScoreResult || pursuitScoreResult;
   const missingInformation = toDecisionIssueReferences(
     missingInformationReadModel
   );
@@ -979,6 +1035,7 @@ function buildReadModel({
     ...assetStrategyContext.sourceWarnings,
     readinessEvaluation.warning || "",
     ...missingInformationReadModel.partialDataWarnings,
+    ...(residentialStrategyResult?.partialDataWarnings || []),
   ]).slice(0, 10);
   const ruleset = buildRuleset(evaluatedTimestamp);
   const lifecycle = getLifecycle({
@@ -1009,6 +1066,7 @@ function buildReadModel({
     readiness,
     readinessCapability,
     readinessWarning: readinessEvaluation.warning,
+    residentialStrategyResult,
     sellerReply,
     taskDue,
   });
@@ -1020,7 +1078,7 @@ function buildReadModel({
     evidence,
     missingInformation,
     missingInformationReadModel,
-    pursuitScoreResult,
+    pursuitScoreResult: resolvedPursuitScoreResult,
     readiness,
     readinessCapability,
     readinessWarning: readinessEvaluation.warning,
@@ -1080,7 +1138,7 @@ function buildReadModel({
       : "incomplete",
   });
   const normalizedPursuitScoreResult = normalizePursuitScoreResult(
-    pursuitScoreResult
+    resolvedPursuitScoreResult
   );
   const pursuitScoreMetric = decisionRecord.metricOutputs.find(
     (metric) => metric.metricId === "pursuit-score"
@@ -1098,6 +1156,7 @@ function buildReadModel({
     evidenceReferences: decisionRecord.evidenceReferences,
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
+    residentialStrategyResult,
     pursuitScoreResult:
       pursuitScoreMetric?.evaluationState ===
         DECISION_EVALUATION_STATES.EVALUATED &&

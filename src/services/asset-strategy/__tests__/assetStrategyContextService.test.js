@@ -22,7 +22,7 @@ function deal(overrides = {}) {
 }
 
 describe("asset strategy runtime context", () => {
-  it("marks classified residential homes as compatibility-only", () => {
+  it("marks classified residential homes as implemented without an implicit fallback", () => {
     const context = buildAssetStrategyContext(
       deal({ asset_type: ASSET_TYPES.RESIDENTIAL_HOME })
     );
@@ -35,16 +35,18 @@ describe("asset strategy runtime context", () => {
       assetTypeLabel: "Residential home",
       classificationState: ASSET_CLASSIFICATION_STATES.CLASSIFIED,
       selectedStrategyId: "residential-acquisition",
-      strategySupportState: ASSET_STRATEGY_SUPPORT_STATES.COMPATIBILITY_ONLY,
-      strategySupportLabel: "Compatibility Analysis",
+      strategySupportState: ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED,
+      strategySupportLabel: "Implemented",
       compatibilityAnalysisEligibility: true,
-      strategyLifecycleStatus: null,
+      residentialStrategyEligibility: true,
+      strategyLifecycleStatus: ASSET_STRATEGY_STATUSES.ACTIVE,
+      strategyVersion: "residential-strategy-v1",
     });
-    expect(context.strategyAnalysisGate.allowed).toBe(false);
-    expect(context.compatibilityWarning).toContain("not the completed");
+    expect(context.strategyAnalysisGate.allowed).toBe(true);
+    expect(context.compatibilityWarning).toBeNull();
   });
 
-  it("reports the scoring framework without activating a concrete profile", () => {
+  it("reports the active residential production scoring profile", () => {
     const context = buildAssetStrategyContext(
       deal({ asset_type: ASSET_TYPES.RESIDENTIAL_HOME })
     );
@@ -53,8 +55,10 @@ describe("asset strategy runtime context", () => {
       expect.objectContaining({
         frameworkAvailable: true,
         strategyHookContractAvailable: true,
-        concreteProfileAvailable: false,
-        productionProfileAvailable: false,
+        concreteProfileAvailable: true,
+        productionProfileAvailable: true,
+        profileId: "residential-pursuit-profile-v1",
+        strategyVersion: "residential-strategy-v1",
         evaluationState: "not-evaluated",
       })
     );
@@ -250,7 +254,8 @@ describe("asset strategy runtime context", () => {
       allowed: false,
       reasonCode: ASSET_CAPABILITY_REASON_CODES.STRATEGY_NOT_IMPLEMENTED,
       assetType: ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
-      compatibilityOnly: true,
+      compatibilityOnly: false,
+      implementationState: "implemented",
     });
     expect(gate.explanation).toContain("cannot use residential underwriting");
     expect(context.blockedCapabilities).toContain(

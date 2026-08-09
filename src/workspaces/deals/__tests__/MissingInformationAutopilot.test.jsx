@@ -60,8 +60,8 @@ describe("MissingInformationAutopilot", () => {
     renderPanel(model);
 
     expect(screen.getByRole("heading", { name: "Missing Information" })).toBeInTheDocument();
-    expect(screen.getByText("Residential Compatibility Requirements")).toBeInTheDocument();
-    expect(screen.getByText(/Blocking: 2/)).toBeInTheDocument();
+    expect(screen.getByText("Residential Strategy Requirements")).toBeInTheDocument();
+    expect(screen.getByText(/Blocking: 1/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Financial" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Property condition" })).toBeInTheDocument();
     expect(screen.getByText(/Highest-priority next information action/i)).toBeInTheDocument();
@@ -90,8 +90,9 @@ describe("MissingInformationAutopilot", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Copy Seller Question" })[0]);
 
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "Seller question copied"
+      expect(screen.getByText(/Seller question copied/)).toHaveAttribute(
+        "role",
+        "status"
       )
     );
     expect(writeText).toHaveBeenCalledWith(

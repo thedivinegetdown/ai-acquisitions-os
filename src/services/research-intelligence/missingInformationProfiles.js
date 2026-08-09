@@ -4,6 +4,10 @@ import {
   ASSET_TYPES,
 } from "../asset-strategy/assetStrategyContracts";
 import { ASSET_STRATEGY_SUPPORT_STATES } from "../asset-strategy/assetStrategyContextService";
+import {
+  RESIDENTIAL_REQUIREMENT_IDS,
+  RESIDENTIAL_STRATEGY_VERSION,
+} from "../asset-strategy/residential/residentialStrategyContracts";
 import { OFFER_READINESS_CHECKLIST } from "../offers/offerReadinessService";
 import {
   MISSING_INFORMATION_CRITICALITIES,
@@ -20,6 +24,7 @@ import {
 export const MISSING_INFORMATION_PROFILE_IDS = Object.freeze({
   COMMON_ACQUISITION_CORE: "common-acquisition-core-v1",
   RESIDENTIAL_COMPATIBILITY: "residential-compatibility-requirements-v1",
+  RESIDENTIAL_STRATEGY: "residential-strategy-requirements-v1",
   VACANT_LAND_PREFLIGHT: "vacant-land-preflight-compatibility-v1",
   SAFE_IDENTITY: "safe-opportunity-identity-v1",
 });
@@ -267,6 +272,159 @@ export const RESIDENTIAL_COMPATIBILITY_PROFILE = Object.freeze(
   })
 );
 
+const RESIDENTIAL_STRATEGY_REQUIREMENTS = [
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.ASKING_PRICE,
+    canonicalField: "deal.askingPrice",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.askingPrice,
+    label: "Asking price",
+    description: "A positive seller target is required for residential underwriting and Pursuit Scoring.",
+    category: "Financial",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [
+      MISSING_INFORMATION_SCOPES.UNDERWRITING,
+      MISSING_INFORMATION_SCOPES.DECISION_REVIEW,
+    ],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.POSITIVE_NUMBER,
+    sellerAnswerable: true,
+    sellerQuestion: "What price are you hoping to receive for the property?",
+    relatedSection: "seller",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.AFTER_REPAIR_VALUE,
+    canonicalField: "property.afterRepairValue",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.arv,
+    label: "After-repair value",
+    description: "A positive ARV estimate is required for the versioned residential formulas.",
+    category: "Market and Exit",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [
+      MISSING_INFORMATION_SCOPES.UNDERWRITING,
+      MISSING_INFORMATION_SCOPES.DECISION_REVIEW,
+    ],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.POSITIVE_NUMBER,
+    researchRequired: true,
+    researchGuidance: "Obtain and review comparable residential-sale evidence using the approved process.",
+    relatedSection: "property",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.REPAIR_ESTIMATE,
+    canonicalField: "property.repairs",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.repairs,
+    label: "Repair estimate",
+    description: "An explicit valid repair estimate is required; missing repairs are not treated as zero.",
+    category: "Property",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [
+      MISSING_INFORMATION_SCOPES.UNDERWRITING,
+      MISSING_INFORMATION_SCOPES.DECISION_REVIEW,
+    ],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.ANY_FINITE_NUMBER,
+    sellerAnswerable: true,
+    sellerQuestion: "What repairs or updates does the property currently need?",
+    relatedSection: "property",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.SELLER_MOTIVATION,
+    canonicalField: "seller.motivation",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.motivation,
+    label: "Seller motivation",
+    description: "A numeric motivation value on the documented 0-10 scale is required for production scoring.",
+    category: "Seller",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [MISSING_INFORMATION_SCOPES.DECISION_REVIEW],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.ANY_FINITE_NUMBER,
+    sellerAnswerable: true,
+    sellerQuestion: "What is motivating you to consider selling?",
+    relatedSection: "seller",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.SELLER_TIMELINE,
+    canonicalField: "seller.timeline",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.timeline,
+    label: "Seller timeline",
+    description: "An explicitly parseable seller timeline is required for production scoring.",
+    category: "Seller",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [MISSING_INFORMATION_SCOPES.DECISION_REVIEW],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS,
+    sellerAnswerable: true,
+    sellerQuestion: "What timeline would work best for you?",
+    relatedSection: "seller",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.MARKET_VALUE_SUPPORT,
+    canonicalField: "property.marketValueSupport",
+    acceptedFieldAliases: [
+      ...DEAL_FIELD_ALIASES.arv,
+      ...DEAL_FIELD_ALIASES.comparableSales,
+    ],
+    label: "Market-value support",
+    description: "ARV or comparable-sale context must be represented and retained as Evidence.",
+    category: "Market and Exit",
+    criticality: MISSING_INFORMATION_CRITICALITIES.BLOCKING,
+    requiredFor: [MISSING_INFORMATION_SCOPES.DECISION_REVIEW],
+    valuePresencePolicy: VALUE_PRESENCE_POLICIES.LEGACY_COMPATIBILITY_VALUE,
+    researchRequired: true,
+    researchGuidance: "Obtain and review comparable residential-sale evidence using the approved process.",
+    relatedSection: "property",
+    partialDataWarnings: [
+      "A stored ARV may satisfy compatibility Evidence but is not independently verified comparable-sale support.",
+    ],
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.PROPERTY_CONDITION,
+    canonicalField: "property.condition",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.condition,
+    label: "Property condition",
+    description: "Condition remains useful execution context but does not replace the explicit repair estimate.",
+    category: "Property",
+    criticality: MISSING_INFORMATION_CRITICALITIES.ADVISORY,
+    requiredFor: [MISSING_INFORMATION_SCOPES.RISK_REVIEW],
+    sellerAnswerable: true,
+    sellerQuestion: "How would you describe the property's current condition?",
+    relatedSection: "property",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.MORTGAGE_STATUS,
+    canonicalField: "property.mortgageStatus",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.mortgageStatus,
+    label: "Mortgage status",
+    description: "Mortgage context is optional for Pursuit Scoring and creative-finance review.",
+    category: "Property",
+    criticality: MISSING_INFORMATION_CRITICALITIES.ADVISORY,
+    requiredFor: [MISSING_INFORMATION_SCOPES.DECISION_REVIEW],
+    sellerAnswerable: true,
+    sellerQuestion: "Is there currently a mortgage or other loan on the property?",
+    relatedSection: "seller",
+  },
+  {
+    requirementId: RESIDENTIAL_REQUIREMENT_IDS.OCCUPANCY_STATUS,
+    canonicalField: "property.occupancy",
+    acceptedFieldAliases: DEAL_FIELD_ALIASES.occupancy,
+    label: "Occupancy status",
+    description: "Occupancy is optional execution-complexity context.",
+    category: "Property",
+    criticality: MISSING_INFORMATION_CRITICALITIES.ADVISORY,
+    requiredFor: [MISSING_INFORMATION_SCOPES.RISK_REVIEW],
+    sellerAnswerable: true,
+    sellerQuestion: "Is the property currently occupied?",
+    relatedSection: "property",
+  },
+];
+
+export const RESIDENTIAL_STRATEGY_REQUIREMENTS_PROFILE = Object.freeze(
+  normalizeMissingInformationProfile({
+    profileId: MISSING_INFORMATION_PROFILE_IDS.RESIDENTIAL_STRATEGY,
+    profileVersion: RESIDENTIAL_STRATEGY_VERSION,
+    label: "Residential Strategy Requirements",
+    description:
+      "Production missing-information requirements for Residential Acquisition Strategy v1; final Offer Readiness remains owned by DI-04.",
+    assetType: ASSET_TYPES.RESIDENTIAL_HOME,
+    requirements: RESIDENTIAL_STRATEGY_REQUIREMENTS,
+  })
+);
+
 export const VACANT_LAND_PREFLIGHT_PROFILE = Object.freeze(
   normalizeMissingInformationProfile({
     profileId: MISSING_INFORMATION_PROFILE_IDS.VACANT_LAND_PREFLIGHT,
@@ -381,8 +539,12 @@ export function selectMissingInformationProfiles(assetStrategyContext = {}) {
   let activeProfile = COMMON_ACQUISITION_CORE_PROFILE;
 
   if (classified && context.assetType === ASSET_TYPES.RESIDENTIAL_HOME) {
-    profiles = [...profiles, RESIDENTIAL_COMPATIBILITY_PROFILE];
-    activeProfile = RESIDENTIAL_COMPATIBILITY_PROFILE;
+    const residentialProfile =
+      context.strategySupportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+        ? RESIDENTIAL_STRATEGY_REQUIREMENTS_PROFILE
+        : RESIDENTIAL_COMPATIBILITY_PROFILE;
+    profiles = [...profiles, residentialProfile];
+    activeProfile = residentialProfile;
   } else if (
     classified &&
     context.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND

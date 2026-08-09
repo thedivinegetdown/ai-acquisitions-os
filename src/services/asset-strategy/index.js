@@ -2,3 +2,4 @@
 export * from "./assetStrategyContracts";
 export * from "./assetClassificationService";
 export * from "./assetStrategyContextService";
+export * from "./residential";

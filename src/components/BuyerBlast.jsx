@@ -1,123 +1,38 @@
 import { useState } from "react";
+import { Button, TextArea } from "../design-system";
+import { formatUsd } from "../utils/currency";
+import { getDealAlias, getDealAliasText } from "../utils/dealFields";
 
-function money(value) {
-  const num = Number(value || 0);
+export default function BuyerBlast({ deal, strategyResult = null }) {
+  const [status, setStatus] = useState("");
+  const reviewPaths = (strategyResult?.exitCandidates || [])
+    .filter((candidate) => ["candidate", "reviewable"].includes(candidate.state))
+    .map((candidate) => candidate.label);
+  const text = `New residential opportunity
 
-  if (!num) return "-";
-
-  return num.toLocaleString(
-    "en-US",
-    {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 0,
-    }
-  );
-}
-
-function getStrategy(deal) {
-  const arv =
-    Number(deal.arv || 0);
-  const repairs =
-    Number(
-      deal.repairs || 0
-    );
-  const price =
-    Number(deal.price || 0);
-
-  const mao =
-    arv > 0
-      ? arv * 0.7 -
-        repairs
-      : 0;
-
-  const wholesale =
-    mao - price;
-
-  if (wholesale > 15000)
-    return "Wholesale";
-
-  if (
-    arv > 0 &&
-    price > 0
-  )
-    return "Flip";
-
-  return "Buy & Hold";
-}
-
-export default function BuyerBlast({
-  deal,
-}) {
-  const [copied, setCopied] =
-    useState(false);
-
-  const text = `🔥 New Deal Available
-
-📍 ${deal.property_address}
-
-💰 Asking: ${money(
-    deal.price
-  )}
-🏡 ARV: ${money(
-    deal.arv
-  )}
-🛠 Repairs: ${money(
-    deal.repairs
-  )}
-
-📈 Strategy: ${getStrategy(
-    deal
-  )}
+Property: ${getDealAliasText(deal, "address") || "Not available"}
+Asking: ${formatUsd(getDealAlias(deal, "askingPrice"), "Not available")}
+ARV estimate: ${formatUsd(getDealAlias(deal, "arv"), "Not evaluated")}
+Repair estimate: ${formatUsd(getDealAlias(deal, "repairs"), "Not evaluated")}
+Review paths: ${reviewPaths.join(", ") || "Manual review required"}
 
 Reply if interested.`;
 
   async function copy() {
-    await navigator.clipboard.writeText(
-      text
-    );
-
-    setCopied(true);
-
-    setTimeout(() => {
-      setCopied(false);
-    }, 1500);
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus("Buyer campaign draft copied.");
+    } catch {
+      setStatus("Buyer campaign draft could not be copied.");
+    }
   }
 
   return (
-    <div
-      style={{
-        marginTop: 24,
-        paddingTop: 20,
-        borderTop:
-          "1px solid #e5e7eb",
-      }}
-    >
-      <h3 style={{ marginTop: 0 }}>
-        Buyer Blast
-      </h3>
-
-      <textarea
-        readOnly
-        rows="9"
-        value={text}
-        style={{
-          width: "100%",
-          resize: "vertical",
-        }}
-      />
-
-      <button
-        onClick={copy}
-        style={{
-          marginTop: 10,
-          width: "100%",
-        }}
-      >
-        {copied
-          ? "Copied!"
-          : "Copy Blast Message"}
-      </button>
-    </div>
+    <section aria-labelledby="buyer-blast-title" className="buyer-blast-review">
+      <h3 id="buyer-blast-title">Buyer campaign preparation</h3>
+      <TextArea label="Review-only buyer campaign draft" readOnly rows="9" value={text} />
+      <Button onClick={copy} variant="secondary">Copy Draft</Button>
+      {status ? <p aria-live="polite">{status}</p> : null}
+    </section>
   );
 }
