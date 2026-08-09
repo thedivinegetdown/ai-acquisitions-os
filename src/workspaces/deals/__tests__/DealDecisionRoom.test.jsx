@@ -89,6 +89,9 @@ vi.mock("../PursuitScoreSummary", () => ({
 vi.mock("../ResidentialStrategySummary", () => ({
   default: () => <div>Residential Strategy Summary</div>,
 }));
+vi.mock("../VacantLandStrategySummary", () => ({
+  default: () => <div>Vacant Land Strategy Summary</div>,
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -174,7 +177,7 @@ describe("DealDecisionRoom", () => {
   });
 
   it.each([
-    ["vacant-residential-land", "Vacant residential land - Strategy Not Yet Implemented"],
+    ["vacant-residential-land", "Vacant residential land - Implemented"],
     ["small-multifamily", "Small multifamily - Strategy Not Yet Implemented"],
     ["manufactured-home", "Manufactured home - Deferred"],
     ["commercial", "Commercial - Deferred"],
@@ -379,12 +382,12 @@ describe("DealDecisionRoom", () => {
       deals: [{ ...deal, asset_type: "vacant-residential-land" }],
     });
 
-    fireEvent.click(screen.getByRole("tab", { name: "Property" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Parcel" }));
     expect(screen.getAllByText("123 Main Street").length).toBeGreaterThan(0);
     expect(screen.queryByText("Existing Property Intelligence Panel")).not.toBeInTheDocument();
     expect(screen.queryByText("Existing Comps Engine Panel")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Numbers" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Land Analysis" }));
     expect(screen.queryByText("Existing Deal Analyzer Panel")).not.toBeInTheDocument();
     expect(screen.queryByText("Existing Offer Engine Panel")).not.toBeInTheDocument();
     expect(screen.queryByText("Existing Negotiation Tracker Panel")).not.toBeInTheDocument();

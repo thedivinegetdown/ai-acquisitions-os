@@ -72,24 +72,30 @@ describe("asset strategy runtime context", () => {
       "vacant land",
       ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
       "vacant-land-acquisition",
+      ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED,
+      "Implemented",
+      "active",
     ],
     [
       "small multifamily",
       ASSET_TYPES.SMALL_MULTIFAMILY,
       "small-multifamily-acquisition",
+      ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY,
+      "Strategy Not Yet Implemented",
+      null,
     ],
   ])(
-    "marks %s as contract-ready without implementing its strategy",
-    (_, assetType, strategyId) => {
+    "reports the current %s strategy support truthfully",
+    (_, assetType, strategyId, supportState, supportLabel, lifecycleStatus) => {
       const context = buildAssetStrategyContext(deal({ asset_type: assetType }));
 
       expect(context).toMatchObject({
         assetType,
         selectedStrategyId: strategyId,
-        strategySupportState: ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY,
-        strategySupportLabel: "Strategy Not Yet Implemented",
+        strategySupportState: supportState,
+        strategySupportLabel: supportLabel,
         compatibilityAnalysisEligibility: false,
-        strategyLifecycleStatus: null,
+        strategyLifecycleStatus: lifecycleStatus,
       });
     }
   );

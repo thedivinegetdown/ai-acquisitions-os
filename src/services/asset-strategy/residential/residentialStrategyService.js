@@ -51,6 +51,7 @@ import {
   validateResidentialPursuitProfile,
 } from "./residentialPursuitProfile";
 import { evaluateResidentialUnderwriting } from "./residentialUnderwritingService";
+import { scoreStrategyTimelineDays } from "../strategyTimeline";
 
 // Distinct responsibility: orchestrate pure residential facts, underwriting,
 // signals, candidates, observations, and scoring into one strategy read model.
@@ -257,13 +258,7 @@ export function scoreResidentialMortgageRatio(value) {
 }
 
 export function scoreResidentialTimelineDays(value) {
-  const days = finiteNumber(value);
-  if (days === null || days < 0) return null;
-  if (days <= 30) return 100;
-  if (days <= 60) return 85;
-  if (days <= 90) return 70;
-  if (days <= 180) return 45;
-  return 25;
+  return scoreStrategyTimelineDays(value);
 }
 
 export function scoreResidentialRepairBurden(value) {

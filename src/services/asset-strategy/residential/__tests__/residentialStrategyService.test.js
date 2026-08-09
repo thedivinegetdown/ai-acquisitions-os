@@ -121,7 +121,7 @@ describe("Residential Strategy runtime", () => {
   });
 
   it.each([
-    ["vacant-residential-land", "contract-ready"],
+    ["vacant-residential-land", "implemented"],
     ["small-multifamily", "contract-ready"],
     ["manufactured-home", "deferred"],
     ["commercial", "deferred"],

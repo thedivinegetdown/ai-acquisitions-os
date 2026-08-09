@@ -109,7 +109,7 @@ describe("Missing Information profiles", () => {
     expect(conflict.limitations[0].type).toBe("capability-blocked");
   });
 
-  it("selects the implemented residential profile and land preflight independently", () => {
+  it("selects implemented residential and land profiles independently", () => {
     expect(
       selection("residential-home").profiles.map((entry) => entry.label)
     ).toEqual([
@@ -129,9 +129,9 @@ describe("Missing Information profiles", () => {
     const land = selection("vacant-residential-land");
     expect(land.profiles.map((entry) => entry.label)).toEqual([
       "Common Acquisition Core",
-      "Vacant Land Safety Preflight",
+      "Vacant Land Strategy Requirements",
     ]);
-    expect(land.limitations[0].type).toBe("strategy-not-implemented");
+    expect(land.limitations).toEqual([]);
   });
 
   it.each([

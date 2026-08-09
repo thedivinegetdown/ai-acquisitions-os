@@ -10,6 +10,11 @@ import {
   evaluateResidentialStrategy,
 } from "../asset-strategy/residential";
 import {
+  adaptVacantLandFacts,
+  evaluateVacantLandStrategy,
+  evaluateVacantLandValuation,
+} from "../asset-strategy/vacant-land";
+import {
   OFFER_READINESS_CHECKLIST,
   analyzeOfferReadiness,
 } from "../offers/offerReadinessService";
@@ -557,6 +562,7 @@ function getRecommendation({
   readinessCapability,
   readinessWarning,
   residentialStrategyResult,
+  vacantLandStrategyResult,
   sellerReply,
   taskDue,
 }) {
@@ -658,6 +664,17 @@ function getRecommendation({
       ...(residentialStrategyResult.underwriting?.inputEvidenceIds || []),
       ...(residentialStrategyResult.pursuitScoreResult
         ?.evidenceReferenceIds || []),
+    ]);
+  } else if (
+    vacantLandStrategyResult?.eligible &&
+    vacantLandStrategyResult?.reviewGuidance?.label
+  ) {
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = vacantLandStrategyResult.reviewGuidance.label;
+    explanation = vacantLandStrategyResult.reviewGuidance.explanation;
+    supportingEvidence = uniqueStrings([
+      ...(vacantLandStrategyResult.valuation?.inputEvidenceIds || []),
+      ...(vacantLandStrategyResult.pursuitScoreResult?.evidenceReferenceIds || []),
     ]);
   } else if (!readinessCapability.allowed) {
     actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
@@ -985,11 +1002,28 @@ function buildReadModel({
         evidenceReferences: externalEvidence,
       })
     : null;
+  const vacantLandFactReadModel = assetStrategyContext.landStrategyEligibility
+    ? adaptVacantLandFacts({
+        assetStrategyContext,
+        conflicts: normalizedConflicts,
+        deal: safeDeal,
+        evaluatedTimestamp,
+        evidenceReferences: externalEvidence,
+      })
+    : null;
+  const vacantLandValuation = vacantLandFactReadModel
+    ? evaluateVacantLandValuation({
+        evaluatedTimestamp,
+        factReadModel: vacantLandFactReadModel,
+      })
+    : null;
   const evidence = dedupeEvidence([
     ...assetStrategyContext.classificationEvidence,
     ...conversationEvidence,
     ...taskEvidence,
     ...(residentialFactReadModel?.evidenceReferences || []),
+    ...(vacantLandFactReadModel?.evidenceReferences || []),
+    ...(vacantLandValuation?.evidenceReferences || []),
     ...currentEvidence,
     ...externalEvidence,
   ]);
@@ -1000,11 +1034,19 @@ function buildReadModel({
     evaluatedTimestamp,
     evidenceReferences: evidence,
     freshnessStates:
-      residentialFactReadModel?.explicitFreshnessStates || {},
-    informationStates: residentialFactReadModel?.informationStates || {},
+      residentialFactReadModel?.explicitFreshnessStates ||
+      vacantLandFactReadModel?.explicitFreshnessStates || {},
+    informationStates: {
+      ...(residentialFactReadModel?.informationStates || {}),
+      ...(vacantLandFactReadModel?.informationStates || {}),
+      ...(vacantLandValuation?.indicatedLandValue > 0
+        ? { "property.comparableLandValue": "present" }
+        : {}),
+    },
     sourceErrors,
     verificationStates:
-      residentialFactReadModel?.explicitVerificationStates || {},
+      residentialFactReadModel?.explicitVerificationStates ||
+      vacantLandFactReadModel?.explicitVerificationStates || {},
   });
   const residentialStrategyResult = assetStrategyContext.residentialStrategyEligibility
     ? evaluateResidentialStrategy({
@@ -1017,8 +1059,22 @@ function buildReadModel({
         missingInformationReadModel,
       })
     : null;
+  const vacantLandStrategyResult = assetStrategyContext.landStrategyEligibility
+    ? evaluateVacantLandStrategy({
+        assetStrategyContext,
+        conflicts: normalizedConflicts,
+        deal: safeDeal,
+        evaluatedTimestamp,
+        evidenceReferences: evidence,
+        factReadModel: vacantLandFactReadModel,
+        missingInformationReadModel,
+        valuation: vacantLandValuation,
+      })
+    : null;
   const resolvedPursuitScoreResult =
-    residentialStrategyResult?.pursuitScoreResult || pursuitScoreResult;
+    residentialStrategyResult?.pursuitScoreResult ||
+    vacantLandStrategyResult?.pursuitScoreResult ||
+    pursuitScoreResult;
   const missingInformation = toDecisionIssueReferences(
     missingInformationReadModel
   );
@@ -1036,6 +1092,7 @@ function buildReadModel({
     readinessEvaluation.warning || "",
     ...missingInformationReadModel.partialDataWarnings,
     ...(residentialStrategyResult?.partialDataWarnings || []),
+    ...(vacantLandStrategyResult?.partialDataWarnings || []),
   ]).slice(0, 10);
   const ruleset = buildRuleset(evaluatedTimestamp);
   const lifecycle = getLifecycle({
@@ -1067,6 +1124,7 @@ function buildReadModel({
     readinessCapability,
     readinessWarning: readinessEvaluation.warning,
     residentialStrategyResult,
+    vacantLandStrategyResult,
     sellerReply,
     taskDue,
   });
@@ -1157,6 +1215,7 @@ function buildReadModel({
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
     residentialStrategyResult,
+    vacantLandStrategyResult,
     pursuitScoreResult:
       pursuitScoreMetric?.evaluationState ===
         DECISION_EVALUATION_STATES.EVALUATED &&

@@ -22,6 +22,13 @@ import {
   RESIDENTIAL_PURSUIT_RULESET_VERSION,
   RESIDENTIAL_STRATEGY_VERSION,
 } from "./residential/residentialStrategyContracts";
+import {
+  VACANT_LAND_ACQUISITION_STRATEGY,
+  VACANT_LAND_CAPABILITY_STATES,
+  VACANT_LAND_PURSUIT_PROFILE_ID,
+  VACANT_LAND_PURSUIT_RULESET_VERSION,
+  VACANT_LAND_STRATEGY_VERSION,
+} from "./vacant-land/vacantLandStrategyContracts";
 
 // Distinct responsibility: turn explicit CRM asset fields into one runtime
 // strategy context used by Decision Intelligence and capability-aware UI.
@@ -59,6 +66,16 @@ export const ASSET_CAPABILITY_IDS = Object.freeze({
   RESIDENTIAL_PURSUIT_SCORING: "residential-pursuit-scoring",
   RESIDENTIAL_RISK_SIGNALS: "residential-risk-signals",
   RESIDENTIAL_EXIT_CANDIDATES: "residential-exit-candidates",
+  LAND_FACT_ADAPTATION: "land-fact-adaptation",
+  LAND_VALUATION_CONTEXT: "land-valuation-context",
+  LAND_FEASIBILITY_SIGNALS: "land-feasibility-signals",
+  LAND_PURSUIT_SCORING: "land-pursuit-scoring",
+  LAND_EXIT_CANDIDATES: "land-exit-candidates",
+  LAND_BUYER_INPUT: "land-buyer-input",
+  LAND_COMPARABLES: "land-comparables",
+  LAND_BUILDABILITY_REVIEW: "land-buildability-review",
+  LAND_OFFER_REVIEW: "land-offer-review",
+  LAND_AUTONOMOUS_RESEARCH: "land-autonomous-research",
 });
 
 export const GENERIC_ASSET_CAPABILITY_IDS = Object.freeze([
@@ -92,12 +109,27 @@ export const RESIDENTIAL_STRATEGY_CAPABILITY_IDS = Object.freeze([
   ASSET_CAPABILITY_IDS.RESIDENTIAL_EXIT_CANDIDATES,
 ]);
 
+export const VACANT_LAND_STRATEGY_CAPABILITY_IDS = Object.freeze([
+  ASSET_CAPABILITY_IDS.LAND_FACT_ADAPTATION,
+  ASSET_CAPABILITY_IDS.LAND_VALUATION_CONTEXT,
+  ASSET_CAPABILITY_IDS.LAND_FEASIBILITY_SIGNALS,
+  ASSET_CAPABILITY_IDS.LAND_PURSUIT_SCORING,
+  ASSET_CAPABILITY_IDS.LAND_EXIT_CANDIDATES,
+  ASSET_CAPABILITY_IDS.LAND_BUYER_INPUT,
+  ASSET_CAPABILITY_IDS.LAND_COMPARABLES,
+  ASSET_CAPABILITY_IDS.LAND_BUILDABILITY_REVIEW,
+  ASSET_CAPABILITY_IDS.LAND_OFFER_REVIEW,
+  ASSET_CAPABILITY_IDS.LAND_AUTONOMOUS_RESEARCH,
+]);
+
 export const ASSET_CAPABILITY_REASON_CODES = Object.freeze({
   GENERIC_AVAILABLE: "generic-capability-available",
   RESIDENTIAL_COMPATIBILITY_AVAILABLE:
     "residential-compatibility-available",
   RESIDENTIAL_STRATEGY_AVAILABLE: "residential-strategy-available",
   RESIDENTIAL_REVIEW_AVAILABLE: "residential-review-available",
+  LAND_STRATEGY_AVAILABLE: "land-strategy-available",
+  LAND_REVIEW_AVAILABLE: "land-review-available",
   CLASSIFICATION_REQUIRED: "asset-classification-required",
   CLASSIFICATION_REVIEW_REQUIRED: "asset-classification-review-required",
   STRATEGY_NOT_IMPLEMENTED: "asset-strategy-not-implemented",
@@ -126,6 +158,7 @@ const GENERIC_CAPABILITIES = new Set(GENERIC_ASSET_CAPABILITY_IDS);
 const RESIDENTIAL_CAPABILITIES = new Set(
   RESIDENTIAL_STRATEGY_CAPABILITY_IDS
 );
+const VACANT_LAND_CAPABILITIES = new Set(VACANT_LAND_STRATEGY_CAPABILITY_IDS);
 const CLASSIFICATION_STATES = new Set(
   Object.values(ASSET_CLASSIFICATION_STATES)
 );
@@ -164,6 +197,16 @@ const CAPABILITY_LABELS = Object.freeze({
     "residential risk signals",
   [ASSET_CAPABILITY_IDS.RESIDENTIAL_EXIT_CANDIDATES]:
     "residential exit-candidate review",
+  [ASSET_CAPABILITY_IDS.LAND_FACT_ADAPTATION]: "land fact adaptation",
+  [ASSET_CAPABILITY_IDS.LAND_VALUATION_CONTEXT]: "land valuation context",
+  [ASSET_CAPABILITY_IDS.LAND_FEASIBILITY_SIGNALS]: "land feasibility signals",
+  [ASSET_CAPABILITY_IDS.LAND_PURSUIT_SCORING]: "land Pursuit Scoring",
+  [ASSET_CAPABILITY_IDS.LAND_EXIT_CANDIDATES]: "land exit-candidate review",
+  [ASSET_CAPABILITY_IDS.LAND_BUYER_INPUT]: "land buyer input",
+  [ASSET_CAPABILITY_IDS.LAND_COMPARABLES]: "stored land comparables",
+  [ASSET_CAPABILITY_IDS.LAND_BUILDABILITY_REVIEW]: "buildability review",
+  [ASSET_CAPABILITY_IDS.LAND_OFFER_REVIEW]: "land offer review",
+  [ASSET_CAPABILITY_IDS.LAND_AUTONOMOUS_RESEARCH]: "autonomous land research",
 });
 
 const RESIDENTIAL_CAPABILITY_RUNTIME_STATE = Object.freeze({
@@ -191,6 +234,19 @@ const RESIDENTIAL_CAPABILITY_RUNTIME_STATE = Object.freeze({
     RESIDENTIAL_CAPABILITY_STATES.IMPLEMENTED,
 });
 
+const VACANT_LAND_CAPABILITY_RUNTIME_STATE = Object.freeze({
+  [ASSET_CAPABILITY_IDS.LAND_FACT_ADAPTATION]: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.LAND_VALUATION_CONTEXT]: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.LAND_FEASIBILITY_SIGNALS]: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.LAND_PURSUIT_SCORING]: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.LAND_EXIT_CANDIDATES]: VACANT_LAND_CAPABILITY_STATES.IMPLEMENTED,
+  [ASSET_CAPABILITY_IDS.LAND_BUYER_INPUT]: VACANT_LAND_CAPABILITY_STATES.INPUT_READY,
+  [ASSET_CAPABILITY_IDS.LAND_COMPARABLES]: VACANT_LAND_CAPABILITY_STATES.COMPATIBILITY_ONLY,
+  [ASSET_CAPABILITY_IDS.LAND_BUILDABILITY_REVIEW]: VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
+  [ASSET_CAPABILITY_IDS.LAND_OFFER_REVIEW]: VACANT_LAND_CAPABILITY_STATES.REVIEW_ONLY,
+  [ASSET_CAPABILITY_IDS.LAND_AUTONOMOUS_RESEARCH]: VACANT_LAND_CAPABILITY_STATES.UNAVAILABLE,
+});
+
 const SUPPORT_BY_ASSET_TYPE = Object.freeze({
   [ASSET_TYPES.RESIDENTIAL_HOME]: Object.freeze({
     strategyLabel: "Residential Acquisition Strategy v1",
@@ -200,10 +256,11 @@ const SUPPORT_BY_ASSET_TYPE = Object.freeze({
     strategyVersion: RESIDENTIAL_STRATEGY_VERSION,
   }),
   [ASSET_TYPES.VACANT_RESIDENTIAL_LAND]: Object.freeze({
-    strategyLabel: "Vacant Land Acquisition Strategy",
-    supportState: ASSET_STRATEGY_SUPPORT_STATES.CONTRACT_READY,
-    supportLabel: "Strategy Not Yet Implemented",
-    lifecycleStatus: null,
+    strategyLabel: "Vacant Land Acquisition Strategy v1",
+    supportState: ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED,
+    supportLabel: "Implemented",
+    lifecycleStatus: ASSET_STRATEGY_STATUSES.ACTIVE,
+    strategyVersion: VACANT_LAND_STRATEGY_VERSION,
   }),
   [ASSET_TYPES.SMALL_MULTIFAMILY]: Object.freeze({
     strategyLabel: "Small Multifamily Strategy",
@@ -514,7 +571,9 @@ export function canRunAssetCapability(assetStrategyContext, capabilityId) {
   };
   const capabilityLabel = CAPABILITY_LABELS[capabilityId] || capabilityId;
   const implementationState =
-    RESIDENTIAL_CAPABILITY_RUNTIME_STATE[capabilityId] || null;
+    RESIDENTIAL_CAPABILITY_RUNTIME_STATE[capabilityId] ||
+    VACANT_LAND_CAPABILITY_RUNTIME_STATE[capabilityId] ||
+    null;
   const base = {
     capabilityId,
     supportState: runtimeContext.strategySupportState,
@@ -534,7 +593,10 @@ export function canRunAssetCapability(assetStrategyContext, capabilityId) {
     };
   }
 
-  if (!RESIDENTIAL_CAPABILITIES.has(capabilityId)) {
+  if (
+    !RESIDENTIAL_CAPABILITIES.has(capabilityId) &&
+    !VACANT_LAND_CAPABILITIES.has(capabilityId)
+  ) {
     return {
       ...base,
       allowed: false,
@@ -574,6 +636,41 @@ export function canRunAssetCapability(assetStrategyContext, capabilityId) {
         : reviewOnly
           ? `${capabilityLabel} is review-only and cannot execute an external action automatically.`
           : `${capabilityLabel} is implemented by Residential Acquisition Strategy v1.`,
+    };
+  }
+
+  const landStrategyEligible = Boolean(
+    runtimeContext.landStrategyEligibility === true &&
+      runtimeContext.classificationState === ASSET_CLASSIFICATION_STATES.CLASSIFIED &&
+      runtimeContext.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND &&
+      runtimeContext.manualReviewRequired === false &&
+      runtimeContext.strategySupportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+  );
+
+  if (VACANT_LAND_CAPABILITIES.has(capabilityId) && landStrategyEligible) {
+    const reviewOnly = [
+      VACANT_LAND_CAPABILITY_STATES.REVIEW_ONLY,
+      VACANT_LAND_CAPABILITY_STATES.MANUAL_REVIEW,
+    ].includes(implementationState);
+    const unavailable =
+      implementationState === VACANT_LAND_CAPABILITY_STATES.UNAVAILABLE;
+    if (unavailable) {
+      return {
+        ...base,
+        allowed: false,
+        reasonCode: ASSET_CAPABILITY_REASON_CODES.STRATEGY_NOT_IMPLEMENTED,
+        explanation: `${capabilityLabel} is unavailable in Vacant Land Acquisition Strategy v1.`,
+      };
+    }
+    return {
+      ...base,
+      allowed: true,
+      reasonCode: reviewOnly
+        ? ASSET_CAPABILITY_REASON_CODES.LAND_REVIEW_AVAILABLE
+        : ASSET_CAPABILITY_REASON_CODES.LAND_STRATEGY_AVAILABLE,
+      explanation: reviewOnly
+        ? `${capabilityLabel} requires human review and cannot execute an external action automatically.`
+        : `${capabilityLabel} is implemented by Vacant Land Acquisition Strategy v1.`,
     };
   }
 
@@ -626,6 +723,12 @@ export function buildAssetStrategyContext(deal, options = {}) {
     compatibilityAnalysisEligibility &&
       support.supportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
   );
+  const landStrategyEligibility = Boolean(
+    classification.state === ASSET_CLASSIFICATION_STATES.CLASSIFIED &&
+      classification.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND &&
+      !classification.requiresHumanReview &&
+      support.supportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+  );
   const pursuitScoring = residentialStrategyEligibility
     ? {
         frameworkAvailable: true,
@@ -641,7 +744,22 @@ export function buildAssetStrategyContext(deal, options = {}) {
         explanation:
           "Residential Acquisition Strategy v1 supplies an active production Pursuit Scoring profile; evaluation still requires complete evidence-linked factors.",
       }
-    : { ...PURSUIT_SCORING_FRAMEWORK_STATUS };
+    : landStrategyEligibility
+      ? {
+          frameworkAvailable: true,
+          strategyHookContractAvailable: true,
+          concreteProfileAvailable: true,
+          productionProfileAvailable: true,
+          profileId: VACANT_LAND_PURSUIT_PROFILE_ID,
+          profileVersion: VACANT_LAND_PURSUIT_PROFILE_ID,
+          rulesetVersion: VACANT_LAND_PURSUIT_RULESET_VERSION,
+          strategyId: assetDefinition?.strategyId || null,
+          strategyVersion: VACANT_LAND_STRATEGY_VERSION,
+          evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+          explanation:
+            "Vacant Land Acquisition Strategy v1 supplies an active production Pursuit Scoring profile; evaluation still requires complete evidence-linked land factors.",
+        }
+      : { ...PURSUIT_SCORING_FRAMEWORK_STATUS };
   const sourceWarnings = uniqueStrings([
     ...classification.partialDataWarnings,
     ...(classification.sourceValues.length
@@ -687,6 +805,7 @@ export function buildAssetStrategyContext(deal, options = {}) {
     strategySupportLabel: support.supportLabel,
     compatibilityAnalysisEligibility,
     residentialStrategyEligibility,
+    landStrategyEligibility,
     compatibilityWarning:
       compatibilityAnalysisEligibility && !residentialStrategyEligibility
       ? RESIDENTIAL_COMPATIBILITY_WARNING
@@ -698,7 +817,10 @@ export function buildAssetStrategyContext(deal, options = {}) {
     genericCapabilitiesAvailable: true,
     sourceWarnings,
   };
-  const blockedCapabilityReasons = RESIDENTIAL_STRATEGY_CAPABILITY_IDS.map(
+  const blockedCapabilityReasons = [
+    ...RESIDENTIAL_STRATEGY_CAPABILITY_IDS,
+    ...VACANT_LAND_STRATEGY_CAPABILITY_IDS,
+  ].map(
     (capabilityId) => canRunAssetCapability(baseContext, capabilityId)
   ).filter((result) => !result.allowed);
   const strategyAnalysisGate = evaluateAssetStrategyAnalysisGate({
@@ -707,6 +829,8 @@ export function buildAssetStrategyContext(deal, options = {}) {
       options.strategyContract ||
       (residentialStrategyEligibility
         ? RESIDENTIAL_ACQUISITION_STRATEGY
+        : landStrategyEligibility
+          ? VACANT_LAND_ACQUISITION_STRATEGY
         : null),
   });
 

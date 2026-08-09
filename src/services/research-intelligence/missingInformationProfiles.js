@@ -8,6 +8,10 @@ import {
   RESIDENTIAL_REQUIREMENT_IDS,
   RESIDENTIAL_STRATEGY_VERSION,
 } from "../asset-strategy/residential/residentialStrategyContracts";
+import {
+  VACANT_LAND_REQUIREMENT_IDS,
+  VACANT_LAND_STRATEGY_VERSION,
+} from "../asset-strategy/vacant-land/vacantLandStrategyContracts";
 import { OFFER_READINESS_CHECKLIST } from "../offers/offerReadinessService";
 import {
   MISSING_INFORMATION_CRITICALITIES,
@@ -26,6 +30,7 @@ export const MISSING_INFORMATION_PROFILE_IDS = Object.freeze({
   RESIDENTIAL_COMPATIBILITY: "residential-compatibility-requirements-v1",
   RESIDENTIAL_STRATEGY: "residential-strategy-requirements-v1",
   VACANT_LAND_PREFLIGHT: "vacant-land-preflight-compatibility-v1",
+  VACANT_LAND_STRATEGY: "vacant-land-strategy-requirements-v1",
   SAFE_IDENTITY: "safe-opportunity-identity-v1",
 });
 
@@ -438,6 +443,48 @@ export const VACANT_LAND_PREFLIGHT_PROFILE = Object.freeze(
   })
 );
 
+const LAND_STRATEGY_REQUIREMENTS = [
+  [VACANT_LAND_REQUIREMENT_IDS.PARCEL_IDENTITY, "property.parcelIdentity", DEAL_FIELD_ALIASES.parcelIdentity, "Parcel identity", "Identity", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Do you have a survey or parcel identification number?", "Verify parcel identity using available county records.", "documents"],
+  [VACANT_LAND_REQUIREMENT_IDS.ASKING_PRICE, "deal.askingPrice", DEAL_FIELD_ALIASES.askingPrice, "Asking price", "Financial", true, VALUE_PRESENCE_POLICIES.POSITIVE_NUMBER, "What price are you hoping to receive for the parcel?", null, "seller"],
+  [VACANT_LAND_REQUIREMENT_IDS.SELLER_MOTIVATION, "seller.motivation", DEAL_FIELD_ALIASES.motivation, "Seller motivation", "Seller", true, VALUE_PRESENCE_POLICIES.ANY_FINITE_NUMBER, "What is motivating you to consider selling?", null, "seller"],
+  [VACANT_LAND_REQUIREMENT_IDS.SELLER_TIMELINE, "seller.timeline", DEAL_FIELD_ALIASES.timeline, "Seller timeline", "Seller", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "What timeline would work best for you?", null, "seller"],
+  [VACANT_LAND_REQUIREMENT_IDS.LEGAL_ACCESS, "property.legalAccess", DEAL_FIELD_ALIASES.legalAccess, "Legal access", "Land Access and Buildability", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Do you know whether the parcel has legal road access?", "Confirm legal access using deed, survey, plat, or title evidence.", "documents"],
+  [VACANT_LAND_REQUIREMENT_IDS.ZONING, "property.zoning", DEAL_FIELD_ALIASES.zoning, "Zoning", "Land Access and Buildability", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Do you know the parcel's current zoning?", "Review zoning records using the approved research process.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.PERMITTED_USE, "property.permittedUse", DEAL_FIELD_ALIASES.permittedUse, "Permitted use", "Land Access and Buildability", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Do you know what uses are currently permitted on the parcel?", "Review permitted-use records without making a legal conclusion.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.FLOOD_STATUS, "property.floodZoneStatus", DEAL_FIELD_ALIASES.floodStatus, "Flood-zone status", "Environment", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Are you aware of any flood-zone issues affecting the parcel?", "Review available flood records and retain source Evidence.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.WETLANDS_STATUS, "property.wetlandsStatus", DEAL_FIELD_ALIASES.wetlandsStatus, "Wetlands status", "Environment", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Are you aware of any wetlands affecting the parcel?", "Review available wetlands records and retain source Evidence.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.TAXES_AND_LIENS, "property.taxesAndLiens", DEAL_FIELD_ALIASES.taxesAndLiens, "Taxes and liens", "Legal and Title", true, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Are you aware of unpaid taxes or recorded liens?", "Review taxes and recorded liens using approved research processes.", "documents"],
+  [VACANT_LAND_REQUIREMENT_IDS.VALUE_SUPPORT, "property.comparableLandValue", [...DEAL_FIELD_ALIASES.comparableLandValue, ...DEAL_FIELD_ALIASES.landComps], "Indicated land-value support", "Market and Exit", true, VALUE_PRESENCE_POLICIES.LEGACY_COMPATIBILITY_VALUE, null, "Obtain explicit land comparable Evidence or a stored indicated land value.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.PARCEL_SIZE, "property.parcelSizeAcres", [...DEAL_FIELD_ALIASES.acreage, ...DEAL_FIELD_ALIASES.landSquareFootage], "Parcel size", "Property", false, VALUE_PRESENCE_POLICIES.POSITIVE_NUMBER, "Do you know the parcel's acreage or square footage?", "Verify parcel size using a survey, plat, deed, or approved county record.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.ROAD_FRONTAGE, "property.roadFrontage", DEAL_FIELD_ALIASES.roadFrontage, "Road frontage", "Land Access and Buildability", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Do you know the parcel's road frontage?", "Review available survey or plat Evidence for frontage.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.UTILITIES, "property.utilities", DEAL_FIELD_ALIASES.utilities, "Utilities", "Land Access and Buildability", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Are utilities available at or near the parcel?", "Review available utility-access information.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.WATER_SEWER_SEPTIC, "property.waterSewerSeptic", DEAL_FIELD_ALIASES.waterSewerSeptic, "Water, sewer, or septic", "Land Access and Buildability", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Has the parcel had a septic or perc evaluation?", "Review available water, sewer, septic, or perc documentation.", "documents"],
+  [VACANT_LAND_REQUIREMENT_IDS.TOPOGRAPHY, "property.topography", DEAL_FIELD_ALIASES.topography, "Topography", "Environment", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "How would you describe the parcel's terrain?", "Review available topography Evidence without determining buildability.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.DEED_RESTRICTIONS, "property.deedRestrictions", DEAL_FIELD_ALIASES.deedRestrictions, "Deed restrictions", "Legal and Title", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Are you aware of deed restrictions or covenants?", "Review deed, title, and restriction Evidence.", "documents"],
+  [VACANT_LAND_REQUIREMENT_IDS.SUBDIVISION, "property.subdivisionPotential", DEAL_FIELD_ALIASES.subdivisionPotential, "Subdivision potential", "Land Access and Buildability", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, "Has anyone reviewed whether the parcel may be subdivided?", "Review applicable subdivision rules without assuming approval.", "property"],
+  [VACANT_LAND_REQUIREMENT_IDS.BUILDER_DEMAND, "property.builderDemand", [...DEAL_FIELD_ALIASES.builderDemand, ...DEAL_FIELD_ALIASES.landBuyerDemand], "Builder or land-buyer demand", "Market and Exit", false, VALUE_PRESENCE_POLICIES.EXPLICIT_KNOWN_STATUS, null, "Review explicit stored builder or land-buyer demand Evidence.", "closing"],
+].map(([requirementId, canonicalField, acceptedFieldAliases, label, category, blocking, valuePresencePolicy, sellerQuestion, researchGuidance, relatedSection]) => ({
+  requirementId, canonicalField, acceptedFieldAliases, label,
+  description: `${label} is part of Vacant Land Acquisition Strategy v1 review.`,
+  category,
+  criticality: blocking ? MISSING_INFORMATION_CRITICALITIES.BLOCKING : MISSING_INFORMATION_CRITICALITIES.ADVISORY,
+  requiredFor: [blocking ? MISSING_INFORMATION_SCOPES.DECISION_REVIEW : MISSING_INFORMATION_SCOPES.BUILDABILITY_REVIEW],
+  valuePresencePolicy,
+  sellerAnswerable: Boolean(sellerQuestion), sellerQuestion,
+  researchRequired: Boolean(researchGuidance), researchGuidance, relatedSection,
+}));
+
+export const VACANT_LAND_STRATEGY_REQUIREMENTS_PROFILE = Object.freeze(
+  normalizeMissingInformationProfile({
+    profileId: MISSING_INFORMATION_PROFILE_IDS.VACANT_LAND_STRATEGY,
+    profileVersion: VACANT_LAND_STRATEGY_VERSION,
+    label: "Vacant Land Strategy Requirements",
+    description: "Production missing-information requirements for Vacant Land Acquisition Strategy v1; final Offer Readiness remains owned by DI-04.",
+    assetType: ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
+    requirements: LAND_STRATEGY_REQUIREMENTS,
+  })
+);
+
 export const SAFE_IDENTITY_PROFILE = Object.freeze(
   normalizeMissingInformationProfile({
     profileId: MISSING_INFORMATION_PROFILE_IDS.SAFE_IDENTITY,
@@ -485,7 +532,10 @@ function limitationForContext(context) {
     });
   }
 
-  if (context.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND) {
+  if (
+    context.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND &&
+    context.strategySupportState !== ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+  ) {
     return normalizeStrategyLimitation({
       ...common,
       limitationId: "limitation:vacant-land-strategy-not-implemented",
@@ -549,8 +599,12 @@ export function selectMissingInformationProfiles(assetStrategyContext = {}) {
     classified &&
     context.assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND
   ) {
-    profiles = [...profiles, VACANT_LAND_PREFLIGHT_PROFILE];
-    activeProfile = VACANT_LAND_PREFLIGHT_PROFILE;
+    const landProfile =
+      context.strategySupportState === ASSET_STRATEGY_SUPPORT_STATES.IMPLEMENTED
+        ? VACANT_LAND_STRATEGY_REQUIREMENTS_PROFILE
+        : VACANT_LAND_PREFLIGHT_PROFILE;
+    profiles = [...profiles, landProfile];
+    activeProfile = landProfile;
   } else if (
     context.classificationState === ASSET_CLASSIFICATION_STATES.UNSUPPORTED
   ) {

@@ -132,21 +132,14 @@ describe("MissingInformationAutopilot", () => {
     expect(screen.getByText("No evidence reference is attached to this missing fact.")).toBeInTheDocument();
   });
 
-  it("keeps vacant-land facts and strategy limitations separate", () => {
+  it("renders implemented vacant-land requirements without residential facts", () => {
     renderPanel(
       readModel(completeDeal({ asset_type: "vacant-residential-land" }))
     );
 
-    expect(screen.getByText("Vacant Land Safety Preflight")).toBeInTheDocument();
+    expect(screen.getByText("Vacant Land Strategy Requirements")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Legal access" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", {
-        name: "Strategy and Capability Limitations",
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Vacant Land Strategy is not yet implemented.")
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Strategy and Capability Limitations" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Repairs needed" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "ARV / comps status" })).not.toBeInTheDocument();
   });

@@ -42,6 +42,7 @@ const OfferEngine = lazy(() => import("../../components/OfferEngine"));
 const PropertyIntelligencePanel = lazy(() => import("../../components/PropertyIntelligencePanel"));
 const PursuitScoreSummary = lazy(() => import("./PursuitScoreSummary"));
 const ResidentialStrategySummary = lazy(() => import("./ResidentialStrategySummary"));
+const VacantLandStrategySummary = lazy(() => import("./VacantLandStrategySummary"));
 const SequenceEngine = lazy(() => import("../../components/SequenceEngine"));
 const TaskPanel = lazy(() => import("../../components/TaskPanel"));
 const TeamPanel = lazy(() => import("../../components/TeamPanel"));
@@ -312,6 +313,8 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           <Badge>
             {assetStrategyContext.residentialStrategyEligibility
               ? "Deterministic Residential Strategy"
+              : assetStrategyContext.landStrategyEligibility
+                ? "Deterministic Vacant Land Strategy"
               : assetStrategyContext.compatibilityAnalysisEligibility
                 ? "Deterministic compatibility"
               : "Deterministic decision context"}
@@ -342,6 +345,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               <dt>Strategy Mode</dt>
               <dd>Residential Acquisition Strategy v1</dd>
             </div>
+          ) : assetStrategyContext.landStrategyEligibility ? (
+            <div>
+              <dt>Strategy Mode</dt>
+              <dd>Vacant Land Acquisition Strategy v1</dd>
+            </div>
           ) : assetStrategyContext.compatibilityAnalysisEligibility ? (
             <div>
               <dt>Compatibility Mode</dt>
@@ -352,6 +360,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
             <div>
               <dt>Offer Readiness</dt>
               <dd>Compatibility Only until DI-04</dd>
+            </div>
+          ) : assetStrategyContext.landStrategyEligibility ? (
+            <div>
+              <dt>Offer Readiness</dt>
+              <dd>Not Final until DI-04</dd>
             </div>
           ) : null}
         </dl>
@@ -395,6 +408,11 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
           <ResidentialStrategySummary result={readModel.residentialStrategyResult} />
         </LazySection>
       ) : null}
+      {readModel.vacantLandStrategyResult?.eligible ? (
+        <LazySection label="Loading Vacant Land Strategy summary...">
+          <VacantLandStrategySummary result={readModel.vacantLandStrategyResult} />
+        </LazySection>
+      ) : null}
       <MissingInformationAutopilot
         onNavigateSection={onAction}
         readModel={readModel.missingInformationReadModel}
@@ -415,6 +433,8 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                 <dd>
                   {readModel.residentialStrategyResult?.eligible
                     ? "Deterministic strategy with compatibility Evidence"
+                    : readModel.vacantLandStrategyResult?.eligible
+                      ? "Deterministic land strategy with compatibility Evidence"
                     : "Deterministic compatibility"}
                 </dd>
               </div>
@@ -462,7 +482,7 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               </div>
               <div>
                 <dt>Strategy version</dt>
-                <dd>{readModel.residentialStrategyResult?.strategyVersion || "Not available"}</dd>
+                <dd>{readModel.residentialStrategyResult?.strategyVersion || readModel.vacantLandStrategyResult?.strategyVersion || "Not available"}</dd>
               </div>
               <div>
                 <dt>Pursuit Scoring Framework</dt>
@@ -483,15 +503,15 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
               </div>
               <div>
                 <dt>Underwriting policy</dt>
-                <dd>{readModel.residentialStrategyResult?.underwriting?.policyVersion || "Not available"}</dd>
+                <dd>{readModel.residentialStrategyResult?.underwriting?.policyVersion || readModel.vacantLandStrategyResult?.valuation?.policyVersion || "Not available"}</dd>
               </div>
               <div>
                 <dt>Scoring ruleset</dt>
-                <dd>{readModel.residentialStrategyResult?.scoringRulesetVersion || "Not available"}</dd>
+                <dd>{readModel.residentialStrategyResult?.scoringRulesetVersion || readModel.vacantLandStrategyResult?.scoringRulesetVersion || "Not available"}</dd>
               </div>
               <div>
                 <dt>Offer readiness capability</dt>
-                <dd>{readModel.residentialStrategyResult?.capabilitySupport?.offerReadiness || "Not available"}</dd>
+                <dd>{readModel.residentialStrategyResult?.capabilitySupport?.offerReadiness || readModel.vacantLandStrategyResult?.capabilitySupport?.offerReadiness || "Not available"}</dd>
               </div>
             </dl>
             <h3>Classification sources</h3>
@@ -561,6 +581,14 @@ function DecisionOverview({ deal, decisionResult, onAction }) {
                 <h3>Residential Strategy assumptions</h3>
                 <p>{readModel.residentialStrategyResult.underwriting?.assumptionDisclosure}</p>
                 <p>{readModel.residentialStrategyResult.underwriting?.excludedCostDisclosure}</p>
+              </>
+            ) : null}
+            {readModel.vacantLandStrategyResult?.eligible ? (
+              <>
+                <h3>Vacant Land Strategy basis</h3>
+                <p>Valuation source: {readModel.vacantLandStrategyResult.valuation?.valuationSource || "Not available"}</p>
+                <p>Valid stored land comps: {readModel.vacantLandStrategyResult.valuation?.comparableCount || 0}</p>
+                <p>{readModel.vacantLandStrategyResult.valuation?.operatorDisclosure}</p>
               </>
             ) : null}
             {assetStrategyContext.compatibilityWarning ? (
@@ -643,6 +671,7 @@ function PropertySection({
   deal,
   onNavigateSection,
   refresh,
+  vacantLandStrategyResult,
 }) {
   const blockedPropertyGate = [
     capabilityGates.propertyIntelligence,
@@ -652,10 +681,14 @@ function PropertySection({
   return (
     <PanelSection
       description="Property identity and classification, with compatible analysis when available."
-      title="Property"
+      title={vacantLandStrategyResult?.eligible ? "Parcel" : "Property"}
     >
       <FactGrid deal={deal} />
-      {!blockedPropertyGate ? (
+      {vacantLandStrategyResult?.eligible ? (
+        <LazySection label="Loading parcel strategy context...">
+          <VacantLandStrategySummary compact result={vacantLandStrategyResult} />
+        </LazySection>
+      ) : !blockedPropertyGate ? (
         <>
           <Badge>Residential Property Intelligence - Compatibility Only</Badge>
           <LazySection label="Loading property intelligence...">
@@ -683,6 +716,7 @@ function NumbersSection({
   onNavigateSection,
   refresh,
   residentialStrategyResult,
+  vacantLandStrategyResult,
 }) {
   const numbersGates = [
     capabilityGates.underwriting,
@@ -694,9 +728,13 @@ function NumbersSection({
   return (
     <PanelSection
       description="Asset-compatible underwriting, offer, and negotiation tools."
-      title="Numbers"
+      title={vacantLandStrategyResult?.eligible ? "Land Analysis" : "Numbers"}
     >
-      {!blockedGate ? (
+      {vacantLandStrategyResult?.eligible ? (
+        <LazySection label="Loading land valuation context...">
+          <VacantLandStrategySummary result={vacantLandStrategyResult} />
+        </LazySection>
+      ) : !blockedGate ? (
         <>
           <Badge>Residential Acquisition Strategy v1</Badge>
           <LazySection label="Loading deal analyzer...">
@@ -954,6 +992,7 @@ export default function DealDecisionRoom({
           deal={deal}
           onNavigateSection={handlePrimaryAction}
           refresh={refresh}
+          vacantLandStrategyResult={decisionReadModel?.vacantLandStrategyResult}
         />
       );
     }
@@ -966,6 +1005,7 @@ export default function DealDecisionRoom({
           onNavigateSection={handlePrimaryAction}
           refresh={refresh}
           residentialStrategyResult={decisionReadModel?.residentialStrategyResult}
+          vacantLandStrategyResult={decisionReadModel?.vacantLandStrategyResult}
         />
       );
     }
@@ -995,7 +1035,12 @@ export default function DealDecisionRoom({
 
   const tabs = SECTION_IDS.map((sectionId) => ({
     id: sectionId,
-    label: SECTION_LABELS[sectionId],
+    label:
+      assetStrategyContext?.landStrategyEligibility && sectionId === "property"
+        ? "Parcel"
+        : assetStrategyContext?.landStrategyEligibility && sectionId === "numbers"
+          ? "Land Analysis"
+          : SECTION_LABELS[sectionId],
     content: renderActiveSection(sectionId),
   }));
 

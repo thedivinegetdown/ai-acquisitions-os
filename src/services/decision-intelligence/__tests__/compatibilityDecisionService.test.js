@@ -458,13 +458,58 @@ describe("compatibility decision read model", () => {
         "cost-of-delay",
       ]) {
         expect(result.data.metricsById[metricId]).toMatchObject({
-          evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
+          evaluationState:
+            metricId === "pursuit-score" &&
+            assetType === ASSET_TYPES.VACANT_RESIDENTIAL_LAND
+              ? DECISION_EVALUATION_STATES.UNAVAILABLE
+              : DECISION_EVALUATION_STATES.NOT_EVALUATED,
           value: null,
           displayValue: null,
         });
       }
     }
   );
+
+  it("integrates a real land Pursuit Score only from complete land strategy facts", () => {
+    const result = build({
+      now: Date.parse("2026-08-09T12:00:00Z"),
+      deal: completeDeal({
+        asset_type: ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
+        parcel_number: "APN-100",
+        legal_access: "documented",
+        zoning: "R-1",
+        permitted_use: "single family dwelling",
+        flood_status: "no",
+        wetlands_status: "no",
+        taxes_and_liens: "current",
+        comparable_land_value: 200000,
+        acreage: 5,
+        utilities: "available",
+        water_sewer_septic: "available",
+        road_frontage: "positive",
+        builder_demand: "high",
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.vacantLandStrategyResult).toMatchObject({
+      eligible: true,
+      strategyVersion: "vacant-land-strategy-v1",
+    });
+    expect(result.data.vacantLandStrategyResult.pursuitScoreResult.blockingIssueIds).toEqual([]);
+    expect(result.data.vacantLandStrategyResult.pursuitScoreResult).toMatchObject({
+      evaluationState: expect.stringMatching(/evaluated|partial/),
+      score: expect.any(Number),
+      scoringProfileId: "vacant-land-pursuit-profile-v1",
+      profileVersion: "vacant-land-pursuit-profile-v1",
+      ruleset: expect.objectContaining({ rulesetVersion: "vacant-land-pursuit-ruleset-v1" }),
+    });
+    expect(result.data.metricsById["pursuit-score"].value).toEqual(expect.any(Number));
+    expect(result.data.residentialStrategyResult).toBeNull();
+    expect(JSON.stringify(result.data.vacantLandStrategyResult)).not.toMatch(
+      /after-repair|repair-to-arv|house mao|rental cash flow/i
+    );
+  });
 
   it("maps strategy requirements to blocking and advisory issue references", () => {
     const result = build({

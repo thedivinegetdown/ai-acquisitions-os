@@ -2,4 +2,6 @@
 export * from "./assetStrategyContracts";
 export * from "./assetClassificationService";
 export * from "./assetStrategyContextService";
+export * from "./strategyTimeline";
 export * from "./residential";
+export * from "./vacant-land";

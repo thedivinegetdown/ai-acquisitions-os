@@ -215,8 +215,8 @@ describe("Missing Information detection", () => {
     const land = evaluate(
       completeResidential({ asset_type: "vacant-residential-land" })
     );
-    expect(land.openItems.find((entry) => entry.requirementId === "land-legal-access")).toBeTruthy();
-    expect(land.limitations[0].type).toBe("strategy-not-implemented");
+    expect(land.openItems.find((entry) => entry.requirementId === "land-strategy-legal-access")).toBeTruthy();
+    expect(land.limitations).toEqual([]);
   });
 
   it("never applies house requirements to vacant land", () => {
@@ -225,7 +225,7 @@ describe("Missing Information detection", () => {
     );
     const labels = result.allItems.map((entry) => entry.label);
 
-    expect(result.selectedProfile.label).toBe("Vacant Land Safety Preflight");
+    expect(result.selectedProfile.label).toBe("Vacant Land Strategy Requirements");
     expect(labels).toContain("Legal access");
     expect(labels).not.toEqual(
       expect.arrayContaining([
@@ -234,7 +234,7 @@ describe("Missing Information detection", () => {
         "ARV / comps status",
       ])
     );
-    expect(result.limitations[0].label).toMatch(/not yet implemented/i);
+    expect(result.limitations).toEqual([]);
   });
 
   it.each([

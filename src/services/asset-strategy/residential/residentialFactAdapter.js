@@ -8,6 +8,7 @@ import {
 } from "../../decision-intelligence/decisionContracts";
 import { INFORMATION_STATES } from "../../research-intelligence/missingInformationContracts";
 import { ASSET_CLASSIFICATION_STATES, ASSET_TYPES } from "../assetStrategyContracts";
+import { normalizeStrategyTimeline } from "../strategyTimeline";
 import {
   RESIDENTIAL_FACT_IDS,
   RESIDENTIAL_STRATEGY_ID,
@@ -39,24 +40,6 @@ const COMPARABLE_EVIDENCE_TYPES = new Set([
   "property-comp",
   "residential-comparable-sale",
 ]);
-
-const TIMELINE_TEXT_DAYS = Object.freeze({
-  immediate: 0,
-  immediately: 0,
-  asap: 0,
-  now: 0,
-  "within 30 days": 30,
-  "30 days": 30,
-  "this month": 30,
-  "60 days": 60,
-  "two months": 60,
-  "90 days": 90,
-  "three months": 90,
-  "three to six months": 180,
-  "within six months": 180,
-  "six months or more": 181,
-  "just exploring": 181,
-});
 
 const FACT_DESCRIPTORS = Object.freeze([
   {
@@ -321,39 +304,7 @@ function hasVerifiedZeroRepairEvidence(evidence) {
 }
 
 export function normalizeResidentialTimeline(value, evaluatedTimestamp) {
-  const numeric = parseSafeNumber(value);
-  if (numeric !== null && numeric >= 0) {
-    return { state: INFORMATION_STATES.PRESENT, days: numeric, method: "numeric-days" };
-  }
-  const text = normalizedText(value);
-  if (!text) return { state: INFORMATION_STATES.MISSING, days: null, method: null };
-  if (UNKNOWN_TEXT.has(text)) {
-    return { state: INFORMATION_STATES.UNKNOWN, days: null, method: "explicit-unknown" };
-  }
-  if (Object.hasOwn(TIMELINE_TEXT_DAYS, text)) {
-    return {
-      state: INFORMATION_STATES.PRESENT,
-      days: TIMELINE_TEXT_DAYS[text],
-      method: "narrow-text-mapping",
-    };
-  }
-  const target = new Date(value);
-  const evaluated = evaluatedTimestamp ? new Date(evaluatedTimestamp) : null;
-  if (
-    Number.isFinite(target.getTime()) &&
-    evaluated &&
-    Number.isFinite(evaluated.getTime())
-  ) {
-    return {
-      state: INFORMATION_STATES.PRESENT,
-      days: Math.max(
-        0,
-        Math.ceil((target.getTime() - evaluated.getTime()) / 86400000)
-      ),
-      method: "target-date",
-    };
-  }
-  return { state: INFORMATION_STATES.UNKNOWN, days: null, method: "ambiguous-text" };
+  return normalizeStrategyTimeline(value, evaluatedTimestamp);
 }
 
 function basePresence(read) {
