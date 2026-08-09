@@ -95,6 +95,9 @@ vi.mock("../VacantLandStrategySummary", () => ({
 vi.mock("../OfferReadinessSummary", () => ({
   default: ({ result }) => <div>Offer Readiness Summary: {result.displayLabel}</div>,
 }));
+vi.mock("../ConflictReviewPanel", () => ({
+  default: ({ readModel }) => <div>Conflict Review: {readModel.counts.open} open</div>,
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -164,7 +167,7 @@ describe("DealDecisionRoom", () => {
     expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
   });
 
-  it("requires review for conflicting classifications and exposes both sources", () => {
+  it("requires review for conflicting classifications and exposes both sources", async () => {
     renderRoom({ deals: [{ ...deal, property_type: "Vacant land" }] });
 
     expect(
@@ -178,6 +181,12 @@ describe("DealDecisionRoom", () => {
       screen.getByText(/map to different canonical asset types/i)
     ).toBeInTheDocument();
     expect(screen.getByText(/approved persistent path/i)).toBeInTheDocument();
+    expect(await screen.findByText("Conflict Review: 1 open")).toBeInTheDocument();
+  });
+
+  it("does not mount conflict review for a conflict-free deal", () => {
+    renderRoom();
+    expect(screen.queryByText(/Conflict Review:/)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -257,6 +266,7 @@ describe("DealDecisionRoom", () => {
       deals: [
         {
           ...deal,
+          price: 120000,
           asking_price: 120000,
           arv: 210000,
           repairs_needed: 25000,

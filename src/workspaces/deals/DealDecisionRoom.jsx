@@ -32,6 +32,7 @@ const BuyerBlast = lazy(() => import("../../components/BuyerBlast"));
 const BuyerMatches = lazy(() => import("../../components/BuyerMatches"));
 const CloseoutPanel = lazy(() => import("../../components/CloseoutPanel"));
 const CompsEngine = lazy(() => import("../../components/CompsEngine"));
+const ConflictReviewPanel = lazy(() => import("./ConflictReviewPanel"));
 const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
 const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
@@ -418,6 +419,14 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
         onNavigateSection={onAction}
         readModel={readModel.missingInformationReadModel}
       />
+      {readModel.conflictReadModel?.activeConflicts?.length || readModel.conflictReadModel?.resolvedConflicts?.length ? (
+        <LazySection label="Loading conflict review...">
+          <ConflictReviewPanel
+            onNavigateSection={onAction}
+            readModel={readModel.conflictReadModel}
+          />
+        </LazySection>
+      ) : null}
       <Card className="decision-room__basis" muted>
         <details>
           <summary>Decision Basis</summary>
@@ -514,7 +523,22 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
                 <dt>Offer readiness capability</dt>
                 <dd>{readModel.residentialStrategyResult?.capabilitySupport?.offerReadiness || readModel.vacantLandStrategyResult?.capabilitySupport?.offerReadiness || "Not available"}</dd>
               </div>
+              <div>
+                <dt>Open blocking conflicts</dt>
+                <dd>{readModel.conflictReadModel?.counts?.blocking || 0}</dd>
+              </div>
+              <div>
+                <dt>Open advisory conflicts</dt>
+                <dd>{readModel.conflictReadModel?.counts?.advisory || 0}</dd>
+              </div>
             </dl>
+            {readModel.conflictReadModel?.activeConflicts?.length ? (
+              <>
+                <h3>Conflict Intelligence</h3>
+                <p>Conflict IDs: {readModel.conflictReadModel.activeConflicts.map((conflict) => conflict.conflictId).join(", ")}</p>
+                <p>Related Evidence: {readModel.conflictReadModel.affectedEvidenceIds.join(", ") || "No Evidence reference supplied"}</p>
+              </>
+            ) : null}
             <h3>Classification sources</h3>
             {assetStrategyContext.classificationSource.sourceValues.length ? (
               <ul className="decision-room__evidence-list">

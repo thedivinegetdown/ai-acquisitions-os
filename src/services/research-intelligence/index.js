@@ -2,3 +2,4 @@
 export * from "./missingInformationContracts";
 export * from "./missingInformationProfiles";
 export * from "./missingInformationService";
+export * from "./conflicts";

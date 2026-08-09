@@ -284,7 +284,7 @@ function evaluateFactor({
     return unavailableFactorResult({
       factor,
       observation,
-      behavior: PURSUIT_SCORING_VALUE_BEHAVIORS.BLOCK,
+      behavior: factor.missingValueBehavior,
       reason: `${factor.label} has an explicit unresolved conflict.`,
     });
   }

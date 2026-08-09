@@ -771,4 +771,117 @@ describe("compatibility decision read model", () => {
       value: "needs-information",
     });
   });
+
+  it("routes a detected Residential ARV conflict through every decision safety layer", () => {
+    const result = build({ deal: completeDeal({ after_repair_value: 195000 }) });
+    const conflict = result.data.conflictReadModel.conflicts.find(
+      (entry) => entry.canonicalField === "property.afterRepairValue"
+    );
+    const item = result.data.missingInformationReadModel.openItems.find(
+      (entry) => entry.canonicalField === "property.afterRepairValue"
+    );
+
+    expect(conflict).toMatchObject({ blocking: true, state: "review-required" });
+    expect(item).toMatchObject({ state: "conflicting", conflictIds: [conflict.conflictId] });
+    expect(result.data.missingInformationReadModel.highestPriorityAction.actionType).toBe("review-conflict");
+    expect(result.data.residentialStrategyResult.factReadModel.factsById["after-repair-value"]).toMatchObject({
+      state: "conflicting",
+      conflictIds: [conflict.conflictId],
+    });
+    expect(result.data.metricsById["pursuit-score"].value).toBeNull();
+    expect(result.data.metricsById["offer-readiness"].value).toBe("needs-verification");
+    expect(result.data.lifecycle.state).toBe("Verify");
+  });
+
+  it("routes a detected Vacant Land legal-access conflict without residential fallback", () => {
+    const result = build({
+      now: Date.parse("2026-08-09T12:00:00Z"),
+      deal: completeDeal({
+        asset_type: ASSET_TYPES.VACANT_RESIDENTIAL_LAND,
+        parcel_number: "APN-100",
+        legal_access: "documented",
+        access_status: "no",
+        zoning: "R-1",
+        permitted_use: "single family dwelling",
+        flood_status: "no",
+        wetlands_status: "no",
+        taxes_and_liens: "current",
+        comparable_land_value: 200000,
+      }),
+    });
+    const conflict = result.data.conflictReadModel.conflicts.find(
+      (entry) => entry.canonicalField === "property.legalAccess"
+    );
+
+    expect(conflict).toMatchObject({ blocking: true });
+    expect(result.data.vacantLandStrategyResult.factReadModel.factsById["legal-access"]).toMatchObject({ state: "conflicting" });
+    expect(result.data.metricsById["pursuit-score"].value).toBeNull();
+    expect(result.data.metricsById["offer-readiness"].value).toBe("needs-verification");
+    expect(result.data.residentialStrategyResult).toBeNull();
+  });
+
+  it("omits an optional conflicted scoring input without forcing Verify by itself", () => {
+    const result = build({
+      deal: completeDeal({ mortgage_balance: 50000, loan_balance: 90000 }),
+    });
+    const conflict = result.data.conflictReadModel.conflicts.find(
+      (entry) => entry.canonicalField === "property.mortgageBalance"
+    );
+
+    expect(conflict).toMatchObject({ blocking: false });
+    expect(result.data.lifecycle.state).toBe("Decide");
+    expect(result.data.residentialStrategyResult.pursuitScoreResult.evaluationState).toBe("partial");
+  });
+
+  it("preserves DI-04R mixed-state aggregation while prioritizing conflict review", () => {
+    const result = build({
+      deal: completeDeal({ property_condition: null, after_repair_value: 195000 }),
+    });
+
+    expect(result.data.readinessResult.readinessState).toBe("needs-information");
+    expect(result.data.readinessResult.recommendedNextAction.actionType).toBe("verify-information");
+  });
+
+  it("keeps a real seller reply ahead of detected conflict work", () => {
+    const result = build({
+      conversationSignals: [{
+        compatibilityKey: "phone:5551112222",
+        linkedDealId: "deal-1",
+        lastMessageDirection: "inbound",
+        lastMessagePreview: "Please call me.",
+        lastMessageTimestamp: "2026-08-05T14:00:00Z",
+        organizationId: "org-1",
+        tenantId: "tenant-1",
+      }],
+      deal: completeDeal({ after_repair_value: 195000 }),
+    });
+
+    expect(result.data.recommendation.label).toBe("Respond to the seller reply.");
+  });
+
+  it("preserves an explicit resolution without rewriting disagreeing CRM aliases", () => {
+    const deal = completeDeal({ after_repair_value: 195000 });
+    const before = JSON.parse(JSON.stringify(deal));
+    const conflictId = "conflict:deal:deal-1:field:property.afterRepairValue";
+    const result = build({
+      conflictResolutions: [{
+        resolutionId: "resolution-1",
+        conflictId,
+        status: "resolved",
+        selectedCandidateId: "candidate-reviewed",
+        actorReference: "user-1",
+        reason: "Reviewed stored market evidence.",
+        decidedTimestamp: "2026-08-09T12:00:00Z",
+      }],
+      deal,
+    });
+
+    expect(result.data.conflictReadModel.resolvedConflicts[0]).toMatchObject({
+      conflictId,
+      state: "resolved",
+      explicitResolutionReference: expect.objectContaining({ actorReference: "user-1" }),
+    });
+    expect(result.data.conflictReferences).toEqual([]);
+    expect(deal).toEqual(before);
+  });
 });

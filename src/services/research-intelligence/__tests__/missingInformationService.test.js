@@ -121,6 +121,10 @@ describe("Missing Information detection", () => {
       canonicalField: "deal.askingPrice",
       conflictIds: ["conflict-price"],
     });
+    expect(result.conflictingItems[0].availableActions[0].actionType).toBe(
+      "review-conflict"
+    );
+    expect(result.highestPriorityAction.actionType).toBe("review-conflict");
     expect(result.unverifiedItems[0].canonicalField).toBe(
       "property.condition"
     );

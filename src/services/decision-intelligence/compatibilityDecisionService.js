@@ -15,6 +15,7 @@ import {
   evaluateVacantLandValuation,
 } from "../asset-strategy/vacant-land";
 import {
+  evaluateConflictingData,
   evaluateMissingInformation,
   isBlockingInformationState,
   toDecisionIssueReferences,
@@ -852,6 +853,7 @@ function buildAvailableActions(deal, dealId, assetStrategyContext) {
 function buildReadModel({
   approvalItems,
   conflicts,
+  conflictResolutions,
   conversationSignals,
   deal,
   evidenceReferences,
@@ -874,20 +876,24 @@ function buildReadModel({
     dealId
   );
   const taskEvidence = adaptTaskEvidence(tasks, context, dealId);
-  const providedConflicts = (Array.isArray(conflicts) ? conflicts : [])
+  const conflictReadModel = evaluateConflictingData({
+    assetStrategyContext,
+    deal: safeDeal,
+    evaluatedTimestamp,
+    evidenceReferences: [
+      ...assetStrategyContext.classificationEvidence,
+      ...externalEvidence,
+    ],
+    explicitConflictReferences: [
+      ...assetStrategyContext.classificationConflicts,
+      ...(Array.isArray(conflicts) ? conflicts : []),
+    ],
+    explicitResolutionReferences: conflictResolutions,
+  });
+  const normalizedConflicts = conflictReadModel.activeConflicts
     .map(normalizeConflictReference)
     .filter(Boolean)
     .slice(0, SOURCE_LIMIT);
-  const conflictById = new Map();
-  [
-    ...assetStrategyContext.classificationConflicts,
-    ...providedConflicts,
-  ].forEach((conflict) => {
-    if (!conflictById.has(conflict.conflictId)) {
-      conflictById.set(conflict.conflictId, conflict);
-    }
-  });
-  const normalizedConflicts = [...conflictById.values()].slice(0, SOURCE_LIMIT);
   const residentialFactReadModel = assetStrategyContext.residentialStrategyEligibility
     ? adaptResidentialFacts({
         assetStrategyContext,
@@ -1005,6 +1011,7 @@ function buildReadModel({
     dealId ? "" : "The loaded opportunity has no stable compatibility identifier.",
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
     ...assetStrategyContext.sourceWarnings,
+    ...conflictReadModel.partialDataWarnings,
     ...readinessResult.warnings,
     ...missingInformationReadModel.partialDataWarnings,
     ...(residentialStrategyResult?.partialDataWarnings || []),
@@ -1014,7 +1021,7 @@ function buildReadModel({
   const lifecycle = getLifecycle({
     approvalSummary,
     assetStrategyContext,
-    conflicts: normalizedConflicts,
+    conflicts: conflictReadModel.blockingConflicts,
     context,
     deal: safeDeal,
     dealId,
@@ -1124,6 +1131,7 @@ function buildReadModel({
     evidenceReferences: decisionRecord.evidenceReferences,
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
+    conflictReadModel,
     residentialStrategyResult,
     vacantLandStrategyResult,
     readinessResult,
@@ -1153,6 +1161,7 @@ function buildReadModel({
 export function buildCompatibilityDecisionReadModel({
   approvalItems = null,
   conflicts = [],
+  conflictResolutions = [],
   conversationSignals = [],
   deal = null,
   evidenceReferences = [],
@@ -1166,6 +1175,7 @@ export function buildCompatibilityDecisionReadModel({
     const data = buildReadModel({
       approvalItems,
       conflicts,
+      conflictResolutions,
       conversationSignals,
       deal,
       evidenceReferences,

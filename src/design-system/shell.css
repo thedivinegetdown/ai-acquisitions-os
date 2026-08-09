@@ -1004,6 +1004,98 @@
   gap: var(--space-4);
 }
 
+.conflict-review,
+.conflict-review__list,
+.conflict-review__conflict,
+.conflict-review__details,
+.conflict-review__resolution {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.conflict-review__conflict {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+
+.conflict-review__heading,
+.conflict-review__candidate-heading,
+.conflict-review__actions {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+
+.conflict-review__heading h3,
+.conflict-review__heading p,
+.conflict-review__evaluated,
+.conflict-review__details p,
+.conflict-review__warning,
+.conflict-review__copy-status {
+  margin: 0;
+}
+
+.conflict-review__heading p,
+.conflict-review__evaluated,
+.conflict-review__details > p,
+.conflict-review__warning {
+  color: var(--color-text-muted);
+}
+
+.conflict-review__meta,
+.conflict-review__candidate dl,
+.conflict-review__resolution dl {
+  display: grid;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  margin: 0;
+}
+
+.conflict-review__meta div,
+.conflict-review__candidate dl div,
+.conflict-review__resolution dl div {
+  min-width: 0;
+}
+
+.conflict-review dt {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.conflict-review dd {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.conflict-review__details summary {
+  cursor: pointer;
+  font-weight: var(--weight-bold);
+}
+
+.conflict-review__details summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.conflict-review__candidates {
+  display: grid;
+  gap: var(--space-3);
+  list-style-position: inside;
+  margin: 0;
+  padding: 0;
+}
+
+.conflict-review__candidate,
+.conflict-review__resolution {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
 .offer-readiness-summary__counts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

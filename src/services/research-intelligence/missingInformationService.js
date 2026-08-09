@@ -359,6 +359,22 @@ function createAvailableActions(requirement, state, itemId) {
       })
     );
   }
+  if (
+    state === INFORMATION_STATES.CONFLICTING &&
+    requirement.requirementId !== "asset-classification"
+  ) {
+    actions.push(
+      normalizeMissingInformationAction({
+        ...base,
+        actionId: `${itemId}:review-conflict`,
+        actionType: MISSING_INFORMATION_ACTION_TYPES.REVIEW_CONFLICT,
+        label: `Review conflicting ${requirement.label.toLowerCase()} values`,
+        explanation:
+          "Open the Decision section to compare candidate values and their Evidence. No value is selected or saved automatically.",
+        targetSection: "decision",
+      })
+    );
+  }
   if (requirement.sellerAnswerable && requirement.sellerQuestion) {
     actions.push(
       normalizeMissingInformationAction({

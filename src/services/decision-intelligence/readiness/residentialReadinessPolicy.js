@@ -78,7 +78,12 @@ function evaluateGate(definition, inputs) {
     );
   }
   if (definition.gateId === "residential-critical-signals") {
-    return signalGate(definition, (inputs.strategyResult?.riskSignals || []).filter((signal) => ["blocking", "significant"].includes(signal.severity)));
+    const explicitSignals = (inputs.strategyResult?.riskSignals || []).filter(
+      (signal) =>
+        !String(signal.signalId || "").startsWith("explicit-conflict:") &&
+        ["blocking", "significant"].includes(signal.severity)
+    );
+    return signalGate(definition, explicitSignals);
   }
   if (definition.gateId === "residential-advisory-signals") {
     return signalGate(definition, (inputs.strategyResult?.riskSignals || []).filter((signal) => signal.severity === "attention"));
