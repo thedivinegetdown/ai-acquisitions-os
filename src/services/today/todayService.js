@@ -7,6 +7,7 @@ import {
   conversationNeedsReply,
   getConversationCompatibilityKey,
 } from "../conversations";
+import { applyTodayPrioritization } from "../decision-intelligence/prioritization";
 
 export const TODAY_CATEGORIES = ["act-now", "approvals", "waiting", "at-risk", "completed"];
 
@@ -137,6 +138,7 @@ function normalizeNotificationItem(notification = {}, { now = Date.now() } = {})
     reason: notification.reason || "",
     recommendedNextAction: notification.recommendedAction || "Review this item.",
     dueDate: notification.deal?.due_date || notification.deal?.follow_up_date || "",
+    sourceDueTimestamp: notification.deal?.due_date || notification.deal?.follow_up_date || null,
     actionWindow: notification.deal?.due_date ? formatSafeDate(notification.deal.due_date, "") : "",
     source: notification.category || "Action Inbox",
     createdAt: notification.createdAt || nowIso(now),
@@ -187,6 +189,8 @@ function normalizeApprovalTodayItem(approval = {}) {
     reason: approval.reason,
     recommendedNextAction: approval.requestedAction,
     dueDate: approval.expirationTimestamp || approval.actionDueAt || "",
+    sourceDueTimestamp: approval.actionDueAt || null,
+    sourceExpirationTimestamp: approval.expirationTimestamp || null,
     actionWindow: approval.expirationTimestamp
       ? formatSafeDate(approval.expirationTimestamp, "")
       : "",
@@ -237,6 +241,7 @@ function buildWaitingItems(deals = [], { now = Date.now() } = {}) {
       reason: "The next follow-up date is in the future.",
       recommendedNextAction: "No action needed until the scheduled follow-up.",
       dueDate: deal.due_date || deal.follow_up_date || "",
+      sourceDueTimestamp: deal.due_date || deal.follow_up_date || null,
       actionWindow: formatSafeDate(deal.due_date || deal.follow_up_date, ""),
       source: getDealSource(deal),
       createdAt: deal.created_at || nowIso(now),
@@ -270,6 +275,7 @@ function buildCompletedItems(deals = [], { now = Date.now() } = {}) {
       reason: "The deal was updated as closed today.",
       recommendedNextAction: "Review the deal record if follow-up is needed.",
       dueDate: "",
+      sourceDueTimestamp: null,
       actionWindow: "",
       source: getDealSource(deal),
       createdAt: deal.created_at || nowIso(now),
@@ -315,6 +321,11 @@ function buildSellerReplyItems(conversations = [], { now = Date.now() } = {}) {
         recommendedNextAction:
           "Open the inbox and respond from the existing communication workflow.",
         dueDate: "",
+        sourceEventTimestamp:
+          conversation.lastMessageTimestamp ||
+          conversation.lastMessageAt ||
+          conversation.created_at ||
+          null,
         actionWindow: "",
         source: "Unified Inbox",
         createdAt: conversation.created_at || nowIso(now),
@@ -370,6 +381,9 @@ export function compareTodayItems(left, right) {
   const rightCategory = CATEGORY_WEIGHT[right.category] || 0;
   if (leftCategory !== rightCategory) return rightCategory - leftCategory;
 
+  const delayDiff = (right.sortSignals?.delayImpactRank || 0) - (left.sortSignals?.delayImpactRank || 0);
+  if (delayDiff !== 0) return delayDiff;
+
   const priorityDiff = (right.sortSignals?.priorityWeight || 0) - (left.sortSignals?.priorityWeight || 0);
   if (priorityDiff !== 0) return priorityDiff;
 
@@ -424,6 +438,7 @@ export function buildTodayReadModel({
     ...buildWaitingItems(safeDeals, { now }),
     ...buildCompletedItems(safeDeals, { now }),
   ])
+    .map((item) => applyTodayPrioritization(item, { evaluatedTimestamp: nowIso(now) }))
     .sort(compareTodayItems)
     .slice(0, Math.max(1, limit));
 

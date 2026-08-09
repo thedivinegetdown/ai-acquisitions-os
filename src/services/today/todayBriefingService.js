@@ -19,6 +19,8 @@ export function buildTodayBriefing(readModel = {}) {
   const dueFollowUpCount = items.filter((item) =>
     String(item.source || item.title || "").toLowerCase().includes("follow")
   ).length;
+  const criticalDelayCount = items.filter((item) => item.delayImpact === "critical").length;
+  const highDelayCount = items.filter((item) => item.delayImpact === "high").length;
   const focus = items.find((item) => ["at-risk", "act-now", "approvals"].includes(item.category)) || null;
 
   if (items.length === 0) {
@@ -31,6 +33,8 @@ export function buildTodayBriefing(readModel = {}) {
         atRisk: 0,
         dueOrOverdueFollowUps: 0,
         waiting: 0,
+        criticalDelay: 0,
+        highDelay: 0,
       },
       focusItemId: null,
       focusText: "No immediate acquisition work is queued from the currently loaded data.",
@@ -61,6 +65,8 @@ export function buildTodayBriefing(readModel = {}) {
       atRisk: atRiskCount,
       dueOrOverdueFollowUps: dueFollowUpCount,
       waiting: waitingCount,
+      criticalDelay: criticalDelayCount,
+      highDelay: highDelayCount,
     },
     focusItemId: focus?.id || null,
     focusText: focus

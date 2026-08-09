@@ -38,6 +38,7 @@ describe("TodayWorkspace", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Some Today sources are incomplete");
     expect(screen.getByRole("tab", { name: /Act Now/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /At Risk/ })).toBeInTheDocument();
+    expect(screen.getByText(/ordered by Cost of Delay/i)).toBeInTheDocument();
   });
 
   it("supports keyboard category navigation", () => {
@@ -102,6 +103,8 @@ describe("TodayWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open inbox" }));
 
+    expect(screen.getByText("Delay: High")).toBeInTheDocument();
+    expect(screen.getAllByText("Act Now")).toHaveLength(2);
     expect(setSelectedPhone).toHaveBeenCalledWith("+15555550100");
     expect(onNavigateWorkspace).toHaveBeenCalledWith("inbox");
   });

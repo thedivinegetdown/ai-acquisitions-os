@@ -159,9 +159,33 @@ describe("buildTodayReadModel", () => {
           category: "act-now",
           source: "Unified Inbox",
           type: "seller-reply",
+          delayImpact: "high",
+          actionWindowType: "act-now",
+          sourceDueTimestamp: null,
         }),
       ])
     );
+  });
+
+  it("keeps scheduled waiting work low and completed work non-urgent", () => {
+    const model = buildTodayReadModel({
+      deals: [
+        deal({ id: "future", due_date: TOMORROW, next_action: "Call seller" }),
+        deal({ id: "closed", stage: "Closed", updated_at: `${TODAY}T09:00:00.000Z` }),
+      ],
+      now: NOW,
+    });
+    expect(model.items.find((item) => item.id === "waiting:future")).toMatchObject({
+      category: "waiting",
+      delayImpact: "low",
+      actionWindowType: "scheduled",
+      sourceDueTimestamp: expect.any(String),
+    });
+    expect(model.items.find((item) => item.id === "completed:closed")).toMatchObject({
+      category: "completed",
+      delayImpact: "unavailable",
+      actionWindowType: "unavailable",
+    });
   });
 
   it("deduplicates duplicate underlying conditions", () => {
@@ -198,6 +222,26 @@ describe("buildTodayReadModel", () => {
     expect(model.items[0].category).toBe("at-risk");
   });
 
+  it("sorts Cost of Delay before existing priority only within the same category", () => {
+    const model = buildTodayReadModel({
+      deals: [
+        deal({ id: "missing", phone: "", email: "" }),
+        deal({ id: "overdue", due_date: YESTERDAY }),
+      ],
+      now: NOW,
+    });
+    const atRisk = model.items.filter((item) => item.category === "at-risk");
+    expect(atRisk[0]).toMatchObject({ delayImpact: "critical" });
+    expect(atRisk.some((item) => item.delayImpact === "low")).toBe(true);
+    expect(model.categories.map((category) => category.id)).toEqual([
+      "act-now",
+      "approvals",
+      "waiting",
+      "at-risk",
+      "completed",
+    ]);
+  });
+
   it("bounds input and output sizes", () => {
     const manyDeals = Array.from({ length: 80 }, (_, index) =>
       deal({ id: `deal-${index}`, due_date: YESTERDAY })
@@ -230,6 +274,7 @@ describe("buildTodayBriefing", () => {
 
     expect(briefing.counts.urgentActions).toBeGreaterThan(0);
     expect(briefing.counts.atRisk).toBeGreaterThan(0);
+    expect(briefing.counts.criticalDelay).toBeGreaterThan(0);
     expect(briefing.focusText).toContain("Start with");
     expect(briefing.summary).toContain("Today item");
   });

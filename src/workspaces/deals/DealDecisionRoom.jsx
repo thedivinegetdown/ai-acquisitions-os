@@ -34,6 +34,7 @@ const CloseoutPanel = lazy(() => import("../../components/CloseoutPanel"));
 const CompsEngine = lazy(() => import("../../components/CompsEngine"));
 const ConflictReviewPanel = lazy(() => import("./ConflictReviewPanel"));
 const DecisionQualitySummary = lazy(() => import("./DecisionQualitySummary"));
+const DecisionTimingSummary = lazy(() => import("./DecisionTimingSummary"));
 const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
 const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
@@ -308,6 +309,16 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
               Recommendation Confidence: {readModel.recommendationConfidenceResult.displayLabel}
             </StatusBadge>
           ) : null}
+          {readModel.costOfDelayResult?.evaluationState === "evaluated" ? (
+            <StatusBadge status={readModel.costOfDelayResult.level === "critical" ? "danger" : readModel.costOfDelayResult.level === "high" ? "warning" : "info"}>
+              Delay Impact: {readModel.costOfDelayResult.displayLabel}
+            </StatusBadge>
+          ) : null}
+          {readModel.recommendedActionWindowResult?.evaluationState === "evaluated" ? (
+            <StatusBadge status="neutral">
+              Action Window: {readModel.recommendedActionWindowResult.displayLabel}
+            </StatusBadge>
+          ) : null}
           <StatusBadge
             status={
               STRATEGY_SUPPORT_STATUS[
@@ -426,6 +437,13 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           reliability={readModel.dataReliabilityResult}
         />
       </LazySection>
+      <LazySection label="Loading Decision Timing...">
+        <DecisionTimingSummary
+          costOfDelay={readModel.costOfDelayResult}
+          recommendationBasis={readModel.recommendationBasis}
+          windowResult={readModel.recommendedActionWindowResult}
+        />
+      </LazySection>
       {readModel.residentialStrategyResult?.eligible ? (
         <LazySection label="Loading Residential Strategy summary...">
           <ResidentialStrategySummary result={readModel.residentialStrategyResult} />
@@ -468,6 +486,26 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
                 <dd>
                   {readModel.ruleset.rulesetId} / {readModel.ruleset.rulesetVersion}
                 </dd>
+              </div>
+              <div>
+                <dt>Cost of Delay ruleset</dt>
+                <dd>{readModel.costOfDelayResult?.rulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Action Window ruleset</dt>
+                <dd>{readModel.recommendedActionWindowResult?.rulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Timing basis</dt>
+                <dd>{readModel.timingBasis?.recommendationBasisType || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Source due / expiration</dt>
+                <dd>{readModel.timingBasis?.sourceDueTimestamp || readModel.timingBasis?.sourceExpirationTimestamp || "None supplied"}</dd>
+              </div>
+              <div>
+                <dt>Policy-derived timing</dt>
+                <dd>{readModel.timingBasis?.policyDerived ? "Yes" : "No"}</dd>
               </div>
               <div>
                 <dt>Source mode</dt>

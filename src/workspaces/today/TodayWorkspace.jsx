@@ -28,6 +28,14 @@ const PRIORITY_STATUS = {
   Low: "neutral",
 };
 
+const DELAY_STATUS = {
+  critical: "danger",
+  high: "warning",
+  moderate: "info",
+  low: "neutral",
+  unavailable: "neutral",
+};
+
 function formatTimestamp(value) {
   if (!value) return "Not refreshed yet";
   return new Date(value).toLocaleString();
@@ -84,6 +92,14 @@ function BriefingCard({ briefing }) {
           <dt>Waiting</dt>
           <dd>{briefing.counts.waiting}</dd>
         </div>
+        <div>
+          <dt>Critical delay</dt>
+          <dd>{briefing.counts.criticalDelay}</dd>
+        </div>
+        <div>
+          <dt>High delay</dt>
+          <dd>{briefing.counts.highDelay}</dd>
+        </div>
       </dl>
     </Card>
   );
@@ -122,6 +138,9 @@ function TodayItemCard({ item, onOpenItem }) {
             <StatusBadge status={PRIORITY_STATUS[item.priority] || "neutral"}>
               {item.priority}
             </StatusBadge>
+            <StatusBadge status={DELAY_STATUS[item.delayImpact] || "neutral"}>
+              Delay: {item.delayImpactLabel || "Unavailable"}
+            </StatusBadge>
           </div>
         </div>
 
@@ -135,8 +154,12 @@ function TodayItemCard({ item, onOpenItem }) {
             <dd>{item.relatedSeller}</dd>
           </div>
           <div>
-            <dt>Due</dt>
-            <dd>{item.actionWindow || item.urgency || "No due date"}</dd>
+            <dt>Action window</dt>
+            <dd>
+              {item.actionWindow && ["scheduled", "before-deadline", "overdue"].includes(item.actionWindowType)
+                ? `${item.actionWindow} / ${item.actionWindowLabel}`
+                : item.actionWindowLabel || "Unavailable"}
+            </dd>
           </div>
           <div>
             <dt>Status</dt>
@@ -281,7 +304,7 @@ export default function TodayWorkspace({
             Refresh
           </Button>
         }
-        description="Your decision-first acquisition queue for the currently loaded operational data."
+        description="Your decision-first acquisition queue. Items within each section are ordered by Cost of Delay, then existing priority and due-date context."
         title="Today"
       />
 

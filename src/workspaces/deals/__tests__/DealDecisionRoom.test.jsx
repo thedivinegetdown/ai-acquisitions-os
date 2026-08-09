@@ -103,6 +103,11 @@ vi.mock("../DecisionQualitySummary", () => ({
     <div>Decision Quality: {reliability.displayLabel} / {confidence.displayLabel}</div>
   ),
 }));
+vi.mock("../DecisionTimingSummary", () => ({
+  default: ({ costOfDelay, windowResult }) => (
+    <div>Decision Timing: {costOfDelay.displayLabel} / {windowResult.displayLabel}</div>
+  ),
+}));
 vi.mock("../../../components/DocumentVault", () => ({
   default: () => <div>Existing Document Vault Panel</div>,
 }));
@@ -149,6 +154,8 @@ describe("DealDecisionRoom", () => {
     ).toBeGreaterThan(0);
     expect(await screen.findByText("Offer readiness: Needs Information")).toBeInTheDocument();
     expect(await screen.findByText("Offer Readiness Summary: Needs Information")).toBeInTheDocument();
+    expect(await screen.findByText(/Decision Timing: Moderate \/ Within 3 Days/)).toBeInTheDocument();
+    expect(screen.getByText("Delay Impact: Moderate")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeInTheDocument();
     expect(
       screen.getAllByText("Residential home - Implemented").length

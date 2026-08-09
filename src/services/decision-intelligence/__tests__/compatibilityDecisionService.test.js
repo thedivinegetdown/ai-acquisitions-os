@@ -102,6 +102,17 @@ describe("compatibility decision read model", () => {
     expect(sellerReply.data.lifecycle.state).toBe("Act");
     expect(sellerReply.data.lifecycle.reason).toContain("seller reply");
     expect(sellerReply.data.lifecycle.evidenceReferenceIds.length).toBeGreaterThan(0);
+    expect(due.data.costOfDelayResult).toMatchObject({ level: "high" });
+    expect(due.data.recommendedActionWindowResult).toMatchObject({
+      windowType: "today",
+      sourceDueTimestamp: "2026-08-05T00:00:00.000Z",
+    });
+    expect(sellerReply.data.costOfDelayResult).toMatchObject({ level: "high" });
+    expect(sellerReply.data.recommendedActionWindowResult).toMatchObject({
+      windowType: "act-now",
+      sourceDueTimestamp: null,
+      sourceEventTimestamp: "2026-08-05T14:00:00.000Z",
+    });
   });
 
   it("classifies Learn only from a real terminal outcome", () => {
@@ -137,6 +148,8 @@ describe("compatibility decision read model", () => {
     );
     expect(result.data.recommendationBasis.basisType).toBe("overdue-action");
     expect(result.data.recommendationConfidenceResult.level).toBe("high");
+    expect(result.data.costOfDelayResult.level).toBe("critical");
+    expect(result.data.recommendedActionWindowResult.windowType).toBe("overdue");
     expect(JSON.stringify(recommendation).toLowerCase()).not.toContain("ai recommendation");
   });
 
@@ -178,7 +191,6 @@ describe("compatibility decision read model", () => {
       "financial-resilience",
       "deal-effort",
       "risk-level",
-      "cost-of-delay",
     ]) {
       expect(result.data.metricsById[id]).toMatchObject({
         evaluationState: DECISION_EVALUATION_STATES.NOT_EVALUATED,
@@ -186,6 +198,18 @@ describe("compatibility decision read model", () => {
         displayValue: null,
       });
     }
+    expect(result.data.metricsById["cost-of-delay"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "high",
+      unit: "delay-impact",
+      scale: null,
+    });
+    expect(result.data.metricsById["recommended-action-window"]).toMatchObject({
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "today",
+      unit: "action-window",
+      scale: null,
+    });
     expect(result.data).not.toHaveProperty("pursuitScore");
     expect(result.data).not.toHaveProperty("recommendationConfidence");
   });
@@ -201,6 +225,10 @@ describe("compatibility decision read model", () => {
     });
     expect(result.data.pursuitScoreResult.factorResults.map((factor) => factor.factorId)).not.toContain(
       "lead_score"
+    );
+    expect(result.data.costOfDelayResult.level).toBe(baseline.data.costOfDelayResult.level);
+    expect(result.data.recommendedActionWindowResult.windowType).toBe(
+      baseline.data.recommendedActionWindowResult.windowType
     );
   });
 
@@ -480,7 +508,6 @@ describe("compatibility decision read model", () => {
         "financial-resilience",
         "deal-effort",
         "risk-level",
-        "cost-of-delay",
       ]) {
         expect(result.data.metricsById[metricId]).toMatchObject({
           evaluationState:
@@ -492,6 +519,10 @@ describe("compatibility decision read model", () => {
           displayValue: null,
         });
       }
+      expect(result.data.metricsById["cost-of-delay"]).toMatchObject({
+        evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+        value: "low",
+      });
       expect(result.data.metricsById["recommendation-confidence"]).toMatchObject({
         evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
         value: "low",
@@ -562,18 +593,24 @@ describe("compatibility decision read model", () => {
     expect(readiness.advisoryIssueIds).toContain("residential-advisory-signals");
   });
 
-  it("uses a real due date as the only compatibility action-window value", () => {
+  it("uses canonical timing categories while preserving a real source due date", () => {
     const withDueDate = build({ deal: completeDeal({ due_date: "2026-08-06" }) });
     const withoutDueDate = build({ deal: completeDeal() });
 
     expect(withDueDate.data.metricsById["recommended-action-window"]).toMatchObject({
-      evaluationState: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
-      displayValue: "Due 2026-08-06",
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "today",
+      displayValue: "Today",
     });
+    expect(withDueDate.data.recommendedActionWindowResult.sourceDueTimestamp).toBe(
+      "2026-08-06T00:00:00.000Z"
+    );
+    expect(withDueDate.data.recommendation.actionWindow.dueTimestamp).toBeNull();
     expect(withoutDueDate.data.metricsById["recommended-action-window"]).toMatchObject({
-      evaluationState: DECISION_EVALUATION_STATES.UNAVAILABLE,
-      value: null,
+      evaluationState: DECISION_EVALUATION_STATES.EVALUATED,
+      value: "today",
     });
+    expect(withoutDueDate.data.recommendation.actionWindow.dueTimestamp).toBeNull();
   });
 
   it("keeps current CRM evidence honest about provenance and verification", () => {

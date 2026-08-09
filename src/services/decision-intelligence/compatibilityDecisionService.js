@@ -14,6 +14,7 @@ import {
   evaluateVacantLandStrategy,
   evaluateVacantLandValuation,
 } from "../asset-strategy/vacant-land";
+import { normalizeStrategyTimeline } from "../asset-strategy/strategyTimeline";
 import {
   buildDecisionOutputLineage,
   buildEvidenceCoverage,
@@ -71,6 +72,12 @@ import {
   toDataReliabilityMetric,
   toRecommendationConfidenceMetric,
 } from "./confidence-reliability";
+import {
+  evaluateCostOfDelay,
+  evaluateRecommendedActionWindow,
+  toCostOfDelayMetric,
+  toRecommendedActionWindowMetric,
+} from "./prioritization";
 
 // Distinct responsibility: adapt existing deterministic deal facts into the
 // canonical Decision Intelligence contract without deriving scores from deal fields or mutating data.
@@ -364,6 +371,8 @@ function buildApprovalSummary(approvalItems, context, dealId) {
       pendingCount: 0,
       approvedActionCount: 0,
       approvalReferenceIds: [],
+      expirationTimestamp: null,
+      actionDueAt: null,
       reason: "Approval context was not supplied to this compatibility evaluation.",
     };
   }
@@ -381,6 +390,10 @@ function buildApprovalSummary(approvalItems, context, dealId) {
     : approvedActions.length
       ? "approved-action-available"
       : relevant[0]?.status || "none-represented";
+  const earliestTimestamp = (field) => pending
+    .map((item) => normalizeDecisionTimestamp(item?.[field]))
+    .filter(Boolean)
+    .sort()[0] || null;
 
   return {
     evaluationState: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
@@ -390,6 +403,8 @@ function buildApprovalSummary(approvalItems, context, dealId) {
     pendingCount: pending.length,
     approvedActionCount: approvedActions.length,
     approvalReferenceIds: relevant.map((item) => safeText(item.id)).filter(Boolean),
+    expirationTimestamp: earliestTimestamp("expirationTimestamp"),
+    actionDueAt: earliestTimestamp("actionDueAt"),
     reason: pending.length
       ? "A pending item from the normalized Approval Inbox read model is linked to this deal."
       : approvedActions.length
@@ -398,25 +413,34 @@ function buildApprovalSummary(approvalItems, context, dealId) {
   };
 }
 
-function hasDueTask(tasks, context, dealId, now) {
-  return (Array.isArray(tasks) ? tasks : []).some((task) => {
-    if (!matchesTenantContext(task, context)) return false;
+function getDueTaskContext(tasks, context, dealId, now) {
+  const dueTimestamps = (Array.isArray(tasks) ? tasks : []).flatMap((task) => {
+    if (!matchesTenantContext(task, context)) return [];
     const relatedDealId = safeText(task.dealId || task.deal_id);
-    if (relatedDealId && dealId && relatedDealId !== dealId) return false;
-    if (COMPLETED_TASK_STATES.has(normalizedKey(task.status))) return false;
+    if (relatedDealId && dealId && relatedDealId !== dealId) return [];
+    if (COMPLETED_TASK_STATES.has(normalizedKey(task.status))) return [];
     const due = toSafeDate(task.dueAt || task.due_at || task.due_date);
     const evaluated = toSafeDate(now);
-    return Boolean(due && evaluated && due.getTime() <= evaluated.getTime());
-  });
+    return due && evaluated && due.getTime() <= evaluated.getTime()
+      ? [due.toISOString()]
+      : [];
+  }).filter(Boolean).sort();
+  return { isDue: dueTimestamps.length > 0, dueAt: dueTimestamps[0] || null };
 }
 
-function hasSellerReply(signals, context, dealId) {
-  return (Array.isArray(signals) ? signals : []).some((signal) => {
+function getSellerReplyContext(signals, context, dealId) {
+  const replies = (Array.isArray(signals) ? signals : []).filter((signal) => {
     if (!matchesTenantContext(signal, context)) return false;
     const linkedDealId = safeText(signal.linkedDealId || signal.dealId);
     if (linkedDealId && dealId && linkedDealId !== dealId) return false;
     return conversationNeedsReply(signal);
   });
+  const eventTimestamp = replies
+    .map((signal) => normalizeDecisionTimestamp(getConversationMessageTimestamp(signal)))
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  return { present: replies.length > 0, eventTimestamp };
 }
 
 function getLifecycle({
@@ -823,12 +847,8 @@ function getRecommendation({
       conflictIds,
       approvalRequirement,
       evaluatedTimestamp,
-      actionWindow: dueContext.dueAt
-        ? {
-            label: dueContext.isOverdue ? "Overdue" : `Due ${dueContext.dueKey}`,
-            dueTimestamp: dueContext.dueAt,
-          }
-        : null,
+      // Legacy compatibility selection does not own canonical DI-05 timing.
+      actionWindow: null,
       confidenceReference: null,
       overrideReference: null,
     }),
@@ -838,13 +858,13 @@ function getRecommendation({
 
 function buildMetricOutputs({
   assetStrategyContext,
-  dueContext,
   evaluatedTimestamp,
-  evidence,
   pursuitScoreResult,
   readinessResult,
   dataReliabilityResult,
   recommendationConfidenceResult,
+  costOfDelayResult,
+  recommendedActionWindowResult,
 }) {
   const pursuitScoreMetric = toPursuitScoreMetric(pursuitScoreResult, {
     assetStrategyContext,
@@ -869,29 +889,12 @@ function buildMetricOutputs({
       return toRecommendationConfidenceMetric(recommendationConfidenceResult);
     }
 
+    if (definition.id === "cost-of-delay") {
+      return toCostOfDelayMetric(costOfDelayResult);
+    }
+
     if (definition.id === "recommended-action-window") {
-      return normalizeMetricOutput({
-        metricId: definition.id,
-        evaluationState: dueContext.dueAt
-          ? DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT
-          : DECISION_EVALUATION_STATES.UNAVAILABLE,
-        value: dueContext.dueAt,
-        displayValue: dueContext.dueAt
-          ? dueContext.isOverdue
-            ? "Overdue"
-            : `Due ${dueContext.dueKey}`
-          : null,
-        unit: "timestamp",
-        explanation: dueContext.dueAt
-          ? "Derived only from the existing deal follow-up date."
-          : "No existing due date or action window is represented.",
-        inputEvidenceIds: evidenceForCanonicalField(evidence, "deal.followUpDueAt")
-          ? [evidenceForCanonicalField(evidence, "deal.followUpDueAt").evidenceId]
-          : [],
-        rulesetVersion: COMPATIBILITY_DECISION_RULESET_VERSION,
-        evaluatedTimestamp,
-        sourceMode: SOURCE_MODE,
-      });
+      return toRecommendedActionWindowMetric(recommendedActionWindowResult);
     }
 
     return normalizeMetricOutput({
@@ -1151,8 +1154,10 @@ function buildReadModel({
     vacantLandStrategyResult,
   });
   const dueContext = getDueContext(safeDeal, now);
-  const sellerReply = hasSellerReply(conversationSignals, context, dealId);
-  const taskDue = hasDueTask(tasks, context, dealId, now);
+  const sellerReplyContext = getSellerReplyContext(conversationSignals, context, dealId);
+  const sellerReply = sellerReplyContext.present;
+  const taskDueContext = getDueTaskContext(tasks, context, dealId, now);
+  const taskDue = taskDueContext.isDue;
   const sourceWarnings = uniqueStrings([
     ...((Array.isArray(sourceErrors) ? sourceErrors : sourceErrors ? [sourceErrors] : [])
       .map((error) => toUserSafeError(error, "A decision source could not be loaded."))),
@@ -1220,26 +1225,67 @@ function buildReadModel({
     recommendation: recommendationSelection.recommendation,
     recommendationBasis,
   });
+  const sellerTimelineValue = safeDealAliasText(safeDeal, "timeline") || null;
+  const sellerTimelineContext = normalizeStrategyTimeline(
+    sellerTimelineValue,
+    evaluatedTimestamp
+  );
+  const sourceDueTimestamp = recommendationBasis.basisType === RECOMMENDATION_BASIS_TYPES.DUE_ACTION
+    ? dueContext.isDue
+      ? dueContext.dueAt
+      : taskDueContext.dueAt
+    : dueContext.dueAt;
+  const prioritizationInput = {
+    approvalContext: approvalSummary,
+    assetStrategyContext,
+    conflictReadModel,
+    dataReliabilityResult,
+    evaluatedTimestamp,
+    evidenceRegistry,
+    missingInformationReadModel,
+    recommendation: recommendationSelection.recommendation,
+    recommendationBasis,
+    recommendationConfidenceResult,
+    readinessResult,
+    sellerReplyContext,
+    sellerTimelineContext,
+    sellerTimelineValue,
+    timingContext: { sourceDueTimestamp },
+  };
+  const costOfDelayResult = evaluateCostOfDelay(prioritizationInput);
+  const recommendedActionWindowResult = evaluateRecommendedActionWindow(prioritizationInput);
   const recommendation = normalizeRecommendation({
     ...recommendationSelection.recommendation,
     confidenceReference: recommendationConfidenceResult.evaluationState === "evaluated"
       ? recommendationConfidenceResult.confidenceId
+      : null,
+    actionWindow: recommendedActionWindowResult.evaluationState === "evaluated"
+      ? {
+          label: recommendedActionWindowResult.displayLabel,
+          dueTimestamp: recommendedActionWindowResult.policyDerived
+            ? null
+            : recommendedActionWindowResult.sourceDueTimestamp ||
+              recommendedActionWindowResult.sourceExpirationTimestamp ||
+              null,
+        }
       : null,
   });
   const decisionQualityWarnings = uniqueStrings([
     ...sourceWarnings,
     ...(dataReliabilityResult.warnings || []),
     ...(recommendationConfidenceResult.warnings || []),
+    ...(costOfDelayResult.warnings || []),
+    ...(recommendedActionWindowResult.warnings || []),
   ]).slice(0, 10);
   const metricOutputs = buildMetricOutputs({
     assetStrategyContext,
-    dueContext,
     evaluatedTimestamp,
-    evidence,
     pursuitScoreResult: resolvedPursuitScoreResult,
     readinessResult,
     dataReliabilityResult,
     recommendationConfidenceResult,
+    costOfDelayResult,
+    recommendedActionWindowResult,
   });
   const decisionRecord = normalizeDecisionRecord({
     decisionId: dealId ? `decision:deal:${idSegment(dealId)}:compatibility` : null,
@@ -1317,6 +1363,17 @@ function buildReadModel({
     evidenceLineage,
     dataReliabilityResult,
     recommendationConfidenceResult,
+    costOfDelayResult,
+    recommendedActionWindowResult,
+    timingBasis: {
+      recommendationBasisType: recommendationBasis.basisType,
+      sourceDueTimestamp: recommendedActionWindowResult.sourceDueTimestamp,
+      sourceExpirationTimestamp: recommendedActionWindowResult.sourceExpirationTimestamp,
+      sourceEventTimestamp: recommendedActionWindowResult.sourceEventTimestamp,
+      sellerTimelineDays: costOfDelayResult.sellerTimelineDays,
+      policyDerived: recommendedActionWindowResult.policyDerived,
+      evidenceIds: recommendedActionWindowResult.evidenceIds,
+    },
     recommendationBasis,
     recommendationTraceability: {
       evidenceIds: recommendationBasis.evidenceIds,
