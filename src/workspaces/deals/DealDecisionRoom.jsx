@@ -40,6 +40,7 @@ const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
 const DocumentVault = lazy(() => import("../../components/DocumentVault"));
 const EvidenceAndProvenancePanel = lazy(() => import("./EvidenceAndProvenancePanel"));
+const FreshnessAndRevalidationPanel = lazy(() => import("./FreshnessAndRevalidationPanel"));
 const MessageCenter = lazy(() => import("../../components/MessageCenter"));
 const NegotiationTracker = lazy(() => import("../../components/NegotiationTracker"));
 const OfferEngine = lazy(() => import("../../components/OfferEngine"));
@@ -476,6 +477,21 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           />
         </LazySection>
       ) : null}
+      {readModel.freshnessReadModel && (
+        readModel.freshnessReadModel.revalidationDueFacts?.length ||
+        readModel.freshnessReadModel.staleFacts?.length ||
+        readModel.freshnessReadModel.expiredFacts?.length ||
+        readModel.freshnessReadModel.unknownFacts?.some((fact) => fact.criticality === "blocking") ||
+        readModel.recommendationSupportFreshness?.state === "revalidation-required"
+      ) ? (
+        <LazySection label="Loading Freshness and Revalidation...">
+          <FreshnessAndRevalidationPanel
+            onNavigateSection={onAction}
+            readModel={readModel.freshnessReadModel}
+            recommendationSupport={readModel.recommendationSupportFreshness}
+          />
+        </LazySection>
+      ) : null}
       <Card className="decision-room__basis" muted>
         <details>
           <summary>Decision Basis</summary>
@@ -632,7 +648,29 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
                 <dt>Recommendation basis</dt>
                 <dd>{readModel.recommendationBasis?.basisType || "Not available"}</dd>
               </div>
+              <div>
+                <dt>Freshness ruleset</dt>
+                <dd>{readModel.freshnessReadModel?.rulesetVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Freshness policy registry</dt>
+                <dd>{readModel.freshnessReadModel?.policyRegistryVersion || "Not available"}</dd>
+              </div>
+              <div>
+                <dt>Revalidation due / stale / expired</dt>
+                <dd>{readModel.freshnessReadModel?.counts?.revalidationDue || 0} / {readModel.freshnessReadModel?.counts?.stale || 0} / {readModel.freshnessReadModel?.counts?.expired || 0}</dd>
+              </div>
+              <div>
+                <dt>Critical revalidation required</dt>
+                <dd>{readModel.freshnessReadModel?.counts?.criticalRevalidationRequired || 0}</dd>
+              </div>
+              <div>
+                <dt>Recommendation support freshness</dt>
+                <dd>{readModel.recommendationSupportFreshness?.state || "Unknown"}</dd>
+              </div>
             </dl>
+            <h3>Freshness signals</h3>
+            <p>{readModel.freshnessSignalIds?.join(", ") || "No canonical freshness signals are active."}</p>
             <h3>Decision Quality limitations</h3>
             <p>{readModel.dataReliabilityResult?.limitationCodes?.join(", ") || "No Data Reliability limitations are recorded."}</p>
             <p>{readModel.recommendationConfidenceResult?.limitingFactors?.join(", ") || "No Recommendation Confidence limiting factors are recorded."}</p>

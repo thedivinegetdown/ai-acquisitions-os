@@ -16,7 +16,7 @@ function referencesForFact(fact) {
   return {
     evidenceIds: fact?.evidenceReferenceIds || [],
     conflictIds: fact?.conflictIds || [],
-    staleReferenceIds: fact?.freshnessState === "stale" ? fact.evidenceReferenceIds || [] : [],
+    staleReferenceIds: ["stale", "expired"].includes(fact?.freshnessState) ? fact.evidenceReferenceIds || [] : [],
     unverifiedReferenceIds: fact?.verificationState === "unverified" ? fact.evidenceReferenceIds || [] : [],
     sourceTimestamps: fact?.sourceTimestamp ? [fact.sourceTimestamp] : [],
   };
@@ -37,7 +37,7 @@ export function evaluateRequiredFact(definition, inputs, factId, requirementIds 
     missingInformationIds: itemReferences.missingInformationIds,
     conflictIds: [...(fact?.conflictIds || []), ...itemReferences.conflictIds],
     staleReferenceIds: [
-      ...(fact?.freshnessState === "stale" ? fact.evidenceReferenceIds || [] : []),
+      ...(["stale", "expired"].includes(fact?.freshnessState) ? fact.evidenceReferenceIds || [] : []),
       ...itemReferences.staleReferenceIds,
     ],
     unverifiedReferenceIds: [
@@ -55,7 +55,7 @@ export function evaluateRequiredFact(definition, inputs, factId, requirementIds 
   };
   const states = new Set(items.map((item) => item.state));
   if (states.has("conflicting") || fact?.conflictIds?.length) return { ...common, evaluationState: READINESS_GATE_STATES.PENDING, reason: `${definition.label} has an explicit unresolved conflict.`, safeNextAction: { ...common.safeNextAction, actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION } };
-  if (states.has("stale") || fact?.freshnessState === "stale") return { ...common, evaluationState: READINESS_GATE_STATES.PENDING, reason: `${definition.label} is explicitly stale and requires review.`, safeNextAction: { ...common.safeNextAction, actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION } };
+  if (states.has("stale") || ["stale", "expired"].includes(fact?.freshnessState)) return { ...common, evaluationState: READINESS_GATE_STATES.PENDING, reason: `${definition.label} requires freshness verification or revalidation.`, safeNextAction: { ...common.safeNextAction, actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION } };
   if (states.has("unverified") || fact?.verificationState === "unverified") return { ...common, evaluationState: READINESS_GATE_STATES.PENDING, reason: `${definition.label} is explicitly unverified and requires review.`, safeNextAction: { ...common.safeNextAction, actionType: READINESS_ACTION_TYPES.VERIFY_INFORMATION } };
   if (items.length || !fact || ["missing", "unknown", "unavailable"].includes(fact.state)) return { ...common, evaluationState: READINESS_GATE_STATES.PENDING, reason: `${definition.label} is missing or unknown.` };
   return { ...common, evaluationState: READINESS_GATE_STATES.PASSED, passed: true, reason: `${definition.label} is represented for deterministic review.` };

@@ -26,7 +26,7 @@ function reliabilityLevel(grade) {
   return RECOMMENDATION_CONFIDENCE_LEVELS.LOW;
 }
 
-export function evaluateRecommendationConfidence({ approvalContext = {}, conflictReadModel = {}, dataReliabilityResult = {}, evaluatedTimestamp, evidenceRegistry = {}, missingInformationReadModel = {}, readinessResult = {}, recommendation = {}, recommendationBasis: suppliedBasis } = {}) {
+export function evaluateRecommendationConfidence({ approvalContext = {}, conflictReadModel = {}, dataReliabilityResult = {}, evaluatedTimestamp, evidenceRegistry = {}, freshnessReadModel = {}, missingInformationReadModel = {}, readinessResult = {}, recommendation = {}, recommendationBasis: suppliedBasis } = {}) {
   try {
     const basis = normalizeRecommendationBasis(suppliedBasis);
     const traceable = Boolean(basis.triggerId || basis.evidenceIds.length || basis.missingInformationIds.length || basis.conflictIds.length || basis.readinessGateIds.length || basis.approvalReferenceIds.length);
@@ -64,7 +64,8 @@ export function evaluateRecommendationConfidence({ approvalContext = {}, conflic
     if ((readinessResult.readinessState || "") !== "ready-for-offer-preparation") limiting.push(CONFIDENCE_LIMITING_FACTORS.READINESS_NOT_READY);
     const referencedEvidence = basis.evidenceIds.map((id) => evidenceRegistry.evidenceById?.[id]).filter(Boolean);
     if (referencedEvidence.some((record) => record.compatibility)) limiting.push(CONFIDENCE_LIMITING_FACTORS.COMPATIBILITY_EVIDENCE);
-    if (referencedEvidence.some((record) => record.freshnessState === "stale")) limiting.push(CONFIDENCE_LIMITING_FACTORS.EXPLICIT_STALE_INPUT);
+    const referencedFreshness = basis.evidenceIds.map((id) => freshnessReadModel.assessmentsByEvidenceId?.[id]).filter(Boolean);
+    if (referencedFreshness.some((item) => ["stale", "expired"].includes(item.state)) || referencedEvidence.some((record) => record.freshnessState === "stale")) limiting.push(CONFIDENCE_LIMITING_FACTORS.EXPLICIT_STALE_INPUT);
     if (referencedEvidence.some((record) => ["unverified", "verification-required"].includes(record.verificationState))) limiting.push(CONFIDENCE_LIMITING_FACTORS.EXPLICIT_UNVERIFIED_INPUT);
     const confidenceId = recommendation.recommendationId ? `recommendation-confidence:${encodeURIComponent(recommendation.recommendationId)}` : null;
     return normalizeRecommendationConfidenceResult({

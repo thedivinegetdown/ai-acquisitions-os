@@ -4,3 +4,4 @@ export * from "./missingInformationProfiles";
 export * from "./missingInformationService";
 export * from "./conflicts";
 export * from "./evidence";
+export * from "./freshness";

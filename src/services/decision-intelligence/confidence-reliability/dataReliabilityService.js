@@ -49,7 +49,9 @@ function verificationState(records) {
   return "unknown";
 }
 
-function freshnessState(records) {
+function freshnessState(records, canonicalField, freshnessReadModel) {
+  const canonicalState = freshnessReadModel?.assessmentsByCanonicalField?.[canonicalField]?.state;
+  if (canonicalState) return canonicalState;
   const states = records.map((record) => record.freshnessState);
   if (states.includes("stale")) return "stale";
   if (states.length && states.every((state) => ["current", "not-applicable"].includes(state))) return "current";
@@ -65,15 +67,15 @@ function sourceTimestampAvailability(records) {
 function factState({ activeConflictIds, compatibility, evidenceStatus, freshness, identity, limitations, lineageLimitation, records, traceability, verification }) {
   if (!records.length || records.every((record) => record.evidenceStatus === "unavailable")) return DATA_RELIABILITY_GRADES.UNAVAILABLE;
   const material = limitations.some((limitation) => MATERIAL_LIMITATIONS.has(limitation));
-  if (activeConflictIds.length || compatibility || evidenceStatus === "limited" || freshness === "stale" || ["unverified", "verification-required"].includes(verification) || identity !== "identified" || traceability === "contextual" || lineageLimitation || material) return DATA_RELIABILITY_GRADES.LIMITED;
+  if (activeConflictIds.length || compatibility || evidenceStatus === "limited" || ["stale", "expired"].includes(freshness) || ["unverified", "verification-required"].includes(verification) || identity !== "identified" || traceability === "contextual" || lineageLimitation || material) return DATA_RELIABILITY_GRADES.LIMITED;
   const allVerified = verification === "verified";
-  const explicitlyCurrent = freshness === "current";
+  const explicitlyCurrent = ["current", "not-applicable"].includes(freshness);
   const sourceTime = sourceTimestampAvailability(records) === "source-time-present";
   if (evidenceStatus === "usable" && ["direct", "derived"].includes(traceability) && allVerified && explicitlyCurrent && sourceTime) return DATA_RELIABILITY_GRADES.STRONG;
   return DATA_RELIABILITY_GRADES.MODERATE;
 }
 
-function describeFact(descriptor, registry, conflictsByField) {
+function describeFact(descriptor, registry, conflictsByField, freshnessReadModel) {
   const records = registry?.evidenceByCanonicalField?.[descriptor.canonicalField] || [];
   const supporting = records.filter((record) => record.relationship === "supports");
   const challenging = records.filter((record) => record.relationship === "challenges");
@@ -84,7 +86,7 @@ function describeFact(descriptor, registry, conflictsByField) {
   const identity = worstIdentity(relevant);
   const traceability = valueTraceability(relevant);
   const verification = verificationState(relevant);
-  const freshness = freshnessState(relevant);
+  const freshness = freshnessState(relevant, descriptor.canonicalField, freshnessReadModel);
   const compatibility = records.some((record) => record.compatibility);
   const lineageLimitation = limitations.includes("derived-lineage-incomplete");
   const evidenceStatus = records.some((record) => record.evidenceStatus === "usable") ? "usable" : records.some((record) => record.evidenceStatus === "limited") ? "limited" : "unavailable";
@@ -146,11 +148,11 @@ function selectFactDescriptors({ conflictReadModel, missingInformationReadModel,
   return [...byField.values()];
 }
 
-export function evaluateDataReliability({ assetStrategyContext = {}, conflictReadModel = {}, evaluatedTimestamp, evidenceRegistry = {}, missingInformationReadModel = {}, recommendationBasis = {} } = {}) {
+export function evaluateDataReliability({ assetStrategyContext = {}, conflictReadModel = {}, evaluatedTimestamp, evidenceRegistry = {}, freshnessReadModel = {}, missingInformationReadModel = {}, recommendationBasis = {} } = {}) {
   try {
     const descriptors = selectFactDescriptors({ conflictReadModel, missingInformationReadModel, recommendationBasis });
     const conflictsByField = activeConflictMap(conflictReadModel);
-    const facts = descriptors.map((descriptor) => describeFact(descriptor, evidenceRegistry, conflictsByField));
+    const facts = descriptors.map((descriptor) => describeFact(descriptor, evidenceRegistry, conflictsByField, freshnessReadModel));
     const critical = facts.filter((fact) => fact.criticality === "blocking" || fact.recommendationCritical);
     const advisory = facts.filter((fact) => !critical.includes(fact));
     const representedCritical = critical.filter((fact) => fact.evidenceIds.length && fact.state !== DATA_RELIABILITY_GRADES.UNAVAILABLE);

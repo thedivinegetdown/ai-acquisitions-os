@@ -19,8 +19,11 @@ import {
   buildDecisionOutputLineage,
   buildEvidenceCoverage,
   buildEvidenceRegistry,
+  applyFreshnessToFactReadModel,
   evaluateConflictingData,
+  evaluateFreshnessAndRevalidation,
   evaluateMissingInformation,
+  evaluateRecommendationSupportFreshness,
   isBlockingInformationState,
   toDecisionIssueReferences,
 } from "../research-intelligence";
@@ -995,6 +998,7 @@ function buildReadModel({
   deal,
   evidenceReferences,
   now,
+  previousFreshnessReadModel,
   previousLifecycle,
   pursuitScoreResult,
   sourceErrors,
@@ -1031,7 +1035,7 @@ function buildReadModel({
     .map(normalizeConflictReference)
     .filter(Boolean)
     .slice(0, SOURCE_LIMIT);
-  const residentialFactReadModel = assetStrategyContext.residentialStrategyEligibility
+  let residentialFactReadModel = assetStrategyContext.residentialStrategyEligibility
     ? adaptResidentialFacts({
         assetStrategyContext,
         conflicts: normalizedConflicts,
@@ -1040,7 +1044,7 @@ function buildReadModel({
         evidenceReferences: externalEvidence,
       })
     : null;
-  const vacantLandFactReadModel = assetStrategyContext.landStrategyEligibility
+  let vacantLandFactReadModel = assetStrategyContext.landStrategyEligibility
     ? adaptVacantLandFacts({
         assetStrategyContext,
         conflicts: normalizedConflicts,
@@ -1049,7 +1053,7 @@ function buildReadModel({
         evidenceReferences: externalEvidence,
       })
     : null;
-  const vacantLandValuation = vacantLandFactReadModel
+  let vacantLandValuation = vacantLandFactReadModel
     ? evaluateVacantLandValuation({
         evaluatedTimestamp,
         factReadModel: vacantLandFactReadModel,
@@ -1073,7 +1077,7 @@ function buildReadModel({
   });
   const evidence = evidenceRegistry.evidenceRecords;
   const evidenceCoverage = buildEvidenceCoverage(evidenceRegistry);
-  const missingInformationReadModel = evaluateMissingInformation({
+  const initialMissingInformationReadModel = evaluateMissingInformation({
     assetStrategyContext,
     conflicts: normalizedConflicts,
     deal: safeDeal,
@@ -1083,6 +1087,54 @@ function buildReadModel({
     freshnessStates:
       residentialFactReadModel?.explicitFreshnessStates ||
       vacantLandFactReadModel?.explicitFreshnessStates || {},
+    informationStates: {
+      ...(residentialFactReadModel?.informationStates || {}),
+      ...(vacantLandFactReadModel?.informationStates || {}),
+      ...(vacantLandValuation?.indicatedLandValue > 0
+        ? { "property.comparableLandValue": "present" }
+        : {}),
+    },
+    sourceErrors,
+    verificationStates:
+      residentialFactReadModel?.explicitVerificationStates ||
+      vacantLandFactReadModel?.explicitVerificationStates || {},
+  });
+  const freshnessReadModel = evaluateFreshnessAndRevalidation({
+    assetStrategyContext,
+    conflictReadModel,
+    evaluatedTimestamp,
+    evidenceRegistry,
+    missingInformationReadModel: initialMissingInformationReadModel,
+    previousFreshnessReadModel,
+  });
+  residentialFactReadModel = applyFreshnessToFactReadModel(
+    residentialFactReadModel,
+    freshnessReadModel
+  );
+  vacantLandFactReadModel = applyFreshnessToFactReadModel(
+    vacantLandFactReadModel,
+    freshnessReadModel
+  );
+  if (vacantLandFactReadModel) {
+    vacantLandValuation = evaluateVacantLandValuation({
+      evaluatedTimestamp,
+      factReadModel: vacantLandFactReadModel,
+    });
+  }
+  const canonicalFreshnessStates = Object.fromEntries(
+    freshnessReadModel.factAssessments.map((fact) => [
+      fact.canonicalField,
+      fact.state === "expired" ? "stale" : fact.state,
+    ])
+  );
+  const missingInformationReadModel = evaluateMissingInformation({
+    assetStrategyContext,
+    conflicts: normalizedConflicts,
+    deal: safeDeal,
+    evaluatedTimestamp,
+    evidenceReferences: evidence,
+    evidenceCoverage,
+    freshnessStates: canonicalFreshnessStates,
     informationStates: {
       ...(residentialFactReadModel?.informationStates || {}),
       ...(vacantLandFactReadModel?.informationStates || {}),
@@ -1166,6 +1218,7 @@ function buildReadModel({
     safeDeal === deal ? "" : "The loaded opportunity record was malformed or unavailable.",
     ...assetStrategyContext.sourceWarnings,
     ...evidenceRegistry.warnings,
+    ...freshnessReadModel.warnings,
     ...conflictReadModel.partialDataWarnings,
     ...readinessResult.warnings,
     ...missingInformationReadModel.partialDataWarnings,
@@ -1211,6 +1264,7 @@ function buildReadModel({
     conflictReadModel,
     evaluatedTimestamp,
     evidenceRegistry,
+    freshnessReadModel,
     missingInformationReadModel,
     recommendationBasis,
   });
@@ -1220,8 +1274,14 @@ function buildReadModel({
     dataReliabilityResult,
     evaluatedTimestamp,
     evidenceRegistry,
+    freshnessReadModel,
     missingInformationReadModel,
     readinessResult,
+    recommendation: recommendationSelection.recommendation,
+    recommendationBasis,
+  });
+  const recommendationSupportFreshness = evaluateRecommendationSupportFreshness({
+    freshnessReadModel,
     recommendation: recommendationSelection.recommendation,
     recommendationBasis,
   });
@@ -1361,6 +1421,20 @@ function buildReadModel({
     evidenceRegistry,
     evidenceCoverage,
     evidenceLineage,
+    freshnessReadModel,
+    freshnessSignals: [
+      ...freshnessReadModel.factualSignals,
+      ...recommendationSupportFreshness.signals,
+    ],
+    freshnessSignalIds: uniqueStrings([
+      ...freshnessReadModel.factualSignals.map((signal) => signal.signalId),
+      ...recommendationSupportFreshness.signals.map((signal) => signal.signalId),
+    ]),
+    recommendationSupportFreshness,
+    staleEvidenceIds: freshnessReadModel.staleEvidenceIds,
+    expiredEvidenceIds: freshnessReadModel.expiredEvidenceIds,
+    staleCanonicalFields: freshnessReadModel.staleCanonicalFields,
+    expiredCanonicalFields: freshnessReadModel.expiredCanonicalFields,
     dataReliabilityResult,
     recommendationConfidenceResult,
     costOfDelayResult,
@@ -1426,6 +1500,7 @@ export function buildCompatibilityDecisionReadModel({
   evidenceReferences = [],
   now = Date.now(),
   previousLifecycle = null,
+  previousFreshnessReadModel = null,
   pursuitScoreResult = null,
   sourceErrors = [],
   tasks = [],
@@ -1440,6 +1515,7 @@ export function buildCompatibilityDecisionReadModel({
       evidenceReferences,
       now,
       previousLifecycle,
+      previousFreshnessReadModel,
       pursuitScoreResult,
       sourceErrors,
       tasks,
