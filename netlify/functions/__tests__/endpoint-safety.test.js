@@ -111,7 +111,10 @@ describe("Netlify function endpoint safety", () => {
     delete process.env.TWILIO_PHONE_NUMBER;
     delete process.env.SMS_TEST_MODE;
 
-    const handler = sendSms.createSendSmsHandler({ authorize: authorized() });
+    const handler = sendSms.createSendSmsHandler({
+      authorize: authorized(),
+      loadConsent: vi.fn().mockResolvedValue({ status: "unknown" }),
+    });
     const result = await handler({
       httpMethod: "POST",
       body: JSON.stringify({ to: "+15551234567", message: "Hello from test" }),
@@ -225,15 +228,15 @@ describe("Netlify function endpoint safety", () => {
     expect(String(result.body)).toContain("Method not allowed");
   });
 
-  it("returns safe 500 for inbound SMS when Supabase config is missing", async () => {
-    delete process.env.SUPABASE_URL;
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  it("fails closed before inbound SMS processing without a signature", async () => {
+    process.env.TWILIO_AUTH_TOKEN = "placeholder-auth-token";
+    process.env.PUBLIC_SITE_URL = "https://example.test";
 
     const result = await inboundSms.handler({ httpMethod: "POST", body: "From=%2B15551234567&Body=Hello" });
 
     commonSafeChecks(result);
-    expect(result.statusCode).toBe(500);
-    expect(String(result.body)).toContain("Server configuration error");
+    expect(result.statusCode).toBe(403);
+    expect(String(result.body)).toContain("signature");
   });
 
   it("returns server-side health status without exposing secrets", async () => {
@@ -244,6 +247,8 @@ describe("Netlify function endpoint safety", () => {
     process.env.TWILIO_ACCOUNT_SID = "twilio-sid";
     process.env.TWILIO_AUTH_TOKEN = "twilio-secret";
     process.env.TWILIO_PHONE_NUMBER = "+15551234567";
+    process.env.TWILIO_ORGANIZATION_ID = "org-test";
+    process.env.PUBLIC_SITE_URL = "https://example.test";
     process.env.STRIPE_SECRET_KEY = "stripe-secret";
     process.env.STRIPE_WEBHOOK_SECRET = "stripe-webhook-secret";
 
@@ -270,6 +275,8 @@ describe("Netlify function endpoint safety", () => {
     delete process.env.TWILIO_ACCOUNT_SID;
     delete process.env.TWILIO_AUTH_TOKEN;
     delete process.env.TWILIO_PHONE_NUMBER;
+    delete process.env.TWILIO_ORGANIZATION_ID;
+    delete process.env.PUBLIC_SITE_URL;
     delete process.env.STRIPE_SECRET_KEY;
     delete process.env.STRIPE_WEBHOOK_SECRET;
 

@@ -134,6 +134,26 @@ describe("tenant and RLS migration contract", () => {
     expect(migrations).not.toMatch(/using \([^)]*organization_id is null/);
   });
 
+  it("defines tenant-safe communication consent without activating RLS", () => {
+    expect(migrations).toContain(
+      "create table if not exists public.communication_consents"
+    );
+    expect(migrations).toContain(
+      "unique (organization_id, normalized_phone, channel)"
+    );
+    expect(migrations).toContain(
+      "communication_consents_prevent_organization_transfer"
+    );
+    ["select_member", "insert_writer", "update_writer"].forEach((policy) => {
+      expect(migrations).toContain(
+        "create policy communication_consents_" + policy
+      );
+    });
+    expect(activation).toContain(
+      "alter table public.communication_consents enable row level security"
+    );
+  });
+
   it("provides fail-closed readiness checks for every activation blocker", () => {
     expect(migrations).toContain("tenant_table_ownership_report");
     expect(migrations).toContain("row_count bigint");

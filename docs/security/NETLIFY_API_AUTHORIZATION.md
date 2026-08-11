@@ -5,11 +5,12 @@ EO-SEC-02 separates browser business APIs from external webhooks and public-safe
 | Function | Invocation | Classification | Authorization | Tenant/resource rule |
 | --- | --- | --- | --- | --- |
 | `ai-analysis`, `ai-chat`, `ai-summary` | Browser AI provider | User API | Active membership; all canonical roles | Explicit organization context; no access token is sent to the AI provider |
-| `send-sms` | Browser communications flow | User mutation API | Owner, admin, or analyst | Optional deal must match the organization; every message log carries `organization_id` |
+| `send-sms` | Browser communications flow | User mutation API | Owner, admin, or analyst | Optional deal and recipient consent must match the organization; every message log carries `organization_id` |
 | `send-email` | Browser email flow | User mutation API | Owner, admin, or analyst | Optional deal must match the organization; live provider behavior remains disabled |
 | `create-checkout-session` | Browser billing panel | User administration API | Owner | Stripe metadata is derived from validated organization context |
 | `create-billing-portal-session` | Browser billing panel | User administration API | Owner | Stripe customer metadata must match the validated organization |
-| `inbound-v2` | Twilio provider | External webhook | No Supabase bearer token | Signature validation and provider-to-tenant resolution remain blocked for EO-COMM-01 |
+| `inbound-v2` | Twilio provider | External webhook | Twilio signature | Configured destination resolves to one trusted organization; provider message IDs are idempotent |
+| `twilio-status` | Twilio provider | External webhook | Twilio signature | Updates only the matching organization-owned Twilio message record |
 | `stripe-webhook` | Stripe provider | External webhook | Stripe signature | No tenant-owned persistence is currently performed |
 | `health-check` | Monitoring/operator | Public-safe | None | Returns configuration presence only, never values |
 
@@ -23,4 +24,4 @@ Authenticated endpoints are same-origin and do not emit wildcard CORS authorizat
 
 ## Deliberate exclusions
 
-This change does not activate RLS, mutate production data, backfill ownership, or change the Twilio inbound webhook. The inbound webhook remains unsuitable for production reliance until signature validation, replay protection, opt-out handling, idempotency, and trustworthy tenant resolution are implemented by the communications hardening order.
+This change does not activate RLS, mutate production data, or backfill ownership. Twilio remains disabled for live use unless an operator explicitly supplies the complete server-side configuration and sets `SMS_TEST_MODE=false`; repository changes alone do not enable production messaging.
