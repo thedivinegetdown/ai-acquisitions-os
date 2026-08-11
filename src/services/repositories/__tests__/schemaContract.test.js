@@ -61,6 +61,10 @@ describe("Supabase schema baseline", () => {
     });
   });
 
+  it("does not use PostgreSQL-invalid nullable column syntax", () => {
+    expect(migrationSql).not.toMatch(/\bnullable\b/);
+  });
+
   it("defines every table queried by repositories and Supabase functions", () => {
     const repositoryFiles = readdirSync(
       path.join(repositoryRoot, "src", "services", "repositories")

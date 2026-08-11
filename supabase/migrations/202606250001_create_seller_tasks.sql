@@ -1,10 +1,10 @@
 create table if not exists public.seller_tasks (
   id uuid primary key default gen_random_uuid(),
-  deal_id uuid nullable,
+  deal_id uuid,
   phone text not null,
   title text not null,
   status text default 'open',
-  due_at timestamptz nullable,
+  due_at timestamptz,
   created_at timestamptz default now()
 );
 

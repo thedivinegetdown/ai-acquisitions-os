@@ -1,0 +1,59 @@
+name: Database RLS Validation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/database-rls-validation.yml"
+      - "scripts/test-local-database-rls.cjs"
+      - "supabase/migrations/**"
+      - "supabase/security/**"
+      - "supabase/tests/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  database-rls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: eo_val_local_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
+
+      - name: Create two clean disposable databases
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: eo_val_local_only
+          PGUSER: postgres
+        run: |
+          createdb eo_val_a
+          createdb eo_val_b
+
+      - name: Execute migrations and RLS validation twice
+        env:
+          ALLOW_LOCAL_DB_TESTS: "true"
+          EO_VAL_DATABASE_URL_A: postgresql://postgres:eo_val_local_only@127.0.0.1:5432/eo_val_a
+          EO_VAL_DATABASE_URL_B: postgresql://postgres:eo_val_local_only@127.0.0.1:5432/eo_val_b
+        run: node scripts/test-local-database-rls.cjs
