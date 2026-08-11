@@ -9,8 +9,15 @@ const FUNCTION_AUTHORIZATION_MATRIX = Object.freeze({
   "inbound-v2": Object.freeze({
     classification: "external-webhook",
     bearerAuth: false,
-    signatureValidation: "pending-eo-comm-01",
-    tenant: "unresolved-external-provider",
+    signatureValidation: "twilio-signature",
+    tenant: "configured-single-organization-route",
+    mutation: true,
+  }),
+  "twilio-status": Object.freeze({
+    classification: "external-webhook",
+    bearerAuth: false,
+    signatureValidation: "twilio-signature",
+    tenant: "configured-single-organization-route",
     mutation: true,
   }),
   "stripe-webhook": Object.freeze({

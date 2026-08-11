@@ -14,6 +14,7 @@ const migrationSql = migrationFiles
 
 const persistedTables = [
   "buyers",
+  "communication_consents",
   "comps",
   "deals",
   "documents",
@@ -71,6 +72,7 @@ describe("Supabase schema baseline", () => {
       "src/services/conversations/conversationRepository.js",
       "src/services/conversations/messageRepository.js",
       "netlify/functions/inbound-v2.cjs",
+      "netlify/functions/twilio-status.cjs",
       "netlify/functions/send-sms.cjs",
     ];
     const queriedTables = [...new Set(queryFiles.flatMap(queryTablesFrom))].sort();
@@ -108,6 +110,18 @@ describe("Supabase schema baseline", () => {
       "message",
       "status",
       "created_at",
+    ]);
+    expectColumns("communication_consents", [
+      "id",
+      "organization_id",
+      "normalized_phone",
+      "channel",
+      "status",
+      "source",
+      "provider",
+      "last_event_at",
+      "created_at",
+      "updated_at",
     ]);
     expectColumns("seller_tasks", [
       "id",
@@ -162,6 +176,16 @@ describe("Supabase schema baseline", () => {
     );
     expect(migrationSql).toMatch(
       /alter table public\.seller_tasks\s+add column if not exists updated_at timestamptz/
+    );
+    [
+      "provider",
+      "provider_message_id",
+      "provider_status",
+      "provider_status_updated_at",
+      "error_code",
+      "consent_event",
+    ].forEach((column) =>
+      expect(migrationSql).toContain("add column if not exists " + column)
     );
   });
 

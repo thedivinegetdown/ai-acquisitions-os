@@ -39,6 +39,7 @@ describe("service-role and tenant-scope static contracts", () => {
       "netlify/functions/_shared/auth.cjs",
       "netlify/functions/health-check.js",
       "netlify/functions/inbound-v2.cjs",
+      "netlify/functions/twilio-status.cjs",
     ]);
   });
 

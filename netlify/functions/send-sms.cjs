@@ -15,17 +15,29 @@ const {
   requireDealInOrganization,
   requireTenantContext,
 } = require("./_shared/auth.cjs");
+const {
+  buildWebhookUrl,
+  normalizeProviderStatus,
+} = require("./_shared/twilio.cjs");
 
 const MAX_SMS_CHARS = 1600;
 
 function createSendSmsHandler({
   authorize = requireTenantContext,
+  loadConsent = loadSmsConsent,
   verifyDeal = requireDealInOrganization,
   twilioFactory = twilio,
+  now = () => new Date().toISOString(),
 } = {}) {
   return async (event) => {
     try {
-      return await handleRequest(event, { authorize, verifyDeal, twilioFactory });
+      return await handleRequest(event, {
+        authorize,
+        loadConsent,
+        now,
+        verifyDeal,
+        twilioFactory,
+      });
     } catch (error) {
       logError("[SMS] Unexpected function error", error);
       return json(500, {
@@ -39,7 +51,10 @@ function createSendSmsHandler({
 exports.createSendSmsHandler = createSendSmsHandler;
 exports.handler = createSendSmsHandler();
 
-async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
+async function handleRequest(
+  event,
+  { authorize, loadConsent, now, verifyDeal, twilioFactory }
+) {
   const methodResponse = requirePost(event);
   if (methodResponse) return methodResponse;
 
@@ -87,24 +102,49 @@ async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
     });
   }
 
+  const consent = await loadConsent(adminClient, organizationId, to);
+  if (consent.response) return consent.response;
+  if (consent.status === "opted-out") {
+    return json(403, {
+      success: false,
+      status: "blocked-by-opt-out",
+      error: "SMS delivery is blocked by recipient consent status.",
+    });
+  }
+
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const fromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_PHONE;
-  const testMode = process.env.SMS_TEST_MODE === "true";
-  let mode = "live";
-  let status = "sent";
+  const providerOrganizationId = safeTrim(
+    process.env.TWILIO_ORGANIZATION_ID
+  );
+  const liveMode = process.env.SMS_TEST_MODE === "false";
+  const statusCallback = buildWebhookUrl(
+    "/.netlify/functions/twilio-status"
+  );
+  let mode = liveMode ? "live" : "test";
+  let status = "test";
   let providerSid = null;
+  const sentAt = now();
 
-  if (testMode || !accountSid || !authToken || !fromNumber) {
-    mode = "test";
-    status = "test";
-    providerSid = "TEST_MESSAGE";
-
-    logInfo("[SMS] Test mode active or provider configuration incomplete.", {
+  if (!liveMode) {
+    logInfo("[SMS] Explicit test mode active.", {
       hasAccountSid: !!accountSid,
       hasAuthToken: !!authToken,
       hasFromNumber: !!fromNumber,
-      testMode,
+      liveMode,
+    });
+  } else if (
+    !accountSid ||
+    !authToken ||
+    !fromNumber ||
+    !statusCallback ||
+    !providerOrganizationId ||
+    providerOrganizationId !== organizationId
+  ) {
+    return json(503, {
+      success: false,
+      error: "Live SMS is not fully configured.",
     });
   } else {
     try {
@@ -112,13 +152,15 @@ async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
       const twilioResult = await client.messages.create({
         body: message,
         from: fromNumber,
+        statusCallback,
         to,
       });
 
-      providerSid = twilioResult.sid;
-      status = twilioResult.status || status;
+      providerSid = safeTrim(twilioResult.sid);
+      status = normalizeProviderStatus(twilioResult.status);
+      if (status === "unknown") status = "accepted";
 
-      logInfo("[SMS] Twilio send completed", {
+      logInfo("[SMS] Twilio send accepted", {
         status,
         hasProviderSid: !!providerSid,
       });
@@ -131,6 +173,14 @@ async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
         message,
         status: "failed",
         direction: "outbound",
+        provider: "twilio",
+        provider_message_id: null,
+        provider_status: "failed",
+        provider_status_updated_at: sentAt,
+        error_code:
+          truncate(safeTrim(String(error?.code || "")), 64) || null,
+        created_at: sentAt,
+        updated_at: sentAt,
       });
 
       return json(502, {
@@ -147,18 +197,55 @@ async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
     message,
     status,
     direction: "outbound",
+    provider: mode === "live" ? "twilio" : null,
+    provider_message_id: mode === "live" ? providerSid : null,
+    provider_status: mode === "live" ? status : null,
+    provider_status_updated_at: mode === "live" ? sentAt : null,
+    error_code: null,
+    created_at: sentAt,
+    updated_at: sentAt,
   });
 
   return json(200, {
     success: true,
     mode,
     status,
-    sid: providerSid,
+    sid: providerSid || (mode === "test" ? "TEST_MESSAGE" : null),
     message:
       mode === "live"
-        ? "SMS sent successfully."
+        ? "SMS accepted by provider."
         : "Message saved in test mode.",
   });
+}
+
+async function loadSmsConsent(adminClient, organizationId, phone) {
+  try {
+    const { data, error } = await adminClient
+      .from("communication_consents")
+      .select("status")
+      .eq("organization_id", organizationId)
+      .eq("normalized_phone", phone)
+      .eq("channel", "sms")
+      .limit(1);
+
+    if (error) {
+      return {
+        response: json(503, {
+          success: false,
+          error: "SMS consent status is unavailable.",
+        }),
+      };
+    }
+
+    return { status: data?.[0]?.status || "unknown" };
+  } catch {
+    return {
+      response: json(503, {
+        success: false,
+        error: "SMS consent status is unavailable.",
+      }),
+    };
+  }
 }
 
 async function saveLog(adminClient, logData) {
@@ -170,7 +257,13 @@ async function saveLog(adminClient, logData) {
       message: logData.message,
       status: logData.status,
       direction: logData.direction,
-      created_at: new Date().toISOString(),
+      provider: logData.provider,
+      provider_message_id: logData.provider_message_id,
+      provider_status: logData.provider_status,
+      provider_status_updated_at: logData.provider_status_updated_at,
+      error_code: logData.error_code,
+      created_at: logData.created_at,
+      updated_at: logData.updated_at,
     };
 
     let { error } = await adminClient.from("message_logs").insert(payload);

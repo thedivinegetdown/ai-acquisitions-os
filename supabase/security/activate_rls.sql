@@ -13,6 +13,9 @@ begin
     ('organizations', 'organizations_select_member'),
     ('organizations', 'organizations_update_owner'),
     ('organization_memberships', 'organization_memberships_select_member'),
+    ('communication_consents', 'communication_consents_select_member'),
+    ('communication_consents', 'communication_consents_insert_writer'),
+    ('communication_consents', 'communication_consents_update_writer'),
     ('organization_memberships', 'organization_memberships_insert_owner'),
     ('organization_memberships', 'organization_memberships_update_owner'),
     ('deals', 'deals_select_member'), ('deals', 'deals_insert_writer'), ('deals', 'deals_update_writer'),
@@ -37,6 +40,7 @@ end $$;
 
 alter table public.organizations enable row level security;
 alter table public.organization_memberships enable row level security;
+alter table public.communication_consents enable row level security;
 alter table public.deals enable row level security;
 alter table public.message_logs enable row level security;
 alter table public.seller_tasks enable row level security;
@@ -50,7 +54,7 @@ begin
   if exists (
     select 1
     from (values
-      ('organizations'), ('organization_memberships'), ('deals'),
+      ('organizations'), ('organization_memberships'), ('communication_consents'), ('deals'),
       ('message_logs'), ('seller_tasks'), ('buyers'), ('documents'),
       ('comps'), ('sequences')
     ) required(table_name)

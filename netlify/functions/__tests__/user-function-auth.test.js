@@ -112,6 +112,7 @@ describe("user-originated Netlify API authorization", () => {
     const twilioFactory = vi.fn();
     const handler = sendSms.createSendSmsHandler({
       authorize: context.authorize,
+      loadConsent: vi.fn().mockResolvedValue({ status: "unknown" }),
       verifyDeal,
       twilioFactory,
     });
@@ -247,7 +248,12 @@ describe("user-originated Netlify API authorization", () => {
     expect(FUNCTION_AUTHORIZATION_MATRIX["inbound-v2"]).toMatchObject({
       classification: "external-webhook",
       bearerAuth: false,
-      signatureValidation: "pending-eo-comm-01",
+      signatureValidation: "twilio-signature",
+    });
+    expect(FUNCTION_AUTHORIZATION_MATRIX["twilio-status"]).toMatchObject({
+      classification: "external-webhook",
+      bearerAuth: false,
+      signatureValidation: "twilio-signature",
     });
     expect(FUNCTION_AUTHORIZATION_MATRIX["stripe-webhook"]).toMatchObject({
       classification: "external-webhook",
