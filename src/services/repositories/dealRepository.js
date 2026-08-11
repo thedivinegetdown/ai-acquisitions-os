@@ -5,6 +5,7 @@ import {
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
+import { stripOrganizationOwnership } from "../organizations";
 
 const DEAL_SELECT = "*";
 
@@ -49,7 +50,7 @@ export async function updateDeal(dealId, payload) {
   return runRepositoryOperation(async () => {
     const { data, error } = await supabase
       .from("deals")
-      .update(payload)
+      .update(stripOrganizationOwnership(payload))
       .eq("id", dealId)
       .select()
       .limit(1);
@@ -70,7 +71,7 @@ export async function updateDeals(dealIds = [], payload) {
   return runRepositoryOperation(async () => {
     const { data, error } = await supabase
       .from("deals")
-      .update(payload)
+      .update(stripOrganizationOwnership(payload))
       .in("id", ids)
       .select();
 

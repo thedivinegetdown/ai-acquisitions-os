@@ -10,6 +10,7 @@ import {
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
+import { addCurrentOrganizationOwnership } from "../organizations";
 
 const BUYERS_CACHE_KEY = "buyers:list";
 const BUYERS_CACHE_TTL_MS = 10000;
@@ -56,15 +57,16 @@ export async function createBuyer(buyer) {
   }
 
   return runRepositoryOperation(async () => {
+    const ownedPayload = await addCurrentOrganizationOwnership(payload);
     const { data, error } = await supabase
       .from("buyers")
-      .insert([payload])
+      .insert([ownedPayload])
       .select()
       .limit(1);
 
     if (error) throw error;
     clearCache(`${BUYERS_CACHE_KEY}:created_at`);
 
-    return repositorySuccess(data?.[0] || payload);
+    return repositorySuccess(data?.[0] || ownedPayload);
   }, "Could not save buyer.");
 }

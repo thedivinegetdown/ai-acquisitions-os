@@ -7,6 +7,7 @@ import {
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
+import { addCurrentOrganizationOwnership } from "../organizations";
 
 export async function listCompsByDeal(
   dealId,
@@ -48,14 +49,15 @@ export async function createComp(comp) {
   }
 
   return runRepositoryOperation(async () => {
+    const ownedPayload = await addCurrentOrganizationOwnership(payload);
     const { data, error } = await supabase
       .from("comps")
-      .insert([payload])
+      .insert([ownedPayload])
       .select()
       .limit(1);
 
     if (error) throw error;
 
-    return repositorySuccess(data?.[0] || payload);
+    return repositorySuccess(data?.[0] || ownedPayload);
   }, "Could not save comp.");
 }
