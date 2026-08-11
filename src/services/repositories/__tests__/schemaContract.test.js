@@ -18,6 +18,7 @@ const persistedTables = [
   "deals",
   "documents",
   "message_logs",
+  "organization_memberships",
   "seller_tasks",
   "sequences",
 ];
@@ -188,10 +189,11 @@ describe("Supabase schema baseline", () => {
     expect(migrationSql).not.toMatch(/\bdrop\s+(table|column|schema)\b|\btruncate\b/);
   });
 
-  it("deliberately excludes tenant ownership and row-level security", () => {
-    expect(migrationSql).not.toMatch(/\borganization_id\b|\btenant_id\b/);
+  it("defines tenant ownership and policies without activating RLS in migrations", () => {
+    expect(migrationSql).toMatch(/\borganization_id\b/);
+    expect(migrationSql).toMatch(/create policy/);
     expect(migrationSql).not.toMatch(
-      /enable row level security|force row level security|create policy/
+      /enable row level security|force row level security/
     );
   });
 });

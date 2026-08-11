@@ -6,6 +6,10 @@ import {
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
+import {
+  requireActiveOrganizationContext,
+  stripOrganizationOwnership,
+} from "../organizations";
 
 export async function listSequencesByDeal(
   dealId,
@@ -35,9 +39,14 @@ export async function createSequenceSteps(steps = []) {
   }
 
   return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    const ownedSteps = steps.map((step) => ({
+      ...stripOrganizationOwnership(step),
+      organization_id: organizationId,
+    }));
     const { data, error } = await supabase
       .from("sequences")
-      .insert(steps)
+      .insert(ownedSteps)
       .select();
 
     if (error) throw error;
@@ -54,7 +63,7 @@ export async function updateSequenceStep(stepId, payload) {
   return runRepositoryOperation(async () => {
     const { data, error } = await supabase
       .from("sequences")
-      .update(payload)
+      .update(stripOrganizationOwnership(payload))
       .eq("id", stepId)
       .select()
       .limit(1);

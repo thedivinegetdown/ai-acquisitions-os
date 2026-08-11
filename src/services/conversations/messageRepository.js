@@ -7,6 +7,7 @@ import {
   getCachedValue,
   setCachedValue,
 } from "../cache";
+import { addCurrentOrganizationOwnership } from "../organizations";
 
 const MESSAGE_LOG_CACHE_PREFIX = "message_logs";
 const CONVERSATION_SUMMARY_CACHE_PREFIX = "conversation-summaries";
@@ -173,7 +174,7 @@ export async function insertOutboundMessageLog({
   }
 
   try {
-    const payload = {
+    let payload = {
       phone,
       message: trimmedMessage,
       direction: "outbound",
@@ -184,6 +185,7 @@ export async function insertOutboundMessageLog({
       payload.deal_id = dealId;
     }
 
+    payload = await addCurrentOrganizationOwnership(payload);
     let { data, error } = await supabase
       .from("message_logs")
       .insert(payload)
