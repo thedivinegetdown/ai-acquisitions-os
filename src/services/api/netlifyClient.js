@@ -2,6 +2,7 @@ import { appConfig } from "../config";
 import { logger } from "../logging";
 import { monitorAsync } from "../monitoring";
 import { createFailure, createSuccess } from "./serviceResult";
+import { authenticatedFunctionFetch } from "./authenticatedFunctionFetch";
 
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -39,7 +40,7 @@ export async function callNetlifyFunction(
 
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       try {
-        const response = await fetch(url, {
+        const response = await authenticatedFunctionFetch(url, {
           method,
           headers: {
             "Content-Type": "application/json",

@@ -125,10 +125,12 @@ export async function requestEmailSend({
   }
 
   return callNetlifyFunction("send-email", {
-    to,
-    subject,
-    body,
-    dealId,
+    body: {
+      to,
+      subject,
+      body,
+      dealId,
+    },
   });
 }
 

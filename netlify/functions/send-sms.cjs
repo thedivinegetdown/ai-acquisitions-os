@@ -1,64 +1,72 @@
-const { createClient } = require("@supabase/supabase-js");
 const twilio = require("twilio");
 const {
   isValidPhone,
   json,
   logError,
   logInfo,
-  logWarn,
   normalizePhone,
   parseJsonBody,
   requirePost,
   safeTrim,
   truncate,
 } = require("./_shared/security.cjs");
+const {
+  MUTATION_ROLES,
+  requireDealInOrganization,
+  requireTenantContext,
+} = require("./_shared/auth.cjs");
 
 const MAX_SMS_CHARS = 1600;
 
-let supabase = null;
-
-try {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey);
-  } else {
-    logWarn("[SMS] Supabase server configuration is incomplete.");
-  }
-} catch (error) {
-  logError("[SMS] Failed to initialize Supabase", error);
+function createSendSmsHandler({
+  authorize = requireTenantContext,
+  verifyDeal = requireDealInOrganization,
+  twilioFactory = twilio,
+} = {}) {
+  return async (event) => {
+    try {
+      return await handleRequest(event, { authorize, verifyDeal, twilioFactory });
+    } catch (error) {
+      logError("[SMS] Unexpected function error", error);
+      return json(500, {
+        success: false,
+        error: "SMS request failed.",
+      });
+    }
+  };
 }
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const fromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_PHONE;
-const testMode = process.env.SMS_TEST_MODE === "true";
+exports.createSendSmsHandler = createSendSmsHandler;
+exports.handler = createSendSmsHandler();
 
-exports.handler = async (event) => {
-  try {
-    return await handleRequest(event);
-  } catch (error) {
-    logError("[SMS] Unexpected function error", error);
-    return json(500, {
-      success: false,
-      error: "SMS request failed.",
-    });
-  }
-};
-
-async function handleRequest(event) {
+async function handleRequest(event, { authorize, verifyDeal, twilioFactory }) {
   const methodResponse = requirePost(event);
   if (methodResponse) return methodResponse;
 
   const parsed = parseJsonBody(event);
   if (parsed.error) return json(400, { success: false, error: parsed.error });
 
+  const authorization = await authorize(event, {
+    allowedRoles: MUTATION_ROLES,
+    requestedOrganizationId:
+      parsed.body.organization_id || parsed.body.organizationId,
+  });
+  if (authorization.response) return authorization.response;
+
   const to = normalizePhone(parsed.body.to || parsed.body.phone);
   const message = truncate(parsed.body.message || parsed.body.body, MAX_SMS_CHARS);
   const dealId = safeTrim(parsed.body.deal_id || parsed.body.dealId) || null;
+  const { adminClient } = authorization.clients;
+  const { organizationId, userId } = authorization.context;
 
-  logInfo("[SMS] Request received", {
+  if (dealId) {
+    const deal = await verifyDeal(adminClient, dealId, organizationId);
+    if (deal.response) return deal.response;
+  }
+
+  logInfo("[SMS] Authorized request", {
+    userId,
+    organizationId,
     hasRecipient: !!to,
     hasDealId: !!dealId,
     hasMessage: !!message,
@@ -79,6 +87,10 @@ async function handleRequest(event) {
     });
   }
 
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_PHONE;
+  const testMode = process.env.SMS_TEST_MODE === "true";
   let mode = "live";
   let status = "sent";
   let providerSid = null;
@@ -96,7 +108,7 @@ async function handleRequest(event) {
     });
   } else {
     try {
-      const client = twilio(accountSid, authToken);
+      const client = twilioFactory(accountSid, authToken);
       const twilioResult = await client.messages.create({
         body: message,
         from: fromNumber,
@@ -112,16 +124,14 @@ async function handleRequest(event) {
       });
     } catch (error) {
       logError("[SMS] Twilio send failed", error);
-
-      if (dealId) {
-        await saveLog({
-          deal_id: dealId,
-          phone: to,
-          message,
-          status: "failed",
-          direction: "outbound",
-        });
-      }
+      await saveLog(adminClient, {
+        organization_id: organizationId,
+        deal_id: dealId,
+        phone: to,
+        message,
+        status: "failed",
+        direction: "outbound",
+      });
 
       return json(502, {
         success: false,
@@ -130,15 +140,14 @@ async function handleRequest(event) {
     }
   }
 
-  if (dealId) {
-    await saveLog({
-      deal_id: dealId,
-      phone: to,
-      message,
-      status,
-      direction: "outbound",
-    });
-  }
+  await saveLog(adminClient, {
+    organization_id: organizationId,
+    deal_id: dealId,
+    phone: to,
+    message,
+    status,
+    direction: "outbound",
+  });
 
   return json(200, {
     success: true,
@@ -152,14 +161,10 @@ async function handleRequest(event) {
   });
 }
 
-async function saveLog(logData) {
-  if (!supabase) {
-    logWarn("[SMS] Supabase unavailable. Message log skipped.");
-    return;
-  }
-
+async function saveLog(adminClient, logData) {
   try {
     const payload = {
+      organization_id: logData.organization_id,
       deal_id: logData.deal_id,
       phone: logData.phone,
       message: logData.message,
@@ -168,12 +173,12 @@ async function saveLog(logData) {
       created_at: new Date().toISOString(),
     };
 
-    let { error } = await supabase.from("message_logs").insert(payload);
+    let { error } = await adminClient.from("message_logs").insert(payload);
 
     if (isMissingDirectionColumnError(error)) {
       const legacyPayload = { ...payload };
       delete legacyPayload.direction;
-      ({ error } = await supabase.from("message_logs").insert(legacyPayload));
+      ({ error } = await adminClient.from("message_logs").insert(legacyPayload));
     }
 
     if (error) {

@@ -6,6 +6,10 @@ const {
   truncate,
 } = require("./security.cjs");
 
+const {
+  MEMBERSHIP_ROLES,
+  requireTenantContext,
+} = require("./auth.cjs");
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_PROMPT_CHARS = 28000;
@@ -70,14 +74,25 @@ async function callOpenAi({ system, user, defaultSystem, temperature }) {
   return data;
 }
 
-function createAiHandler({
-  defaultSystem,
-  promptLabel,
-  temperature,
-}) {
+function createAiHandler(
+  {
+    defaultSystem,
+    promptLabel,
+    temperature,
+  },
+  {
+    authorize = requireTenantContext,
+    providerRequest = callOpenAi,
+  } = {}
+) {
   return async (event) => {
     const methodResponse = requirePost(event);
     if (methodResponse) return methodResponse;
+
+    const authorization = await authorize(event, {
+      allowedRoles: MEMBERSHIP_ROLES,
+    });
+    if (authorization.response) return authorization.response;
 
     if (!process.env.OPENAI_API_KEY) {
       return json(503, {
@@ -95,7 +110,7 @@ function createAiHandler({
     }
 
     try {
-      const result = await callOpenAi({
+      const result = await providerRequest({
         ...parsed.body,
         defaultSystem,
         temperature,

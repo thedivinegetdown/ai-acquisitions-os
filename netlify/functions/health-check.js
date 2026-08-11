@@ -1,7 +1,11 @@
 const { json, handleOptions } = require("./_shared/security.cjs");
 
 const REQUIRED_ENV = {
-  supabase: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"],
+  supabase: [
+    "SUPABASE_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+  ],
   openai: ["OPENAI_API_KEY"],
   twilio: ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_PHONE_NUMBER"],
   stripe: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
