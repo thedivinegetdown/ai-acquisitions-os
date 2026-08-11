@@ -139,6 +139,36 @@ describe("buildTodayReadModel", () => {
     );
   });
 
+  it("keeps a fixed future follow-up waiting regardless of the wall clock", () => {
+    const model = buildTodayReadModel({
+      deals: [
+        deal({
+          id: "fixed-future",
+          due_date: "2026-08-10",
+          next_action: "Call seller",
+        }),
+      ],
+      now: new Date("2026-08-04T12:00:00.000Z").getTime(),
+    });
+
+    expect(model.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "waiting",
+          id: "waiting:fixed-future",
+        }),
+      ])
+    );
+    expect(model.items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "at-risk",
+          title: "Overdue task: 123 Main Street",
+        }),
+      ])
+    );
+  });
+
   it("classifies seller replies when bounded conversation summaries are supplied", () => {
     const model = buildTodayReadModel({
       conversations: [

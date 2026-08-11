@@ -1,8 +1,9 @@
 import { getDealAliasPositiveNumber, getDealAliasText } from "../../utils/dealFields";
 import { formatSafeDate } from "../../utils/dates";
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+function evaluationIso(now) {
+  const evaluatedAt = now instanceof Date ? now : new Date(now);
+  return evaluatedAt.toISOString();
 }
 
 function getDealId(deal = {}, fallback = "") {
@@ -28,6 +29,7 @@ function buildNotification({
   status = "New",
   action = "open-seller-workspace",
   requiresApproval = false,
+  createdAt = "",
 } = {}) {
   return {
     id,
@@ -40,15 +42,16 @@ function buildNotification({
     deal,
     reason,
     recommendedAction,
-    createdAt: new Date().toISOString(),
+    createdAt,
     status,
     action,
     requiresApproval,
   };
 }
 
-export function buildDealNotifications(deals = []) {
-  const date = todayIso();
+export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
+  const createdAt = evaluationIso(now);
+  const date = createdAt.slice(0, 10);
   const safeDeals = Array.isArray(deals) ? deals : [];
   const notifications = [];
 
@@ -212,11 +215,16 @@ export function buildDealNotifications(deals = []) {
     }
   });
 
-  return notifications;
+  return notifications.map((notification) => ({ ...notification, createdAt }));
 }
 
-export function buildSystemHealthNotifications(systemHealth = null) {
+export function buildSystemHealthNotifications(
+  systemHealth = null,
+  { now = Date.now() } = {}
+) {
   if (!systemHealth?.knownWarnings?.length) return [];
+
+  const createdAt = evaluationIso(now);
 
   return systemHealth.knownWarnings.slice(0, 5).map((warning, index) =>
     buildNotification({
@@ -227,6 +235,7 @@ export function buildSystemHealthNotifications(systemHealth = null) {
       reason: warning,
       recommendedAction: "Open Admin Health Center and verify configuration.",
       action: "view-system-health",
+      createdAt,
     })
   );
 }

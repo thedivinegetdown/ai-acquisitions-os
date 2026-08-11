@@ -28,11 +28,11 @@ function groupNotifications(notifications = [], groupBy = "priority") {
   }, {});
 }
 
-function isSnoozedActive(notification = {}) {
+function isSnoozedActive(notification = {}, now) {
   if (notification.status !== "Snoozed") return true;
   if (!notification.snoozedUntil) return false;
 
-  return notification.snoozedUntil <= new Date().toISOString().slice(0, 10);
+  return notification.snoozedUntil <= now.toISOString().slice(0, 10);
 }
 
 function getMissingData(notifications = []) {
@@ -53,11 +53,13 @@ export function generateNotifications({
   deals = [],
   stateById = {},
   groupBy = "priority",
+  now = Date.now(),
 } = {}) {
+  const evaluatedAt = now instanceof Date ? now : new Date(now);
   const systemHealth = analyzeSystemHealth({ deals });
   const rawNotifications = [
-    ...buildDealNotifications(deals),
-    ...buildSystemHealthNotifications(systemHealth),
+    ...buildDealNotifications(deals, { now: evaluatedAt }),
+    ...buildSystemHealthNotifications(systemHealth, { now: evaluatedAt }),
   ];
   const notifications = sortNotificationsByPriority(
     applyLocalState(rawNotifications, stateById)
@@ -65,7 +67,7 @@ export function generateNotifications({
   const activeNotifications = notifications.filter(
     (notification) =>
       !["Dismissed", "Completed"].includes(notification.status) &&
-      isSnoozedActive(notification)
+      isSnoozedActive(notification, evaluatedAt)
   );
   const criticalCount = activeNotifications.filter(
     (notification) => notification.priority === "Critical"
@@ -93,7 +95,7 @@ export function generateNotifications({
       activeNotifications.length === 0
         ? "No active notifications require attention."
         : `${activeNotifications.length} active notifications across ${Object.keys(groupNotifications(activeNotifications, groupBy)).length} groups.`,
-    generatedAt: new Date().toISOString(),
+    generatedAt: evaluatedAt.toISOString(),
   };
 }
 
