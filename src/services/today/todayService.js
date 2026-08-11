@@ -414,7 +414,7 @@ export function buildTodayReadModel({
     ? deals.filter((deal) => deal && typeof deal === "object").slice(0, 250)
     : [];
   const safeConversations = Array.isArray(conversations) ? conversations.slice(0, 25) : [];
-  const inbox = buildActionInbox({ deals: safeDeals, stateById: notificationStateById });
+  const inbox = buildActionInbox({ deals: safeDeals, now, stateById: notificationStateById });
   const sourceWarnings = [...(inbox.missingData || []), ...errors.filter(Boolean)];
   const operatorNotifications = (inbox.notifications || []).filter(
     (notification) => notification.category !== "System health warnings"
