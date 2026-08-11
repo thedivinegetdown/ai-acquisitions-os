@@ -30,6 +30,24 @@ function commonSafeChecks(response) {
   expect(String(response.body)).not.toContain("Error:");
 }
 
+function authorized(role = "owner") {
+  const insert = vi.fn().mockResolvedValue({ error: null });
+  return vi.fn().mockResolvedValue({
+    context: {
+      authenticated: true,
+      userId: "user-1",
+      organizationId: "org-1",
+      role,
+      membershipStatus: "active",
+    },
+    clients: {
+      adminClient: {
+        from: vi.fn(() => ({ insert })),
+      },
+    },
+  });
+}
+
 beforeEach(() => {
   restoreEnv();
   vi.restoreAllMocks();
@@ -52,7 +70,8 @@ describe("Netlify function endpoint safety", () => {
 
   it("returns safe 503 when AI API key is missing", async () => {
     delete process.env.OPENAI_API_KEY;
-    const result = await aiChat.handler({ httpMethod: "POST", body: JSON.stringify({ user: "Hello" }) });
+    const handler = aiChat.createHandler({ authorize: authorized() });
+    const result = await handler({ httpMethod: "POST", body: JSON.stringify({ user: "Hello" }) });
 
     commonSafeChecks(result);
     expect(result.statusCode).toBe(503);
@@ -61,7 +80,8 @@ describe("Netlify function endpoint safety", () => {
 
   it("returns safe 400 for invalid AI JSON body", async () => {
     process.env.OPENAI_API_KEY = "test-key";
-    const result = await aiChat.handler({ httpMethod: "POST", body: "not-json" });
+    const handler = aiChat.createHandler({ authorize: authorized() });
+    const result = await handler({ httpMethod: "POST", body: "not-json" });
 
     commonSafeChecks(result);
     expect(result.statusCode).toBe(400);
@@ -77,7 +97,8 @@ describe("Netlify function endpoint safety", () => {
   });
 
   it("returns safe 400 for missing SMS body fields", async () => {
-    const result = await sendSms.handler({ httpMethod: "POST", body: JSON.stringify({}) });
+    const handler = sendSms.createSendSmsHandler({ authorize: authorized() });
+    const result = await handler({ httpMethod: "POST", body: JSON.stringify({}) });
 
     commonSafeChecks(result);
     expect(result.statusCode).toBe(400);
@@ -90,7 +111,8 @@ describe("Netlify function endpoint safety", () => {
     delete process.env.TWILIO_PHONE_NUMBER;
     delete process.env.SMS_TEST_MODE;
 
-    const result = await sendSms.handler({
+    const handler = sendSms.createSendSmsHandler({ authorize: authorized() });
+    const result = await handler({
       httpMethod: "POST",
       body: JSON.stringify({ to: "+15551234567", message: "Hello from test" }),
     });
@@ -112,7 +134,8 @@ describe("Netlify function endpoint safety", () => {
     delete process.env.EMAIL_PROVIDER;
     delete process.env.EMAIL_API_KEY;
 
-    const result = await sendEmail.handler({
+    const handler = sendEmail.createSendEmailHandler({ authorize: authorized() });
+    const result = await handler({
       httpMethod: "POST",
       body: JSON.stringify({ to: "person@example.com", subject: "Test", body: "Hello" }),
     });
@@ -123,7 +146,8 @@ describe("Netlify function endpoint safety", () => {
   });
 
   it("returns safe 400 for invalid email address", async () => {
-    const result = await sendEmail.handler({
+    const handler = sendEmail.createSendEmailHandler({ authorize: authorized() });
+    const result = await handler({
       httpMethod: "POST",
       body: JSON.stringify({ to: "invalid-email", subject: "Test", body: "Hello" }),
     });
@@ -144,7 +168,8 @@ describe("Netlify function endpoint safety", () => {
   it("returns safe 503 for checkout when Stripe secret is missing", async () => {
     delete process.env.STRIPE_SECRET_KEY;
 
-    const result = await createCheckout.handler({ httpMethod: "POST", body: JSON.stringify({ planId: "starter" }) });
+    const handler = createCheckout.createCheckoutHandler({ authorize: authorized() });
+    const result = await handler({ httpMethod: "POST", body: JSON.stringify({ planId: "starter" }) });
 
     commonSafeChecks(result);
     expect(result.statusCode).toBe(503);
@@ -162,7 +187,8 @@ describe("Netlify function endpoint safety", () => {
   it("returns safe 503 for billing portal when Stripe secret is missing", async () => {
     delete process.env.STRIPE_SECRET_KEY;
 
-    const result = await createBillingPortal.handler({ httpMethod: "POST", body: JSON.stringify({ customerId: "cus_test" }) });
+    const handler = createBillingPortal.createBillingPortalHandler({ authorize: authorized() });
+    const result = await handler({ httpMethod: "POST", body: JSON.stringify({ customerId: "cus_test" }) });
 
     commonSafeChecks(result);
     expect(result.statusCode).toBe(503);
@@ -212,6 +238,7 @@ describe("Netlify function endpoint safety", () => {
 
   it("returns server-side health status without exposing secrets", async () => {
     process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "anon-test-key";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
     process.env.OPENAI_API_KEY = "openai-secret";
     process.env.TWILIO_ACCOUNT_SID = "twilio-sid";
@@ -237,6 +264,7 @@ describe("Netlify function endpoint safety", () => {
 
   it("returns degraded health status when server configuration is missing", async () => {
     delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
     delete process.env.OPENAI_API_KEY;
     delete process.env.TWILIO_ACCOUNT_SID;
