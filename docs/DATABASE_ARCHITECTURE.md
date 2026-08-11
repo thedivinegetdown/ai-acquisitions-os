@@ -14,12 +14,16 @@ The application currently reads or writes these tables by convention:
 - `comps`: comparable sale records.
 - `sequences`: follow-up sequence steps.
 
-These tables currently have migrations in this repository:
+The complete current application schema is represented by these ordered migrations:
 
+- `supabase/migrations/202606240001_create_current_schema_baseline.sql`
 - `supabase/migrations/202606250001_create_seller_tasks.sql`
 - `supabase/migrations/202606270001_add_message_logs_direction.sql`
+- `supabase/migrations/202606280001_complete_current_schema_constraints.sql`
 
-The other tables appear to exist in the Supabase project or are expected by the UI, but their schema is not versioned in this repo yet.
+Apply the migrations in filename order to a clean Supabase/PostgreSQL database. The resulting schema contains every table currently queried by repositories or Netlify Functions. Migration contract tests verify the table/column mapping, relationships, indexes, deterministic ordering, and the deliberate absence of tenant/RLS changes.
+
+The baseline preserves compatibility names currently consumed by the application where the persisted deal model is inconsistent. Canonical renaming is deferred to a future explicit data-model change.
 
 `message_logs.direction` is expected by conversation loading and SMS timeline rendering. It is an additive text column with allowed values `inbound` and `outbound`; application inserts populate it directly, and legacy rows are backfilled from `status` where possible.
 
