@@ -1,0 +1,63 @@
+name: Browser E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      deploy_preview_url:
+        description: "Optional Netlify deploy-preview URL for safe smoke checks"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    name: Browser E2E and Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SUPABASE_URL: http://127.0.0.1:4173/e2e-supabase
+      VITE_SUPABASE_ANON_KEY: eo-e2e-01-public-test-key
+      VITE_NETLIFY_FUNCTIONS_BASE: /.netlify/functions
+      SMS_TEST_MODE: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build test bundle
+        run: npm run build
+
+      - name: Run browser gates
+        run: npx playwright test
+
+      - name: Upload browser failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-artifacts
+          path: |
+            playwright-report
+            test-results/e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Run safe deploy-preview smoke
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_preview_url != '' }}
+        env:
+          DEPLOY_PREVIEW_URL: ${{ inputs.deploy_preview_url }}
+        run: npm run test:smoke:preview
