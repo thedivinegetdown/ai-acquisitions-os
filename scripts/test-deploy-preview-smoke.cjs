@@ -1,31 +1,38 @@
 const assert = require("node:assert/strict");
 
-const target = process.env.DEPLOY_PREVIEW_URL || process.argv[2] || "";
-if (!target) {
-  console.error("DEPLOY_PREVIEW_URL or a deploy-preview URL argument is required.");
-  process.exit(2);
-}
+const classifyInvalidTwilioWebhookStatus = (status) => {
+  if (status === 400) return "safe-bad-request";
+  if (status === 403) return "safe-signature-rejection";
+  if (status === 503) return "safe-configuration-unavailable";
 
-const baseUrl = new URL(target);
-if (
-  baseUrl.protocol !== "https:" ||
-  !baseUrl.hostname.toLowerCase().startsWith("deploy-preview-") ||
-  !baseUrl.hostname.toLowerCase().endsWith(".netlify.app")
-) {
-  console.error("Refusing smoke checks: target must be a Netlify deploy-preview URL.");
-  process.exit(2);
-}
-
-const request = async (path, options = {}) => {
-  const response = await fetch(new URL(path, baseUrl), {
-    ...options,
-    signal: AbortSignal.timeout(15_000),
-    redirect: "follow",
-  });
-  return { response, text: await response.text() };
+  assert.fail(
+    `Twilio webhook must fail closed with 400, 403, or configuration-unavailable 503; received ${status}`
+  );
 };
 
-(async () => {
+const runDeployPreviewSmoke = async (target) => {
+  if (!target) {
+    throw new Error("DEPLOY_PREVIEW_URL or a deploy-preview URL argument is required.");
+  }
+
+  const baseUrl = new URL(target);
+  if (
+    baseUrl.protocol !== "https:" ||
+    !baseUrl.hostname.toLowerCase().startsWith("deploy-preview-") ||
+    !baseUrl.hostname.toLowerCase().endsWith(".netlify.app")
+  ) {
+    throw new Error("Refusing smoke checks: target must be a Netlify deploy-preview URL.");
+  }
+
+  const request = async (path, options = {}) => {
+    const response = await fetch(new URL(path, baseUrl), {
+      ...options,
+      signal: AbortSignal.timeout(15_000),
+      redirect: "follow",
+    });
+    return { response, text: await response.text() };
+  };
+
   for (const route of [
     "/",
     "/today",
@@ -61,7 +68,7 @@ const request = async (path, options = {}) => {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: "MessageSid=SM_EO_E2E_INVALID&From=%2B15555550100&To=%2B15555550200&Body=test",
   });
-  assert.ok([400, 403].includes(inbound.response.status), "Twilio webhook must fail closed");
+  classifyInvalidTwilioWebhookStatus(inbound.response.status);
 
   const stripe = await request("/.netlify/functions/stripe-webhook", {
     method: "POST",
@@ -71,7 +78,14 @@ const request = async (path, options = {}) => {
   assert.ok([400, 503].includes(stripe.response.status), "Stripe webhook must fail closed");
 
   console.log("Deploy-preview smoke gates passed without authenticated or mutating requests.");
-})().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
-});
+};
+
+module.exports = { classifyInvalidTwilioWebhookStatus, runDeployPreviewSmoke };
+
+if (require.main === module) {
+  const target = process.env.DEPLOY_PREVIEW_URL || process.argv[2] || "";
+  runDeployPreviewSmoke(target).catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}
