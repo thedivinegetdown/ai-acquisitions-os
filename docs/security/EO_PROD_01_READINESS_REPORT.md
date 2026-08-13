@@ -1,71 +1,44 @@
-# EO-PROD-01 readiness report
+# EO-PROD-01R production readiness report
 
 Date: 2026-08-13
 
-Repository baseline: `d847c5fbda270709e14faa6888289b1e73a7d68e`
+Repository baseline: `f7e112f2bd44abfc9f00595fd084849da699264c`
+
+Expected migration head: `202608110004`
 
 Decision: **NO-GO**
 
-## Production inspection method and boundary
+## Production inspection method and safety boundary
 
-The production deployment was identified read-only from Netlify metadata as
-`ai-acquisitions-divine`, linked to `thedivinegetdown/ai-acquisitions-os` on
-`main`. Environment-variable names confirm production-scoped Supabase URL,
-anonymous-key, and service-role-key entries exist. Values were never printed.
+Production was inspected through PostgreSQL 17 using only the securely supplied
+Windows user environment variable `EO_PROD_READ_ONLY_DATABASE_URL`. The value,
+password, host details, and other credentials were never printed or written to
+an artifact.
 
-The guarded inspector requires an explicit production Supabase HTTPS target and
-`EO_PROD_READ_ONLY=true`. It permits only `GET`, `HEAD`, and the stable reporting
-RPCs `tenant_table_ownership_report`, `tenant_rls_readiness_report`, and
-`tenant_rls_is_ready`. All other request methods and RPCs fail locally before a
-request.
+Every production query ran inside `BEGIN READ ONLY` and ended with `ROLLBACK`.
+Before inspection, `SHOW transaction_read_only` returned `on`. The connected
+role was independently verified as `eo_prod_readonly`: login enabled,
+non-superuser, `BYPASSRLS` false, replication false, zero table/schema write
+privileges, and zero schema `CREATE` privileges.
 
-Netlify returned redacted placeholders rather than usable sensitive values to
-the local CLI. The inspector stopped before making any Supabase request. No
-alternative local database credential or dedicated read-only role was present.
+Only catalogs, aggregate counts, and relationship-count queries were used. No
+business row values or auth profile data were selected.
 
-## Production findings
+## Migration state
 
-Unknown values below are blockers; they are not zero counts.
+Production has neither the `supabase_migrations` schema nor the
+`schema_migrations` ledger. Applied migration versions therefore cannot be
+proven from a ledger. Production is **behind and structurally divergent** from
+the committed head.
 
-| Finding | Result |
-|---|---|
-| Migration head | UNKNOWN |
-| Schema drift | UNKNOWN; inspection unavailable |
-| Missing committed objects | UNKNOWN |
-| Production-only objects | UNKNOWN |
-| Type/constraint/index/policy mismatches | UNKNOWN |
-| RLS enabled/disabled state | UNKNOWN |
-| Readiness functions installed | UNKNOWN |
-| Readiness result | UNKNOWN |
-| Organization count/status | UNKNOWN |
-| Membership count/roles | UNKNOWN |
-| Active owner membership | UNKNOWN |
-| Authenticated application owner UUID | UNKNOWN |
-| Proposed target organization | UNRESOLVED |
-| Proposed owner UUID | UNRESOLVED |
+The first committed migration whose required effects are demonstrably
+incomplete is `202606240001`: existing baseline tables are missing required
+columns, nullability, foreign keys, and indexes. The `message_logs.direction`
+column and its check constraint are present, which resembles part of
+`202606270001`, but there is no ledger evidence that the migration itself ran.
+No migration may be considered applied solely from that resemblance.
 
-| Tenant table | Total | Non-null organization | Null organization | Distinct organizations | Orphans |
-|---|---:|---:|---:|---:|---:|
-| deals | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| message_logs | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| seller_tasks | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| buyers | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| documents | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| comps | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| sequences | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-| communication_consents | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
-
-| Child table | Missing deal | Cross-tenant relationship |
-|---|---:|---:|
-| message_logs | UNKNOWN | UNKNOWN |
-| seller_tasks | UNKNOWN | UNKNOWN |
-| documents | UNKNOWN | UNKNOWN |
-| comps | UNKNOWN | UNKNOWN |
-| sequences | UNKNOWN | UNKNOWN |
-
-## Repository rollout inventory
-
-The repository contains eight deterministic migrations in order:
+Committed order remains:
 
 1. `202606240001_create_current_schema_baseline.sql`
 2. `202606250001_create_seller_tasks.sql`
@@ -76,51 +49,172 @@ The repository contains eight deterministic migrations in order:
 7. `202608110003_enforce_tenant_ownership_immutability.sql`
 8. `202608110004_harden_twilio_communications.sql`
 
-Committed readiness functions report null ownership, orphan ownership,
-cross-tenant deal relationships, and active organizations without active owners.
-The activation artifact separately verifies readiness and policy availability
-before enabling RLS. Repository/browser/Netlify/database validation gates were
-present at baseline.
+Because the initial migration uses `CREATE TABLE IF NOT EXISTS`, blindly
+applying this sequence would not repair existing table definitions. A later,
+separately authorized execution must first reconcile the unledgered schema and
+validate an explicit additive migration plan.
 
-## Explicit backfill proposal
+## Schema drift
 
-No production target or row count can be proposed yet. The review template
-requires explicit substitution of:
+### Expected and present
 
-- target organization UUID;
-- exact active organization name;
-- active owner user UUID.
+The lowercase tables `deals`, `message_logs`, `buyers`, `documents`, `comps`,
+and `sequences` exist. Primary keys exist on all six. Foreign keys exist for
+`documents.deal_id`, `comps.deal_id`, and `sequences.deal_id`.
+`message_logs.direction` and `message_logs_direction_check` exist.
 
-It refuses unknown/inactive organizations, missing owner membership, conflicting
-non-null ownership, and child/deal inconsistencies. It assigns only null
-ownership in parent-first order and defaults to `ROLLBACK`. Existing non-null
-ownership is preserved. `communication_consents` is not rewritten because its
-committed schema already requires non-null organization ownership; any contrary
-production result is a blocker requiring separate review.
+### Expected but missing
 
-## Blockers before a later execution order
+- Tables: `seller_tasks`, `organizations`, `organization_memberships`, and
+  `communication_consents`.
+- Tenant ownership: no `organization_id` column exists anywhere in `public`.
+- Readiness and activation helpers:
+  `tenant_table_ownership_report`, `tenant_rls_readiness_report`,
+  `tenant_rls_is_ready`, and `activate_rls` are absent.
+- High-value columns include `deals.email`, `deals.asking_price`,
+  `deals.updated_at`, every expected `updated_at` on the other baseline tables,
+  and all committed message provider/status/consent fields.
+- The expected `message_logs.deal_id` foreign key is absent.
+- All eleven checked repository indexes are absent, including the baseline deal,
+  message, buyer, document, comp, and sequence query indexes and both
+  communication-hardening indexes.
 
-1. Provide a dedicated production read-only database connection or equivalent
-   controlled inspection session without exposing its credential.
-2. Run `production_readiness_inspection.sql` and capture sanitized evidence.
-3. Reconcile production migration ledger and every schema/index/constraint/policy
-   difference with migration head.
-4. Establish exact ownership, orphan, and child-relationship counts.
-5. Identify the intended active organization and authenticated owner UUID.
-6. Prove the personal-v1 single-organization assumption or reject it.
-7. Insert approved counts and identifiers into the change record; peer-review the
-   backfill template without changing its rollback default during readiness.
-8. Verify backup/recovery evidence and named rollback authority.
+Existing baseline tables also differ in nullability: required fields such as
+message phone/body, buyer name, document relationship/type/title, comp
+relationship/address, sequence relationship/step/action/status, and committed
+`created_at` fields are nullable in production. Production `deals` additionally
+uses legacy names/types not represented by migration head, including `beds`,
+`baths`, and `condition`, while committed canonical counterparts are missing.
 
-Until all blockers are resolved, production backfill and RLS activation remain
-**NO-GO**.
+### Production-only objects
+
+Production contains uncommitted public tables `Deals` (case-sensitive),
+`activities`, and `leads`, with associated constraints/indexes. It also has a
+production-only `deals_address_unique` constraint. These objects require
+separate reconciliation; this read-only EO did not alter them.
+
+## Current RLS and policy state
+
+RLS is already enabled on every observed public table, including the six
+expected tables and the three production-only tables. This is not the committed
+tenant policy set.
+
+Only two legacy policies exist:
+
+- `deals`: `Allow all for now`, command `ALL`, role `public`, predicate `true`.
+- `message_logs`: `Allow read access`, command `SELECT`, role `public`,
+  predicate `true`.
+
+The other RLS-enabled tables have no visible policy granting this non-bypass
+inspection role row access. Consequently, a returned zero for those tables is
+RLS-filtered and cannot be reported as an authoritative production total.
+
+## Tenant ownership counts
+
+`organization_id` does not exist, so non-null, null, distinct-organization, and
+orphan counts cannot yet be computed. `NOT CERTIFIABLE` means the aggregate
+query returned zero through the dedicated role but RLS may have hidden rows.
+
+| Tenant table | Authoritative total | Non-null org | Null org | Distinct orgs | Orphans |
+|---|---:|---:|---:|---:|---:|
+| deals | 16 | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| message_logs | 7 | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| seller_tasks | TABLE MISSING | TABLE MISSING | TABLE MISSING | TABLE MISSING | TABLE MISSING |
+| buyers | NOT CERTIFIABLE | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| documents | NOT CERTIFIABLE | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| comps | NOT CERTIFIABLE | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| sequences | NOT CERTIFIABLE | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED | NOT INSTALLED |
+| communication_consents | TABLE MISSING | TABLE MISSING | TABLE MISSING | TABLE MISSING | TABLE MISSING |
+
+The deal and message totals are authoritative for this inspection because their
+legacy policies expose all rows to `public`. This is evidence of the current
+policy state, not an endorsement of those policies.
+
+## Child relationship findings
+
+| Child table | Null deal IDs | Missing visible deal IDs | Cross-tenant mismatch |
+|---|---:|---:|---:|
+| message_logs | 0 | 0 | NOT INSTALLED |
+| seller_tasks | TABLE MISSING | TABLE MISSING | NOT INSTALLED |
+| documents | NOT CERTIFIABLE | NOT CERTIFIABLE | NOT INSTALLED |
+| comps | NOT CERTIFIABLE | NOT CERTIFIABLE | NOT INSTALLED |
+| sequences | NOT CERTIFIABLE | NOT CERTIFIABLE | NOT INSTALLED |
+
+The message result is authoritative under its unconditional read policy. The
+other observed zeroes are not evidence of empty tables because RLS can filter
+them completely. Cross-tenant checks cannot run before tenant columns exist.
+
+## Organization, membership, and target decision
+
+`organizations` and `organization_memberships` are absent. Therefore:
+
+- organization count/status: **NOT INSTALLED**;
+- active membership and role counts: **NOT INSTALLED**;
+- active owner membership: **UNAVAILABLE**;
+- authenticated owner UUID: **UNAVAILABLE**;
+- readiness-function result: **FUNCTIONS MISSING**;
+- personal-v1 target decision: **TARGET UNAVAILABLE**.
+
+The single-organization assumption cannot be supported. No target organization
+or owner can be proposed, and EO-PROD-01R therefore does not calculate or
+approve backfill counts. The rollback-default backfill template remains
+unchanged and was not executed.
+
+## GO / NO-GO blockers
+
+Production remains **NO-GO** for a later mutation EO because:
+
+1. the migration ledger is absent and the live schema diverges from the first
+   committed baseline as well as migration head;
+2. tenant foundation, ownership columns, communication consent, provider/status
+   fields, readiness helpers, and committed tenant policies are missing;
+3. the existing legacy RLS/policy configuration differs materially from the
+   committed design and includes an unconditional public `ALL` policy on deals;
+4. organizations and memberships do not exist, so no active owner or rollout
+   target can be confirmed;
+5. authoritative totals and relationship checks for buyers, documents, comps,
+   and sequences are unavailable to the required non-bypass role because RLS
+   filters them and approved read-only reporting functions are absent;
+6. ownership, orphan, and cross-tenant counts are impossible until the tenant
+   schema exists;
+7. backup/recovery evidence and a reviewed schema-reconciliation plan remain
+   prerequisites to any later execution.
+
+Resolving these blockers requires a separately authorized plan. This report
+does not authorize applying migrations, changing legacy policies, expanding the
+inspection role, creating a security-definer function, or mutating production.
+
+## Validation evidence
+
+- Rollout safety and schema contracts: **PASS**, 26 tests.
+- Netlify Function suite: **PASS**, 102 tests.
+- Full CI-matched unit suite: **PASS**, 83 files / 862 tests.
+- Lint: **PASS**, zero errors / 49 existing warnings.
+- Production build: **PASS**.
+- `git diff --check`: **PASS**.
+- Changed-report secret scan: **PASS**, zero credential-pattern categories.
+- Tracked-file strong-pattern scan: no new secret was found; matches were
+  limited to previously committed synthetic local PostgreSQL test URLs in the
+  database validation workflow, its harness test, and its documentation.
+- Production-mutation scan: **PASS**, zero executable mutation lines in the
+  changed report; every production SQL session was read-only and rolled back.
+- Database/RLS execution validation: **ENVIRONMENT BLOCKED**. The local
+  PostgreSQL listener has no valid disposable-test credential configured, the
+  generic local URL is stale, and no container runtime is installed. The
+  production read-only connection was not repurposed.
+- Browser E2E: **TEARDOWN TIMEOUT**. All 20 scenarios were reached without a
+  reported assertion failure in both parallel and CI-single-worker runs, but
+  the Windows Playwright process did not exit or print a final pass summary
+  before the five-minute ceiling. This is not recorded as green.
 
 ## Safety confirmation
 
+- Production session forced read-only: **YES**
 - Production data mutated: **NO**
 - Production migration applied: **NO**
 - Organization or membership created: **NO**
 - Ownership backfilled: **NO**
+- Backfill template executed: **NO**
 - RLS enabled or disabled: **NO**
 - Production environment changed: **NO**
 - Live SMS/provider activity: **NO**
