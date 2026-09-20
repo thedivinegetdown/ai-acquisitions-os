@@ -1,11 +1,8 @@
 const { json, handleOptions } = require("./_shared/security.cjs");
+const { getSupabaseRuntimeConfig } = require("./_shared/auth.cjs");
 
 const REQUIRED_ENV = {
-  supabase: [
-    "SUPABASE_URL",
-    "SUPABASE_ANON_KEY",
-    "SUPABASE_SERVICE_ROLE_KEY",
-  ],
+  supabase: ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
   openai: ["OPENAI_API_KEY"],
   twilio: [
     "TWILIO_ACCOUNT_SID",
@@ -21,14 +18,24 @@ function hasValue(name) {
   return Boolean(process.env[name] && String(process.env[name]).trim());
 }
 
-function buildIntegrationStatus(name, requiredEnv) {
-  const missing = requiredEnv.filter((envName) => !hasValue(envName));
+function buildIntegrationStatus(name, requiredEnv, missingOverride) {
+  const missing = missingOverride || requiredEnv.filter((envName) => !hasValue(envName));
 
   return {
     name,
     configured: missing.length === 0,
     missing,
   };
+}
+
+function buildSupabaseStatus() {
+  const config = getSupabaseRuntimeConfig();
+  const missing = [];
+  if (!config.url) missing.push("SUPABASE_URL");
+  if (!config.anonKey) missing.push("SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY");
+  if (!config.serviceRoleKey) missing.push("SUPABASE_SERVICE_ROLE_KEY");
+
+  return buildIntegrationStatus("supabase", REQUIRED_ENV.supabase, missing);
 }
 
 exports.handler = async (event) => {
@@ -40,10 +47,12 @@ exports.handler = async (event) => {
     });
   }
 
-  const integrations = Object.entries(REQUIRED_ENV).map(([name, requiredEnv]) =>
-    buildIntegrationStatus(name, requiredEnv)
-  );
-  const configured = integrations.every((integration) => integration.configured);
+  const integrations = Object.entries(REQUIRED_ENV)
+    .filter(([name]) => name !== "supabase")
+    .map(([name, requiredEnv]) => buildIntegrationStatus(name, requiredEnv));
+  const supabase = buildSupabaseStatus();
+  integrations.unshift(supabase);
+  const configured = supabase.configured;
 
   return json(
     configured ? 200 : 503,

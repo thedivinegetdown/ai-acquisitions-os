@@ -18,10 +18,16 @@ function bearerToken(event) {
   return match?.[1] || "";
 }
 
+function getSupabaseRuntimeConfig({ env = process.env } = {}) {
+  return {
+    url: safeTrim(env.SUPABASE_URL),
+    anonKey: safeTrim(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY),
+    serviceRoleKey: safeTrim(env.SUPABASE_SERVICE_ROLE_KEY),
+  };
+}
+
 function createServerClients({ env = process.env, createClientImpl = createClient } = {}) {
-  const url = safeTrim(env.SUPABASE_URL);
-  const anonKey = safeTrim(env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY);
-  const serviceRoleKey = safeTrim(env.SUPABASE_SERVICE_ROLE_KEY);
+  const { url, anonKey, serviceRoleKey } = getSupabaseRuntimeConfig({ env });
 
   if (!url || !anonKey || !serviceRoleKey) return null;
 
@@ -190,6 +196,7 @@ module.exports = {
   MEMBERSHIP_ROLES,
   MUTATION_ROLES,
   bearerToken,
+  getSupabaseRuntimeConfig,
   createServerClients,
   requireAuthenticatedRequest,
   requireDealInOrganization,
