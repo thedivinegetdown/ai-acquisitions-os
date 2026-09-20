@@ -39,11 +39,28 @@ describe("EO-VAL-01 guarded database harness", () => {
 
   it("discovers all committed migrations in deterministic order", () => {
     const migrations = listMigrations().map((file) => path.basename(file));
-    expect(migrations).toHaveLength(8);
+    expect(migrations).toHaveLength(9);
     expect(migrations).toEqual([...migrations].sort());
     migrations.forEach((migration) =>
       expect(migration).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/)
     );
+  });
+
+  it("keeps the one-time ownership bootstrap correction at migration head", () => {
+    const migrations = listMigrations().map((file) => path.basename(file));
+    expect(migrations.at(-1)).toBe(
+      "202608130001_allow_initial_tenant_ownership_assignment.sql"
+    );
+
+    const correction = readFileSync(
+      path.join(root, "supabase", "migrations", migrations.at(-1)),
+      "utf8"
+    ).toLowerCase();
+    expect(correction).toContain("old.organization_id is not null");
+    expect(correction).toContain(
+      "new.organization_id is distinct from old.organization_id"
+    );
+    expect(correction).not.toMatch(/disable trigger|drop trigger|session_replication_role/);
   });
 
   it("keeps executable coverage for the required RLS boundaries", () => {
@@ -58,6 +75,9 @@ describe("EO-VAL-01 guarded database harness", () => {
 
     [
       "Missing ownership activation",
+      "One-time synthetic ownership assignment",
+      "Established ownership transfer denial",
+      "Established ownership clearing denial",
       "Orphan organization activation",
       "Ownerless organization activation",
       "Cross-tenant child activation",
@@ -74,6 +94,7 @@ describe("EO-VAL-01 guarded database harness", () => {
       "cross-tenant message deal rejected",
       "cross-tenant consent insert denied",
       "only service_role has bypassrls",
+      "service role normal update cannot transfer ownership",
     ].forEach((contract) => expect(rls).toContain(contract));
   });
 });

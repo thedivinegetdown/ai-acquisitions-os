@@ -197,4 +197,8 @@ select test_support.assert_true(
 );
 set role service_role;
 select test_support.assert_true((select count(*) from public.organizations) = 2, 'service role bypasses tenant RLS');
+select test_support.expect_error(
+  $$update public.deals set organization_id = '10000000-0000-0000-0000-00000000000b' where id = '20000000-0000-0000-0000-00000000000a'$$,
+  'service role normal update cannot transfer ownership'
+);
 reset role;

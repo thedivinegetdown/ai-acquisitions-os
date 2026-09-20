@@ -13,6 +13,10 @@ const activation = readFileSync(
   path.join(root, "supabase", "security", "activate_rls.sql"),
   "utf8"
 ).toLowerCase();
+const reconciliation = readFileSync(
+  path.join(root, "supabase", "security", "production_schema_reconciliation.sql"),
+  "utf8"
+).toLowerCase();
 const rollout = readFileSync(
   path.join(root, "docs", "security", "TENANT_RLS_ROLLOUT.md"),
   "utf8"
@@ -83,6 +87,13 @@ describe("tenant and RLS migration contract", () => {
     [...tenantTables, "organization_memberships"].forEach((table) => {
       expect(migrations).toContain(`${table}_prevent_organization_transfer`);
     });
+    expect(reconciliation).toContain("old.organization_id is not null");
+    expect(reconciliation).toContain(
+      "new.organization_id is distinct from old.organization_id"
+    );
+    expect(reconciliation).not.toMatch(
+      /disable trigger|drop trigger|session_replication_role/
+    );
   });
 
   it("uses fixed-search-path helpers tied to auth.uid without dynamic SQL", () => {

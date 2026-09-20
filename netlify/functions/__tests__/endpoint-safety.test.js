@@ -267,6 +267,51 @@ describe("Netlify function endpoint safety", () => {
     expect(String(result.body)).not.toContain("stripe-secret");
   });
 
+  it("uses the configured VITE Supabase anon key fallback for server health", async () => {
+    delete process.env.SUPABASE_ANON_KEY;
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.VITE_SUPABASE_ANON_KEY = "anon-test-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+
+    const result = await healthCheck.handler({ httpMethod: "GET" });
+    const body = parseJsonBody(result);
+
+    commonSafeChecks(result);
+    expect(result.statusCode).toBe(200);
+    expect(body.configured).toBe(true);
+    expect(body.integrations.find(({ name }) => name === "supabase")).toMatchObject({
+      configured: true,
+      missing: [],
+    });
+    expect(body.integrations.find(({ name }) => name === "openai")).toMatchObject({
+      configured: false,
+      missing: ["OPENAI_API_KEY"],
+    });
+    expect(body.integrations.find(({ name }) => name === "stripe")).toMatchObject({
+      configured: false,
+      missing: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
+    });
+    expect(body.integrations.find(({ name }) => name === "twilio")).toMatchObject({
+      configured: false,
+    });
+    expect(String(result.body)).not.toContain("anon-test-key");
+    expect(String(result.body)).not.toContain("service-role-secret");
+  });
+
+  it("prefers the explicit Supabase anon key when both accepted names exist", async () => {
+    process.env.SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "explicit-anon-key";
+    process.env.VITE_SUPABASE_ANON_KEY = "fallback-anon-key";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-secret";
+
+    const result = await healthCheck.handler({ httpMethod: "GET" });
+
+    commonSafeChecks(result);
+    expect(result.statusCode).toBe(200);
+    expect(String(result.body)).not.toContain("explicit-anon-key");
+    expect(String(result.body)).not.toContain("fallback-anon-key");
+  });
+
   it("returns degraded health status when server configuration is missing", async () => {
     delete process.env.SUPABASE_URL;
     delete process.env.SUPABASE_ANON_KEY;

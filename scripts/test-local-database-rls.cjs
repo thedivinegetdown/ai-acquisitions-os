@@ -108,8 +108,22 @@ function exerciseActivationSafety(target) {
   });
   activationMustFail(target, "Missing ownership activation");
   psql(target, {
-    label: "Explicit synthetic backfill",
-    sql: `do $$ begin if not exists (select 1 from public.tenant_table_ownership_report() where subject='deals' and null_organization_count=1) then raise exception 'legacy null not detected'; end if; update public.deals set organization_id='${orgA}' where id='e0000000-0000-0000-0000-000000000001'; perform public.assert_tenant_rls_ready(); delete from public.deals where id='e0000000-0000-0000-0000-000000000001'; end $$;`,
+    label: "One-time synthetic ownership assignment",
+    sql: `do $$ begin if not exists (select 1 from public.tenant_table_ownership_report() where subject='deals' and null_organization_count=1) then raise exception 'legacy null not detected'; end if; update public.deals set organization_id='${orgA}' where id='e0000000-0000-0000-0000-000000000001'; update public.deals set notes='same-owner ordinary update' where id='e0000000-0000-0000-0000-000000000001'; perform public.assert_tenant_rls_ready(); end $$;`,
+  });
+  psql(target, {
+    expectFailure: true,
+    label: "Established ownership transfer denial",
+    sql: "update public.deals set organization_id='10000000-0000-0000-0000-00000000000b' where id='e0000000-0000-0000-0000-000000000001';",
+  });
+  psql(target, {
+    expectFailure: true,
+    label: "Established ownership clearing denial",
+    sql: "update public.deals set organization_id=null where id='e0000000-0000-0000-0000-000000000001';",
+  });
+  psql(target, {
+    label: "Ownership bootstrap cleanup",
+    sql: "delete from public.deals where id='e0000000-0000-0000-0000-000000000001';",
   });
 
   psql(target, {
