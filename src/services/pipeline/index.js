@@ -8,6 +8,7 @@ export {
   filterPipelineItems,
   getPipelineActiveFilterCount,
   getPipelineStageColumns,
+  getAllowedPipelineStageTransitions,
   normalizePipelineFilters,
   normalizePipelineItem,
   normalizePipelineStage,

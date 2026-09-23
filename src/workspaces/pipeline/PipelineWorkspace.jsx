@@ -402,6 +402,8 @@ export default function PipelineWorkspace({
   const [refreshError, setRefreshError] = useState("");
   const [lastRefreshAt, setLastRefreshAt] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [stageChangeBusyId, setStageChangeBusyId] = useState("");
+  const [stageChangeError, setStageChangeError] = useState("");
 
   useEffect(() => {
     writeSessionValue(FILTER_STORAGE_KEY, JSON.stringify(filters));
@@ -515,6 +517,32 @@ export default function PipelineWorkspace({
     }
   }
 
+  async function handleStageChange(item, targetStage) {
+    if (!item?.dealId || stageChangeBusyId) return;
+    setStageChangeBusyId(item.dealId);
+    setStageChangeError("");
+
+    try {
+      const { transitionPipelineStage } = await import("../../services/pipeline/stageTransitionService");
+      const result = await transitionPipelineStage({
+        dealId: item.dealId,
+        currentStage: item.currentStage,
+        targetStage,
+      });
+
+      if (!result.success) {
+        setStageChangeError(result.error?.message || "Could not change pipeline stage.");
+      } else {
+        await refresh?.();
+        setAnnouncement(`${item.propertyAddress} moved to ${targetStage}.`);
+      }
+    } catch {
+      setStageChangeError("Could not change pipeline stage.");
+    } finally {
+      setStageChangeBusyId("");
+    }
+  }
+
   const hasSourceError = readModel.sourceWarnings.length > 0;
   const noLoadedItems = readModel.items.length === 0;
   const noVisibleItems = visibleItems.length === 0;
@@ -543,6 +571,7 @@ export default function PipelineWorkspace({
       <div aria-live="polite" className="pipeline-workspace__announcement" role="status">
         {announcement}
       </div>
+      {stageChangeError ? <div role="alert">{stageChangeError}</div> : null}
 
       {loading ? (
         <PipelineLoadingState />
@@ -591,8 +620,10 @@ export default function PipelineWorkspace({
               ) : viewMode === "board" ? (
                 <PipelineBoard
                   onOpenDeal={openPipelineItem}
+                  onStageChange={handleStageChange}
                   onToggleSelect={toggleSelect}
                   stageColumns={stageColumns}
+                  stageChangeBusyId={stageChangeBusyId}
                 />
               ) : (
                 <PipelineCompactList

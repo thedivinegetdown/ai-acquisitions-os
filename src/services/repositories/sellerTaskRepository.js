@@ -9,8 +9,24 @@ import {
 } from "./repositoryResult";
 import {
   addCurrentOrganizationOwnership,
+  requireActiveOrganizationContext,
   stripOrganizationOwnership,
 } from "../organizations";
+
+export async function listSellerTasks({ limit = REPOSITORY_LIST_LIMIT } = {}) {
+  return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    const { data, error } = await supabase
+      .from("seller_tasks")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .order("due_at", { ascending: true })
+      .limit(normalizeRepositoryListLimit(limit));
+
+    if (error) throw error;
+    return repositorySuccess(data || []);
+  }, "Could not load seller tasks.");
+}
 
 export async function listSellerTasksByPhone(
   phone,
@@ -70,15 +86,23 @@ export async function updateSellerTask(taskId, payload) {
   }
 
   return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
     const { data, error } = await supabase
       .from("seller_tasks")
       .update(stripOrganizationOwnership(payload))
       .eq("id", taskId)
+      .eq("organization_id", organizationId)
       .select()
       .limit(1);
 
     if (error) throw error;
+    if (!data?.[0]) {
+      return repositoryFailure(
+        "Task was not found in the active organization.",
+        "Could not update task."
+      );
+    }
 
-    return repositorySuccess(data?.[0] || null);
+    return repositorySuccess(data[0]);
   }, "Could not update task.");
 }

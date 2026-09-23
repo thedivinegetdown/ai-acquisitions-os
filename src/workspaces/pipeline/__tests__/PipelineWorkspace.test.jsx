@@ -1,6 +1,12 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const transitionPipelineStage = vi.fn();
+vi.mock("../../../services/pipeline/stageTransitionService", () => ({
+  transitionPipelineStage,
+}));
+
 import PipelineWorkspace from "../PipelineWorkspace";
 
 const NOW = new Date("2026-08-04T12:00:00.000Z").getTime();
@@ -47,6 +53,8 @@ const deals = [
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  transitionPipelineStage.mockReset();
+  transitionPipelineStage.mockResolvedValue({ success: true, data: { stage: "Contacted" } });
 });
 
 afterEach(() => {
@@ -242,6 +250,26 @@ describe("PipelineWorkspace", () => {
     expect(toggleSelect).toHaveBeenCalledWith("deal-1");
     expect(clearSelection).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/update stage|assign owner/i)).not.toBeInTheDocument();
+  });
+
+  it("persists an allowed stage transition through the Pipeline command", async () => {
+    const refresh = vi.fn().mockResolvedValue();
+    render(<PipelineWorkspace deals={[deal()]} now={NOW} refresh={refresh} />);
+
+    const control = screen.getByRole("combobox", { name: "Move 123 Main Street from New Lead" });
+    expect(control).not.toContainHTML("Closed");
+
+    await act(async () => {
+      fireEvent.change(control, { target: { value: "Contacted" } });
+    });
+
+    expect(transitionPipelineStage).toHaveBeenCalledWith({
+      dealId: "deal-1",
+      currentStage: "New Lead",
+      targetStage: "Contacted",
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent("moved to Contacted");
   });
 
   it("remains token-driven, responsive-safe, reduced-motion-safe, and provider-independent", () => {

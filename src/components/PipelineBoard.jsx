@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { Badge, Button, StatusBadge } from "../design-system";
 import { formatUsd } from "../utils/currency";
+import { getAllowedPipelineStageTransitions } from "../services/pipeline";
 
 const COLUMN_BATCH_SIZE = 12;
 
@@ -23,7 +24,7 @@ function riskStyle(riskLevel) {
 }
 
 // Distinct responsibility: render one normalized opportunity without deriving pipeline rules.
-export function PipelineCard({ item, onOpenDeal, onToggleSelect }) {
+export function PipelineCard({ item, onOpenDeal, onStageChange, onToggleSelect, stageChangeBusy }) {
   const financialFact =
     item.financialSummary.askingPrice !== null
       ? `Asking ${formatUsd(item.financialSummary.askingPrice)}`
@@ -103,12 +104,29 @@ export function PipelineCard({ item, onOpenDeal, onToggleSelect }) {
           </div>
         </dl>
       </button>
+
+      {onStageChange && item.hasPersistentId ? (
+        <label className="pipeline-card__stage-control">
+          <span>Move stage</span>
+          <select
+            aria-label={`Move ${item.propertyAddress} from ${item.currentStage}`}
+            disabled={stageChangeBusy || getAllowedPipelineStageTransitions(item.currentStage).length === 0}
+            onChange={(event) => onStageChange(item, event.target.value)}
+            value={item.currentStage}
+          >
+            <option value={item.currentStage}>{item.currentStage}</option>
+            {getAllowedPipelineStageTransitions(item.currentStage).map((stage) => (
+              <option key={stage} value={stage}>{stage}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
     </article>
   );
 }
 
 // Existing board responsibility retained: group and bound normalized cards by pipeline stage.
-function PipelineBoard({ stageColumns = [], onOpenDeal, onToggleSelect }) {
+function PipelineBoard({ stageColumns = [], onOpenDeal, onStageChange, onToggleSelect, stageChangeBusyId }) {
   const [visibleByStage, setVisibleByStage] = useState({});
 
   function visibleLimit(stageId) {
@@ -150,7 +168,9 @@ function PipelineBoard({ stageColumns = [], onOpenDeal, onToggleSelect }) {
                       item={item}
                       key={item.id}
                       onOpenDeal={onOpenDeal}
+                      onStageChange={onStageChange}
                       onToggleSelect={onToggleSelect}
+                      stageChangeBusy={stageChangeBusyId === item.dealId}
                     />
                   ))
                 ) : (

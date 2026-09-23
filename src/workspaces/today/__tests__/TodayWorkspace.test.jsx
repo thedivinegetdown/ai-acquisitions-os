@@ -1,6 +1,14 @@
 import React from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const completeTodayCommitment = vi.fn();
+const revisitTodayCommitment = vi.fn();
+vi.mock("../../../services/today/todayCommitmentService", () => ({
+  completeTodayCommitment,
+  revisitTodayCommitment,
+}));
+
 import TodayWorkspace from "../TodayWorkspace";
 
 const deal = {
@@ -17,6 +25,10 @@ beforeEach(() => {
   localStorage.clear();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-07-30T12:00:00.000Z"));
+  completeTodayCommitment.mockReset();
+  revisitTodayCommitment.mockReset();
+  completeTodayCommitment.mockResolvedValue({ success: true, data: {} });
+  revisitTodayCommitment.mockResolvedValue({ success: true, data: {} });
 });
 
 afterEach(() => {
@@ -133,6 +145,46 @@ describe("TodayWorkspace", () => {
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("completes and reschedules durable commitments through Today controls", async () => {
+    const refresh = vi.fn().mockResolvedValue();
+    const refreshCommitments = vi.fn().mockResolvedValue();
+    render(
+      <TodayWorkspace
+        deals={[deal]}
+        refresh={refresh}
+        refreshCommitments={refreshCommitments}
+        sellerTasks={[
+          {
+            id: "task-1",
+            deal_id: "deal-1",
+            title: "Call seller",
+            due_at: "2026-07-29T12:00:00.000Z",
+            status: "open",
+          },
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /At Risk/ }));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+    });
+    expect(completeTodayCommitment).toHaveBeenCalledWith(
+      expect.objectContaining({ commitment: { sourceType: "seller-task", sourceId: "task-1", dealId: "deal-1" } })
+    );
+
+    fireEvent.change(screen.getByLabelText("Future revisit date for Call seller"), {
+      target: { value: "2026-08-05" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Wait / revisit" }));
+    });
+    expect(revisitTodayCommitment).toHaveBeenCalledWith(expect.any(Object), "2026-08-05");
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(refreshCommitments).toHaveBeenCalledTimes(2);
   });
 
   it("keeps dark mode compatible through token-based rendering", () => {

@@ -119,3 +119,25 @@ export function toDealPreviewPayload(lead = {}) {
     stage: lead.stage || "New Lead",
   };
 }
+
+export function getLeadImportId(lead = {}) {
+  const identity = [
+    lead.phone ? `phone:${normalizePhone(lead.phone)}` : "",
+    lead.email ? `email:${normalizeEmail(lead.email)}` : "",
+    lead.propertyAddress
+      ? `address:${normalizePropertyAddress(lead.propertyAddress).toLowerCase()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("|");
+
+  return identity ? `lead-intake:v1:${identity}` : "";
+}
+
+export function toDealImportPayload(lead = {}) {
+  return {
+    ...toDealPreviewPayload(lead),
+    import_id: getLeadImportId(lead),
+    imported_at: new Date().toISOString(),
+  };
+}

@@ -211,6 +211,7 @@ describe("Supabase schema baseline", () => {
       "comps_deal_created_at_idx",
       "sequences_deal_step_day_idx",
       "seller_tasks_phone_status_created_at_idx",
+      "deals_organization_import_id_uidx",
     ].forEach((index) => expect(migrationSql).toContain(index));
 
     expect(migrationSql).not.toMatch(/on delete cascade/);

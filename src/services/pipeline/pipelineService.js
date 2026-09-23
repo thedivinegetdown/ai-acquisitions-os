@@ -30,6 +30,14 @@ export const PIPELINE_STAGE_DEFINITIONS = [
   { id: "other", label: "Other", order: 7, terminal: false },
 ];
 
+const FORWARD_PIPELINE_STAGE = {
+  "New Lead": "Contacted",
+  Contacted: "Offer Sent",
+  "Offer Sent": "Under Contract",
+  "Under Contract": "Closed",
+  "Dead Lead": "New Lead",
+};
+
 export const PIPELINE_FOCUS_VIEWS = [
   { id: "needs-attention", label: "Needs Attention" },
   { id: "new-leads", label: "New Leads" },
@@ -97,6 +105,16 @@ export function normalizePipelineStage(value) {
 
   if (known) return { ...known, sourceLabel, known: true };
   return { ...stageDefinitionById("other"), sourceLabel, known: false };
+}
+
+export function getAllowedPipelineStageTransitions(currentStage) {
+  const normalized = normalizePipelineStage(currentStage);
+  if (!normalized.known) return [];
+
+  const allowed = [FORWARD_PIPELINE_STAGE[normalized.label]];
+  if (!normalized.terminal && normalized.label !== "Dead Lead") allowed.push("Dead Lead");
+
+  return [...new Set(allowed.filter(Boolean))];
 }
 
 function getTenantContext(deal = {}) {

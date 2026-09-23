@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   analyzeManualLead,
-  confirmPreviewOnlyImport,
+  confirmLeadImport,
   parseCsvLeadText,
 } from "../services/leadIntake";
 import { formatNonNegativeUsd } from "../utils/currency";
@@ -81,7 +81,7 @@ function WarningList({ title, items, emptyText }) {
   );
 }
 
-export default function LeadImporter({ deals = [] }) {
+export default function LeadImporter({ deals = [], refresh }) {
   const [manualLead, setManualLead] = useState({
     sellerName: "",
     phone: "",
@@ -97,6 +97,8 @@ export default function LeadImporter({ deals = [] }) {
   });
   const [analysis, setAnalysis] = useState(null);
   const [confirmation, setConfirmation] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [confirmationError, setConfirmationError] = useState("");
 
   const preview = useMemo(
     () =>
@@ -118,6 +120,7 @@ export default function LeadImporter({ deals = [] }) {
       [field]: value,
     }));
     setConfirmation("");
+    setConfirmationError("");
   }
 
   function previewManualLead() {
@@ -132,6 +135,7 @@ export default function LeadImporter({ deals = [] }) {
       })
     );
     setConfirmation("");
+    setConfirmationError("");
   }
 
   async function handleCsvFile(event) {
@@ -150,11 +154,31 @@ export default function LeadImporter({ deals = [] }) {
       })
     );
     setConfirmation("");
+    setConfirmationError("");
   }
 
-  function confirmPreview() {
-    const result = confirmPreviewOnlyImport(preview);
-    setConfirmation(result.data.message);
+  async function confirmPreview() {
+    if (confirming) return;
+    setConfirming(true);
+    setConfirmation("");
+    setConfirmationError("");
+
+    try {
+      const result = await confirmLeadImport(preview);
+      if (!result.success) {
+        setConfirmationError(result.error?.message || "Lead import failed.");
+      } else {
+        if (result.data.failedCount > 0) setConfirmationError(result.data.message);
+        else setConfirmation(result.data.message);
+        if (result.data.importedCount > 0 && typeof refresh === "function") {
+          await refresh();
+        }
+      }
+    } catch (error) {
+      setConfirmationError(error?.message || "Lead import failed.");
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (
@@ -193,7 +217,7 @@ export default function LeadImporter({ deals = [] }) {
             Lead Import / Intake
           </h2>
           <p style={{ color: "#64748b", margin: "6px 0 0" }}>
-            Lead intake foundation - review before importing.
+            Preview normalized leads, then explicitly confirm accepted records.
           </p>
         </div>
         <span
@@ -207,7 +231,7 @@ export default function LeadImporter({ deals = [] }) {
             padding: "7px 12px",
           }}
         >
-          Preview-only. No database writes.
+          Preview is read-only
         </span>
       </div>
 
@@ -353,22 +377,27 @@ export default function LeadImporter({ deals = [] }) {
         <button
           type="button"
           onClick={confirmPreview}
-          disabled={preview.parsedLeads.length === 0}
+          disabled={preview.validLeads.length === 0 || confirming}
           style={{
             background: "#ffffff",
             border: "1px solid #cbd5e1",
             borderRadius: 8,
             color: "#334155",
-            cursor: preview.parsedLeads.length ? "pointer" : "not-allowed",
+            cursor: preview.validLeads.length && !confirming ? "pointer" : "not-allowed",
             fontWeight: 800,
             padding: "10px 14px",
           }}
         >
-          Confirm Reviewed
+          {confirming ? "Importing..." : "Confirm Import"}
         </button>
         {confirmation && (
           <span style={{ color: "#15803d", fontSize: 13, fontWeight: 700 }}>
             {confirmation}
+          </span>
+        )}
+        {confirmationError && (
+          <span role="alert" style={{ color: "#b91c1c", fontSize: 13, fontWeight: 700 }}>
+            {confirmationError}
           </span>
         )}
       </div>

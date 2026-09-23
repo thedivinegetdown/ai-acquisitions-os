@@ -11,7 +11,11 @@ import {
   StatusBadge,
   Tabs,
 } from "../../design-system";
-import { buildTodayBriefing, buildTodayReadModel, TODAY_CATEGORY_LABELS } from "../../services/today";
+import {
+  buildTodayBriefing,
+  buildTodayReadModel,
+  TODAY_CATEGORY_LABELS,
+} from "../../services/today";
 
 const CATEGORY_STATUS = {
   "act-now": "info",
@@ -116,8 +120,18 @@ function SourceWarnings({ warnings = [] }) {
   );
 }
 
-function TodayItemCard({ item, onOpenItem }) {
+function TodayItemCard({ busy, item, onComplete, onOpenItem, onRevisit }) {
   const primaryAction = item.availableActions[0];
+  const [revisitDate, setRevisitDate] = useState("");
+  const [minimumRevisitDate] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, "0");
+    const day = String(tomorrow.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
+  const actionableCommitment = item.commitment && item.category !== "completed";
 
   return (
     <article className="today-item">
@@ -183,11 +197,36 @@ function TodayItemCard({ item, onOpenItem }) {
           </Button>
         </div>
       ) : null}
+      {actionableCommitment ? (
+        <div className="today-item__footer">
+          <Button disabled={busy} onClick={() => onComplete(item)} size="sm">
+            {busy ? "Saving..." : "Complete"}
+          </Button>
+          <label>
+            <span className="sr-only">Future revisit date for {item.title}</span>
+            <input
+              aria-label={`Future revisit date for ${item.title}`}
+              min={minimumRevisitDate}
+              onChange={(event) => setRevisitDate(event.target.value)}
+              type="date"
+              value={revisitDate}
+            />
+          </label>
+          <Button
+            disabled={busy || !revisitDate}
+            onClick={() => onRevisit(item, revisitDate)}
+            size="sm"
+            variant="secondary"
+          >
+            Wait / revisit
+          </Button>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function TodayList({ categoryId, items, onOpenItem }) {
+function TodayList({ busyId, categoryId, items, onComplete, onOpenItem, onRevisit }) {
   if (!items.length) {
     return (
       <EmptyState
@@ -200,7 +239,14 @@ function TodayList({ categoryId, items, onOpenItem }) {
   return (
     <div className="today-list" aria-label={`${TODAY_CATEGORY_LABELS[categoryId]} work list`}>
       {items.map((item) => (
-        <TodayItemCard item={item} key={item.id} onOpenItem={onOpenItem} />
+        <TodayItemCard
+          busy={busyId === item.id}
+          item={item}
+          key={item.id}
+          onComplete={onComplete}
+          onOpenItem={onOpenItem}
+          onRevisit={onRevisit}
+        />
       ))}
     </div>
   );
@@ -217,6 +263,8 @@ function TodayLoadingState() {
 }
 
 export default function TodayWorkspace({
+  commitmentErrors = [],
+  commitmentLoading = false,
   conversationLoadError = null,
   conversations = [],
   dealLoadError = null,
@@ -226,20 +274,43 @@ export default function TodayWorkspace({
   openDeal,
   refresh,
   refreshConversations,
+  refreshCommitments,
+  sellerTasks = [],
+  sequenceSteps = [],
   setSelectedPhone,
 }) {
   const [selectedCategory, setSelectedCategory] = useState(readSelectedCategory);
   const [manualRefreshAt, setManualRefreshAt] = useState(null);
   const [refreshError, setRefreshError] = useState("");
+  const [commitmentBusyId, setCommitmentBusyId] = useState("");
+  const [commitmentActionError, setCommitmentActionError] = useState("");
 
   const readModel = useMemo(
     () =>
       buildTodayReadModel({
         conversations,
         deals,
-        errors: [conversationLoadError, dealLoadError, refreshError].filter(Boolean),
+        errors: [
+          conversationLoadError,
+          dealLoadError,
+          refreshError,
+          commitmentActionError,
+          ...commitmentErrors,
+        ].filter(Boolean),
+        sellerTasks,
+        sequenceSteps,
       }),
-    [conversationLoadError, conversations, dealLoadError, deals, refreshError]
+    [
+      commitmentActionError,
+      commitmentErrors,
+      conversationLoadError,
+      conversations,
+      dealLoadError,
+      deals,
+      refreshError,
+      sellerTasks,
+      sequenceSteps,
+    ]
   );
   const briefing = useMemo(() => buildTodayBriefing(readModel), [readModel]);
   const tabs = readModel.categories.map((category) => ({
@@ -248,8 +319,11 @@ export default function TodayWorkspace({
     content: (
       <TodayList
         categoryId={category.id}
+        busyId={commitmentBusyId}
         items={readModel.items.filter((item) => item.category === category.id)}
+        onComplete={handleCompleteCommitment}
         onOpenItem={handleOpenItem}
+        onRevisit={handleRevisitCommitment}
       />
     ),
   }));
@@ -259,13 +333,53 @@ export default function TodayWorkspace({
 
     try {
       await Promise.all(
-        [refresh, refreshConversations]
+        [refresh, refreshConversations, refreshCommitments]
           .filter((callback) => typeof callback === "function")
           .map((callback) => callback())
       );
       setManualRefreshAt(new Date().toISOString());
     } catch {
       setRefreshError("Could not refresh all Today data. Existing results remain visible.");
+    }
+  }
+
+  async function refreshDurableSources() {
+    await Promise.all(
+      [refresh, refreshCommitments]
+        .filter((callback) => typeof callback === "function")
+        .map((callback) => callback())
+    );
+  }
+
+  async function handleCompleteCommitment(item) {
+    if (commitmentBusyId) return;
+    setCommitmentBusyId(item.id);
+    setCommitmentActionError("");
+    try {
+      const { completeTodayCommitment } = await import("../../services/today/todayCommitmentService");
+      const result = await completeTodayCommitment(item);
+      if (result.success) await refreshDurableSources();
+      else setCommitmentActionError(result.error?.message || "Could not complete commitment.");
+    } catch {
+      setCommitmentActionError("Could not complete commitment.");
+    } finally {
+      setCommitmentBusyId("");
+    }
+  }
+
+  async function handleRevisitCommitment(item, futureDate) {
+    if (commitmentBusyId) return;
+    setCommitmentBusyId(item.id);
+    setCommitmentActionError("");
+    try {
+      const { revisitTodayCommitment } = await import("../../services/today/todayCommitmentService");
+      const result = await revisitTodayCommitment(item, futureDate);
+      if (result.success) await refreshDurableSources();
+      else setCommitmentActionError(result.error?.message || "Could not reschedule commitment.");
+    } catch {
+      setCommitmentActionError("Could not reschedule commitment.");
+    } finally {
+      setCommitmentBusyId("");
     }
   }
 
@@ -312,7 +426,7 @@ export default function TodayWorkspace({
         Last refreshed: {formatTimestamp(manualRefreshAt || readModel.generatedAt)}
       </div>
 
-      {loading ? (
+      {loading || commitmentLoading ? (
         <TodayLoadingState />
       ) : (
         <div className="workspace__content">

@@ -57,7 +57,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
 
   safeDeals.forEach((deal, index) => {
     const id = getDealId(deal, index);
-    const dueDate = deal.due_date || deal.follow_up_date;
+    const dueDate = deal.next_action_due_date || deal.due_date || deal.follow_up_date;
     const stage = getDealAliasText(deal, "stage");
     const leadScore = getDealAliasPositiveNumber(deal, "leadScore") || 0;
     const motivation = getDealAliasPositiveNumber(deal, "motivation") || 0;
