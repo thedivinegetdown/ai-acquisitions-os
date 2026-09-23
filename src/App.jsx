@@ -35,9 +35,9 @@ navigateToWorkspace,
 const conversationData = useConversationData({
   dealLoadError: error,
   deals,
-  enabled: ["today", "pipeline", "inbox"].includes(currentWorkspaceId),
+  enabled: ["today", "pipeline", "inbox", "deal-decision-room"].includes(currentWorkspaceId),
 });
-const commitmentData = useDailyCommitmentData({ enabled: currentWorkspaceId === "today" });
+const commitmentData = useDailyCommitmentData({ enabled: ["today", "deal-decision-room"].includes(currentWorkspaceId) });
 
 const toggleSelect = useCallback((id) => {
 setSelectedIds((current) =>

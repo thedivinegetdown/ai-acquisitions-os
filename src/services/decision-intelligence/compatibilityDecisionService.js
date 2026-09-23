@@ -1,3 +1,4 @@
+import { pickDecisionFields, recommendationEvidenceInput, recommendationStrategyInput, refreshCanonicalRecommendation } from "./recalculationService";
 import { createFailure, createSuccess } from "../api/serviceResult";
 import {
   ASSET_CAPABILITY_IDS,
@@ -994,6 +995,8 @@ function buildReadModel({
   approvalItems,
   conflicts,
   conflictResolutions,
+  conflictEvidenceReferences,
+  previousRecalculation,
   conversationSignals,
   deal,
   evidenceReferences,
@@ -1021,10 +1024,11 @@ function buildReadModel({
     assetStrategyContext,
     deal: safeDeal,
     evaluatedTimestamp,
-    evidenceReferences: [
+    evidenceReferences: dedupeEvidence([
       ...assetStrategyContext.classificationEvidence,
       ...externalEvidence,
-    ],
+      ...normalizeExternalEvidence(conflictEvidenceReferences, context),
+    ]),
     explicitConflictReferences: [
       ...assetStrategyContext.classificationConflicts,
       ...(Array.isArray(conflicts) ? conflicts : []),
@@ -1242,22 +1246,52 @@ function buildReadModel({
     sellerReply,
     taskDue,
   });
-  const recommendationSelection = getRecommendation({
-    approvalSummary,
-    assetStrategyContext,
-    conflicts: normalizedConflicts,
-    dealId,
-    dueContext,
-    evaluatedTimestamp,
-    evidence,
-    missingInformation,
-    missingInformationReadModel,
-    readinessResult,
-    residentialStrategyResult,
-    vacantLandStrategyResult,
-    sellerReply,
-    taskDue,
+  const relevantFields = new Set([
+    ...(residentialFactReadModel?.facts || []).map((fact) => fact.canonicalField),
+    ...(vacantLandFactReadModel?.facts || []).map((fact) => fact.canonicalField),
+    ...(missingInformationReadModel.allItems || []).map((item) => item.canonicalField),
+    "deal.stage", "deal.status", "deal.followUpDueAt", "task.dueAt", "communication.lastInboundMessage",
+  ]);
+  const recalculation = refreshCanonicalRecommendation({
+    available: Boolean(dealId && evaluatedTimestamp), previous: previousRecalculation,
+    categories: {
+      classification: { dealId, context, assetType: assetStrategyContext.assetType,
+        state: assetStrategyContext.classificationState, strategy: assetStrategyContext.selectedStrategyId,
+        evidence: assetStrategyContext.classificationEvidence.map((entry) => recommendationEvidenceInput(entry, freshnessReadModel)) },
+      facts: [...(residentialFactReadModel?.facts || []), ...(vacantLandFactReadModel?.facts || [])].map((fact) => pickDecisionFields(fact, ["factId", "canonicalField", "state", "value", "rawValue", "verificationState", "freshnessState", "evidenceReferenceIds", "conflictIds"])),
+      evidence: evidence.filter((entry) => relevantFields.has(entry.relatedCanonicalField)).map((entry) => recommendationEvidenceInput(entry, freshnessReadModel)),
+      conflicts: conflictReadModel.conflicts,
+      missingInformation: missingInformationReadModel.allItems.map((item) => pickDecisionFields(item, ["itemId", "canonicalField", "state", "blocking", "reason", "currentValueSummary", "evidenceReferenceIds", "conflictIds", "verificationState", "freshnessState", "availableActions"])),
+      freshness: freshnessReadModel.factAssessments.filter((fact) => relevantFields.has(fact.canonicalField)).map((fact) => ({
+        field: fact.canonicalField, state: fact.state, revalidationState: fact.revalidationState,
+        policyId: fact.policyId, evidenceIds: fact.evidenceIds,
+      })),
+      communication: sellerReplyContext,
+      commitments: { dueContext, taskDueContext, tasks: (Array.isArray(tasks) ? tasks : [])
+        .filter((task) => matchesTenantContext(task, context) && (!task.dealId && !task.deal_id || String(task.dealId || task.deal_id) === dealId))
+        .map((task) => pickDecisionFields(task, ["id", "title", "status", "dueAt", "due_at", "due_date"])) },
+      approvals: approvalSummary,
+      strategy: { residential: recommendationStrategyInput(residentialStrategyResult), land: recommendationStrategyInput(vacantLandStrategyResult),
+        readiness: pickDecisionFields(readinessResult, ["readinessState", "recommendedNextAction", "evidenceIds", "conflictIds", "missingInformationIds", "failedGateResults", "pendingGates", "manualReviewGates"]) },
+    },
+    compute: () => getRecommendation({
+      approvalSummary,
+      assetStrategyContext,
+      conflicts: normalizedConflicts,
+      dealId,
+      dueContext,
+      evaluatedTimestamp,
+      evidence,
+      missingInformation,
+      missingInformationReadModel,
+      readinessResult,
+      residentialStrategyResult,
+      vacantLandStrategyResult,
+      sellerReply,
+      taskDue,
+    }),
   });
+  const recommendationSelection = recalculation.selection;
   const recommendationBasis = recommendationSelection.recommendationBasis;
   const dataReliabilityResult = evaluateDataReliability({
     assetStrategyContext,
@@ -1411,6 +1445,7 @@ function buildReadModel({
   return {
     contractVersion: DECISION_CONTRACT_VERSION,
     decisionRecord,
+    recalculation,
     lifecycle: decisionRecord.lifecycle,
     recommendation: decisionRecord.recommendation,
     metricOutputs: decisionRecord.metricOutputs,
@@ -1495,6 +1530,8 @@ export function buildCompatibilityDecisionReadModel({
   approvalItems = null,
   conflicts = [],
   conflictResolutions = [],
+  conflictEvidenceReferences = [],
+  previousRecalculation = null,
   conversationSignals = [],
   deal = null,
   evidenceReferences = [],
@@ -1510,6 +1547,8 @@ export function buildCompatibilityDecisionReadModel({
       approvalItems,
       conflicts,
       conflictResolutions,
+      conflictEvidenceReferences,
+      previousRecalculation,
       conversationSignals,
       deal,
       evidenceReferences,

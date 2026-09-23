@@ -1,3 +1,5 @@
+import ResearchResolutionPanel from "./ResearchResolutionPanel";
+import { assembleDecisionRoomInputs } from "../../services/decision-intelligence/decisionRoomInputService";
 import { lazy, Suspense, useMemo, useState } from "react";
 import LazyPanelFallback from "../../components/LazyPanelFallback";
 import {
@@ -26,7 +28,6 @@ import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 import MissingInformationAutopilot from "./MissingInformationAutopilot";
 
-const AIInsights = lazy(() => import("../../components/AIInsights"));
 const ActivityTimeline = lazy(() => import("../../components/ActivityTimeline"));
 const BuyerBlast = lazy(() => import("../../components/BuyerBlast"));
 const BuyerMatches = lazy(() => import("../../components/BuyerMatches"));
@@ -35,7 +36,6 @@ const CompsEngine = lazy(() => import("../../components/CompsEngine"));
 const ConflictReviewPanel = lazy(() => import("./ConflictReviewPanel"));
 const DecisionQualitySummary = lazy(() => import("./DecisionQualitySummary"));
 const DecisionTimingSummary = lazy(() => import("./DecisionTimingSummary"));
-const DealAnalyzer = lazy(() => import("../../components/DealAnalyzer"));
 const DealTimeline = lazy(() => import("./DealTimeline"));
 const DocumentContractPrepPanel = lazy(() => import("../../components/DocumentContractPrepPanel"));
 const DocumentVault = lazy(() => import("../../components/DocumentVault"));
@@ -76,6 +76,7 @@ const SECTION_LABELS = {
 };
 
 const EMPTY_DECISION_CONTEXT = Object.freeze({});
+const EMPTY_RECORDS = Object.freeze([]);
 
 const LIFECYCLE_STATUS = {
   Identify: "neutral",
@@ -279,10 +280,6 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
   });
   const approval = readModel.approvalSummary;
   const assetStrategyContext = readModel.assetStrategyContext;
-  const insightGate = canRunAssetCapability(
-    assetStrategyContext,
-    ASSET_CAPABILITY_IDS.RESIDENTIAL_UNDERWRITING
-  );
 
   return (
     <div className="decision-room__decision">
@@ -763,35 +760,6 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           </div>
         </details>
       </Card>
-      <Card className="decision-room__ai-separation" muted>
-        <SectionHeader
-          description={
-            insightGate.allowed
-              ? "This existing optional panel remains separate from deterministic Residential Strategy underwriting and Pursuit Scoring."
-              : "Asset classification controls whether the existing residential insight panel can run."
-          }
-          eyebrow={insightGate.allowed ? "Optional" : "Asset Strategy"}
-          title={
-            insightGate.allowed
-              ? "AI-assisted insight"
-              : "Residential analysis unavailable"
-          }
-        />
-        {insightGate.allowed ? (
-          <>
-            <Badge>Optional AI - Not Used by Residential Strategy</Badge>
-            <LazySection label="Loading existing insights...">
-              <AIInsights deal={deal} />
-            </LazySection>
-          </>
-        ) : (
-          <StrategyCapabilityState
-            gate={insightGate}
-            onNavigateSection={onAction}
-            title={assetStrategyContext.statusSummary}
-          />
-        )}
-      </Card>
     </div>
   );
 }
@@ -882,11 +850,13 @@ function NumbersSection({
         <LazySection label="Loading land valuation context...">
           <VacantLandStrategySummary result={vacantLandStrategyResult} />
         </LazySection>
+      ) : !blockedGate && !residentialStrategyResult ? (
+        <ErrorState title="Canonical analysis unavailable" description="Reload the Decision Room before reviewing numbers." />
       ) : !blockedGate ? (
         <>
           <Badge>Residential Acquisition Strategy v1</Badge>
-          <LazySection label="Loading deal analyzer...">
-            <DealAnalyzer deal={deal} refresh={refresh} />
+          <LazySection label="Loading canonical residential analysis...">
+            <ResidentialStrategySummary result={residentialStrategyResult} />
           </LazySection>
           <LazySection label="Loading offer engine...">
             <OfferEngine deal={deal} strategyResult={residentialStrategyResult} />
@@ -1010,6 +980,11 @@ function ClosingSection({
 export default function DealDecisionRoom({
   currentPath = "",
   decisionContext = EMPTY_DECISION_CONTEXT,
+  conversations = EMPTY_RECORDS,
+  sellerTasks = EMPTY_RECORDS,
+  sequenceSteps = EMPTY_RECORDS,
+  conversationLoadError,
+  commitmentErrors = EMPTY_RECORDS,
   deals = [],
   loading = false,
   onNavigateWorkspace,
@@ -1018,17 +993,29 @@ export default function DealDecisionRoom({
   setSelectedPhone,
 }) {
   const [activeSection, setActiveSection] = useState("decision");
-  const deal = useMemo(() => findDealByRoute(deals, currentPath), [currentPath, deals]);
-  const decisionResult = useMemo(
-    () =>
-      deal
-        ? buildCompatibilityDecisionReadModel({
-            ...decisionContext,
-            deal,
-          })
-        : null,
-    [deal, decisionContext]
-  );
+  const loadedDeal = useMemo(() => findDealByRoute(deals, currentPath), [currentPath, deals]);
+  const [savedDeal, setSavedDeal] = useState(null);
+  const deal = savedDeal && savedDeal.id === loadedDeal?.id && savedDeal.loadedDeal === loadedDeal ? savedDeal.record : loadedDeal;
+  const inputs = useMemo(() => deal ? assembleDecisionRoomInputs({
+    deal, decisionContext, conversations, sellerTasks, sequenceSteps,
+    sourceErrors: [conversationLoadError, ...commitmentErrors].filter(Boolean),
+    now: decisionContext.now ?? new Date().toISOString(),
+  }) : null, [deal, decisionContext, conversations, sellerTasks, sequenceSteps, conversationLoadError, commitmentErrors]);
+  const [evaluation, setEvaluation] = useState(() => ({ inputs,
+    result: inputs ? buildCompatibilityDecisionReadModel(inputs) : null }));
+  let decisionResult = evaluation.result;
+  if (evaluation.inputs !== inputs) {
+    const previous = evaluation.result?.success ? evaluation.result.data : null;
+    decisionResult = inputs ? buildCompatibilityDecisionReadModel({ ...inputs,
+      previousRecalculation: previous?.recalculation,
+      previousFreshnessReadModel: previous?.freshnessReadModel,
+    }) : null;
+    setEvaluation({ inputs, result: decisionResult });
+  }
+  function handleResearchSaved(record) {
+    setSavedDeal({ id: record.id, record, loadedDeal });
+    refresh?.();
+  }
   const assetStrategyContext = useMemo(() => {
     if (decisionResult?.success) {
       return decisionResult.data.assetStrategyContext;
@@ -1123,12 +1110,18 @@ export default function DealDecisionRoom({
 
     if (sectionId === "decision") {
       return (
+        <>
+        <ResearchResolutionPanel key={deal.id} deal={deal} readModel={decisionReadModel} onSaved={handleResearchSaved} />
+        <p role="status">{decisionReadModel?.recalculation
+          ? `${decisionReadModel.recalculation.state}: ${decisionReadModel.recalculation.explanation}`
+          : "unavailable: Canonical decision inputs could not be evaluated."}</p>
         <DecisionOverview
           deal={deal}
           decisionResult={decisionResult}
           onAction={handlePrimaryAction}
           onNavigateWorkspace={onNavigateWorkspace}
         />
+        </>
       );
     }
 
