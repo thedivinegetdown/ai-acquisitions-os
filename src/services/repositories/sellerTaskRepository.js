@@ -106,3 +106,62 @@ export async function updateSellerTask(taskId, payload) {
     return repositorySuccess(data[0]);
   }, "Could not update task.");
 }
+
+export async function syncLifecycleSellerTasks({ commitments = [], deal = {}, sourceType } = {}) {
+  if (!deal.id || !sourceType) {
+    return repositoryFailure("Missing lifecycle task owner.", "Could not sync lifecycle commitments.");
+  }
+
+  return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    const { data: existing, error: loadError } = await supabase
+      .from("seller_tasks")
+      .select("*")
+      .eq("organization_id", organizationId)
+      .eq("deal_id", deal.id)
+      .eq("source_type", sourceType);
+    if (loadError) throw loadError;
+
+    const desiredKeys = new Set(commitments.map((commitment) => commitment.sourceKey));
+    const stale = (existing || []).filter(
+      (task) => !desiredKeys.has(task.source_key) && !["cancelled", "completed"].includes(task.status)
+    );
+    for (const task of stale) {
+      const { error } = await supabase
+        .from("seller_tasks")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", task.id)
+        .eq("organization_id", organizationId);
+      if (error) throw error;
+    }
+
+    if (commitments.length) {
+      const existingByKey = new Map((existing || []).map((task) => [task.source_key, task]));
+      const payloads = commitments.map((commitment) => {
+        const current = existingByKey.get(commitment.sourceKey);
+        const title = safeTrim(commitment.title);
+        const dueAt = `${commitment.dueDate}T12:00:00.000Z`;
+        const preserveCompletion = current?.status === "completed"
+          && String(current.due_at || "").slice(0, 10) === commitment.dueDate
+          && current.title === title;
+        return {
+          organization_id: organizationId,
+          deal_id: deal.id,
+          phone: safeTrim(deal.phone || deal.seller_phone || deal.phone_number),
+          title,
+          due_at: dueAt,
+          status: preserveCompletion ? "completed" : "open",
+          source_type: sourceType,
+          source_key: commitment.sourceKey,
+          updated_at: preserveCompletion ? current.updated_at : new Date().toISOString(),
+        };
+      });
+      const { error } = await supabase
+        .from("seller_tasks")
+        .upsert(payloads, { onConflict: "organization_id,deal_id,source_type,source_key" });
+      if (error) throw error;
+    }
+
+    return repositorySuccess({ activeCount: commitments.length, cancelledCount: stale.length });
+  }, "Could not sync lifecycle commitments.");
+}

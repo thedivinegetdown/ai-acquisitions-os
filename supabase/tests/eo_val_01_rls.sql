@@ -31,8 +31,8 @@ grant usage on schema test_support to anon, authenticated, service_role;
 grant execute on all functions in schema test_support to anon, authenticated, service_role;
 
 select test_support.assert_true(
-  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 29,
-  'expected 29 tenant policies'
+  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 33,
+  'expected 33 tenant policies'
 );
 select test_support.assert_true(
   (
@@ -42,11 +42,12 @@ select test_support.assert_true(
     where namespace.nspname = 'public'
       and relation.relname in (
         'organizations', 'organization_memberships', 'communication_consents',
-        'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences'
+        'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences',
+        'offer_revisions', 'deal_closing_revisions'
       )
       and relation.relrowsecurity
-  ) = 10,
-  'expected RLS enabled on all ten tenant tables'
+  ) = 12,
+  'expected RLS enabled on all twelve tenant tables'
 );
 
 -- Owner A: own-tenant read/write, cross-tenant denial, immutable ownership.
@@ -57,6 +58,59 @@ select test_support.assert_true((select count(*) from public.deals) = 1, 'owner 
 insert into public.deals (id, organization_id, property_address)
 values ('21000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', 'Owner A insert');
 update public.deals set notes = 'Owner A update' where id = '21000000-0000-0000-0000-00000000000a';
+insert into public.offer_revisions (
+  id, deal_id, organization_id, revision_number, revision_kind, status, offer_amount, decision_basis
+) values (
+  '23000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99, 'offer', 'draft', 100000,
+  '{"researchRevision":1}'::jsonb
+);
+insert into public.offer_revisions (
+  id, deal_id, organization_id, revision_number, revision_kind, status, offer_amount, decision_basis
+) values (
+  '23000000-0000-0000-0000-000000000002',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99, 'offer', 'sent', 100000,
+  '{"researchRevision":1}'::jsonb
+);
+insert into public.offer_revisions (
+  id, deal_id, organization_id, revision_number, revision_kind, status, offer_amount, decision_basis
+) values (
+  '23000000-0000-0000-0000-000000000003',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99, 'offer', 'accepted', 100000,
+  '{"researchRevision":1}'::jsonb
+);
+select test_support.assert_true(
+  (select array_agg(revision_number order by revision_number) from public.offer_revisions) = array[1,2,3],
+  'offer revision order is database-owned and deterministic'
+);
+insert into public.deal_closing_revisions (
+  id, deal_id, organization_id, revision_number, accepted_offer_revision_id, status,
+  contract_date, closing_date, material_deadlines, selected_buyer_id, assignment_fee
+) values (
+  '24000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99,
+  '23000000-0000-0000-0000-000000000003', 'under_contract', current_date,
+  current_date + 30, '[{"id":"inspection","label":"Inspection","dueDate":"2026-12-01"}]'::jsonb,
+  '50000000-0000-0000-0000-00000000000a', 15000
+);
+select test_support.assert_true(
+  (select selected_buyer_id from public.deal_closing_revisions where id='24000000-0000-0000-0000-000000000001') = '50000000-0000-0000-0000-00000000000a',
+  'selected buyer persists on closing snapshot'
+);
+update public.offer_revisions set offer_amount=1 where id='23000000-0000-0000-0000-000000000001';
+update public.deal_closing_revisions set status='cancelled' where id='24000000-0000-0000-0000-000000000001';
+select test_support.assert_true(
+  (select offer_amount from public.offer_revisions where id='23000000-0000-0000-0000-000000000001') = 100000,
+  'offer snapshots remain unchanged without an update policy'
+);
+select test_support.assert_true(
+  (select status from public.deal_closing_revisions where id='24000000-0000-0000-0000-000000000001') = 'under_contract',
+  'closing snapshots remain unchanged without an update policy'
+);
 select test_support.expect_error(
   $$insert into public.deals (organization_id, property_address) values ('10000000-0000-0000-0000-00000000000b', 'Cross tenant')$$,
   'owner A cannot insert for organization B'
@@ -166,6 +220,10 @@ select test_support.expect_error(
   $$insert into public.sequences (deal_id, organization_id, step_day, action_type) values ('20000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000a', 2, 'cross-tenant')$$,
   'cross-tenant sequence deal rejected'
 );
+select test_support.expect_error(
+  $$insert into public.offer_revisions (deal_id, organization_id, revision_number, status, offer_amount) values ('20000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000a', 1, 'draft', 1)$$,
+  'cross-tenant offer rejected'
+);
 
 -- Communication consent follows the same read/write role and tenant boundaries.
 select test_support.assert_true((select count(*) from public.communication_consents) = 1, 'Org A consent visibility');
@@ -197,6 +255,14 @@ select test_support.assert_true(
 );
 set role service_role;
 select test_support.assert_true((select count(*) from public.organizations) = 2, 'service role bypasses tenant RLS');
+select test_support.expect_error(
+  $$update public.offer_revisions set offer_amount=1 where id='23000000-0000-0000-0000-000000000001'$$,
+  'offer snapshot trigger rejects service-role mutation'
+);
+select test_support.expect_error(
+  $$delete from public.deal_closing_revisions where id='24000000-0000-0000-0000-000000000001'$$,
+  'closing snapshot trigger rejects service-role deletion'
+);
 select test_support.expect_error(
   $$update public.deals set organization_id = '10000000-0000-0000-0000-00000000000b' where id = '20000000-0000-0000-0000-00000000000a'$$,
   'service role normal update cannot transfer ownership'

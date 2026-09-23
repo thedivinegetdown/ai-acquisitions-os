@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   createDocument,
+  listClosingRevisionsByDeal,
   listDocumentsByDeal,
+  listOfferRevisionsByDeal,
 } from "../services/repositories";
+import { projectLatestOfferRevision } from "../services/offers";
+import { projectLatestClosingRevision } from "../services/transactions";
 
 const TYPES = [
   "Purchase Agreement",
@@ -19,6 +23,7 @@ export default function DocumentVault({
 }) {
   const [docs, setDocs] =
     useState([]);
+  const [lifecycleLinks, setLifecycleLinks] = useState([]);
 
   const [form, setForm] =
     useState({
@@ -27,16 +32,13 @@ export default function DocumentVault({
       title: "",
       url: "",
       notes: "",
+      association: "",
     });
 
   const [saving, setSaving] =
     useState(false);
 
-  useEffect(() => {
-    loadDocs();
-  }, [deal.id]);
-
-  async function loadDocs() {
+  const loadDocs = useCallback(async () => {
     const result = await listDocumentsByDeal(deal.id);
 
     if (!result.success) {
@@ -45,7 +47,32 @@ export default function DocumentVault({
     } else {
       setDocs(result.data || []);
     }
-  }
+  }, [deal.id]);
+
+  const loadLifecycleLinks = useCallback(async () => {
+    const [offerResult, closingResult] = await Promise.all([
+      listOfferRevisionsByDeal(deal.id),
+      listClosingRevisionsByDeal(deal.id),
+    ]);
+    const offer = projectLatestOfferRevision(offerResult.success ? offerResult.data : []);
+    const closing = projectLatestClosingRevision(closingResult.success ? closingResult.data : []);
+    setLifecycleLinks([
+      offer ? { value: `offer:${offer.id}`, label: `Offer revision ${offer.revision_number}` } : null,
+      closing ? { value: `closing:${closing.id}`, label: `Closing revision ${closing.revision_number}` } : null,
+    ].filter(Boolean));
+  }, [deal.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      loadDocs();
+      loadLifecycleLinks();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadDocs, loadLifecycleLinks]);
 
   function update(field, value) {
     setForm((prev) => ({
@@ -60,6 +87,12 @@ export default function DocumentVault({
 
     const result = await createDocument({
       deal_id: deal.id,
+      offer_revision_id: form.association.startsWith("offer:")
+        ? form.association.slice("offer:".length)
+        : null,
+      closing_revision_id: form.association.startsWith("closing:")
+        ? form.association.slice("closing:".length)
+        : null,
       ...form,
     });
 
@@ -73,6 +106,7 @@ export default function DocumentVault({
         title: "",
         url: "",
         notes: "",
+        association: "",
       });
 
       loadDocs();
@@ -158,6 +192,17 @@ export default function DocumentVault({
           }
         />
 
+        <select
+          aria-label="Lifecycle association"
+          value={form.association}
+          onChange={(e) => update("association", e.target.value)}
+        >
+          <option value="">Deal only</option>
+          {lifecycleLinks.map((link) => (
+            <option key={link.value} value={link.value}>{link.label}</option>
+          ))}
+        </select>
+
         <button type="submit">
           {saving
             ? "Saving..."
@@ -231,6 +276,11 @@ export default function DocumentVault({
                   }}
                 >
                   {doc.notes}
+                </div>
+              ) : null}
+              {doc.offer_revision_id || doc.closing_revision_id ? (
+                <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+                  Linked to {doc.offer_revision_id ? "offer revision" : "closing revision"}
                 </div>
               ) : null}
             </div>

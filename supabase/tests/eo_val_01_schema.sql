@@ -5,7 +5,8 @@ begin
   select count(*) into missing_count
   from unnest(array[
     'organizations', 'organization_memberships', 'communication_consents',
-    'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences'
+    'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences',
+    'offer_revisions', 'deal_closing_revisions'
   ]) expected(table_name)
   where to_regclass('public.' || expected.table_name) is null;
   if missing_count <> 0 then
@@ -24,7 +25,17 @@ begin
     ('comps', 'organization_id'),
     ('sequences', 'organization_id'),
     ('communication_consents', 'organization_id'),
-    ('communication_consents', 'status')
+    ('communication_consents', 'status'),
+    ('offer_revisions', 'organization_id'),
+    ('offer_revisions', 'revision_number'),
+    ('offer_revisions', 'decision_basis'),
+    ('deal_closing_revisions', 'organization_id'),
+    ('deal_closing_revisions', 'material_deadlines'),
+    ('deal_closing_revisions', 'selected_buyer_id'),
+    ('documents', 'offer_revision_id'),
+    ('documents', 'closing_revision_id'),
+    ('seller_tasks', 'source_type'),
+    ('seller_tasks', 'source_key')
   ) expected(table_name, column_name)
   where not exists (
     select 1
@@ -44,7 +55,12 @@ begin
     'documents_deal_organization_fkey',
     'comps_deal_organization_fkey',
     'sequences_deal_organization_fkey',
-    'communication_consents_org_phone_channel_key'
+    'communication_consents_org_phone_channel_key',
+    'offer_revisions_deal_organization_fkey',
+    'deal_closing_revisions_deal_organization_fkey',
+    'deal_closing_revisions_buyer_organization_fkey',
+    'documents_offer_revision_organization_fkey',
+    'documents_closing_revision_organization_fkey'
   ]) expected(constraint_name)
   where not exists (
     select 1 from pg_catalog.pg_constraint constraint_definition
@@ -59,7 +75,9 @@ begin
     'deals_organization_created_at_idx',
     'message_logs_provider_message_id_uidx',
     'message_logs_org_provider_status_idx',
-    'communication_consents_org_status_idx'
+    'communication_consents_org_status_idx',
+    'offer_revisions_deal_latest_idx',
+    'deal_closing_revisions_deal_latest_idx'
   ]) expected(index_name)
   where to_regclass('public.' || expected.index_name) is null;
   if missing_count <> 0 then

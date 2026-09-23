@@ -831,6 +831,7 @@ function NumbersSection({
   deal,
   onNavigateSection,
   refresh,
+  refreshCommitments,
   residentialStrategyResult,
   vacantLandStrategyResult,
 }) {
@@ -861,9 +862,9 @@ function NumbersSection({
           <LazySection label="Loading offer engine...">
             <OfferEngine deal={deal} strategyResult={residentialStrategyResult} />
           </LazySection>
-          <Badge>Negotiation Tracking - Compatibility Only</Badge>
+          <Badge>Versioned Manual Negotiation</Badge>
           <LazySection label="Loading negotiation tracker...">
-            <NegotiationTracker deal={deal} refresh={refresh} />
+            <NegotiationTracker deal={deal} refresh={refresh} onCommitmentsChanged={refreshCommitments} />
           </LazySection>
         </>
       ) : (
@@ -937,6 +938,7 @@ function ClosingSection({
   deal,
   onNavigateSection,
   refresh,
+  refreshCommitments,
   residentialStrategyResult,
 }) {
   const buyerGates = [
@@ -967,9 +969,9 @@ function ClosingSection({
           title={assetStrategyContext.statusSummary}
         />
       )}
-      <Badge>Generic Closeout Records</Badge>
+      <Badge>Canonical Closing Record</Badge>
       <LazySection label="Loading closeout...">
-        <CloseoutPanel deal={deal} refresh={refresh} />
+        <CloseoutPanel deal={deal} refresh={refresh} onCommitmentsChanged={refreshCommitments} />
       </LazySection>
     </PanelSection>
   );
@@ -989,6 +991,7 @@ export default function DealDecisionRoom({
   loading = false,
   onNavigateWorkspace,
   refresh,
+  refreshCommitments,
   selectedPhone,
   setSelectedPhone,
 }) {
@@ -1146,6 +1149,7 @@ export default function DealDecisionRoom({
           deal={deal}
           onNavigateSection={handlePrimaryAction}
           refresh={refresh}
+          refreshCommitments={refreshCommitments}
           residentialStrategyResult={decisionReadModel?.residentialStrategyResult}
           vacantLandStrategyResult={decisionReadModel?.vacantLandStrategyResult}
         />
@@ -1170,6 +1174,7 @@ export default function DealDecisionRoom({
         deal={deal}
         onNavigateSection={handlePrimaryAction}
         refresh={refresh}
+        refreshCommitments={refreshCommitments}
         residentialStrategyResult={decisionReadModel?.residentialStrategyResult}
       />
     );

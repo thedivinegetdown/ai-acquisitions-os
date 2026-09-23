@@ -39,21 +39,20 @@ describe("EO-VAL-01 guarded database harness", () => {
 
   it("discovers all committed migrations in deterministic order", () => {
     const migrations = listMigrations().map((file) => path.basename(file));
-    expect(migrations).toHaveLength(9);
+    expect(migrations).toHaveLength(12);
     expect(migrations).toEqual([...migrations].sort());
     migrations.forEach((migration) =>
       expect(migration).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/)
     );
   });
 
-  it("keeps the one-time ownership bootstrap correction at migration head", () => {
+  it("keeps the one-time ownership bootstrap correction in migration history", () => {
     const migrations = listMigrations().map((file) => path.basename(file));
-    expect(migrations.at(-1)).toBe(
-      "202608130001_allow_initial_tenant_ownership_assignment.sql"
-    );
+    const correctionMigration = "202608130001_allow_initial_tenant_ownership_assignment.sql";
+    expect(migrations).toContain(correctionMigration);
 
     const correction = readFileSync(
-      path.join(root, "supabase", "migrations", migrations.at(-1)),
+      path.join(root, "supabase", "migrations", correctionMigration),
       "utf8"
     ).toLowerCase();
     expect(correction).toContain("old.organization_id is not null");

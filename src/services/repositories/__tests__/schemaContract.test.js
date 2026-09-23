@@ -16,9 +16,11 @@ const persistedTables = [
   "buyers",
   "communication_consents",
   "comps",
+  "deal_closing_revisions",
   "deals",
   "documents",
   "message_logs",
+  "offer_revisions",
   "organization_memberships",
   "seller_tasks",
   "sequences",
@@ -155,6 +157,34 @@ describe("Supabase schema baseline", () => {
       "notes",
       "created_at",
     ]);
+    expectColumns("offer_revisions", [
+      "id",
+      "deal_id",
+      "organization_id",
+      "revision_number",
+      "offer_amount",
+      "terms",
+      "decision_basis",
+      "status",
+      "created_at",
+      "updated_at",
+    ]);
+    expectColumns("deal_closing_revisions", [
+      "id",
+      "deal_id",
+      "organization_id",
+      "revision_number",
+      "accepted_offer_revision_id",
+      "status",
+      "contract_date",
+      "closing_date",
+      "material_deadlines",
+      "selected_buyer_id",
+      "actual_realized_proceeds",
+      "actual_costs",
+      "created_at",
+      "updated_at",
+    ]);
     expectColumns("comps", [
       "id",
       "deal_id",
@@ -212,6 +242,8 @@ describe("Supabase schema baseline", () => {
       "sequences_deal_step_day_idx",
       "seller_tasks_phone_status_created_at_idx",
       "deals_organization_import_id_uidx",
+      "offer_revisions_deal_latest_idx",
+      "deal_closing_revisions_deal_latest_idx",
     ].forEach((index) => expect(migrationSql).toContain(index));
 
     expect(migrationSql).not.toMatch(/on delete cascade/);

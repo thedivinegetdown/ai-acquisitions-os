@@ -43,8 +43,10 @@ const tenantTables = [
   "documents",
   "comps",
   "sequences",
+  "offer_revisions",
+  "deal_closing_revisions",
 ];
-const dealChildren = ["message_logs", "seller_tasks", "documents", "comps", "sequences"];
+const dealChildren = ["message_logs", "seller_tasks", "documents", "comps", "sequences", "offer_revisions", "deal_closing_revisions"];
 
 describe("tenant and RLS migration contract", () => {
   it("defines organizations and constrained membership roles", () => {
@@ -57,14 +59,14 @@ describe("tenant and RLS migration contract", () => {
   });
 
   it("adds nullable ownership, foreign keys, and query indexes to every business table", () => {
-    tenantTables.forEach((table) => {
+    tenantTables.slice(0, 7).forEach((table) => {
       expect(migrations).toContain(
         `alter table public.${table} add column if not exists organization_id uuid`
       );
       expect(migrations).toContain(`${table}_organization_id_fkey`);
       expect(migrations).toContain(`${table}_organization_created_at_idx`);
     });
-    tenantTables.forEach((table) => {
+    tenantTables.slice(0, 7).forEach((table) => {
       expect(migrations).not.toMatch(
         new RegExp(`alter table public\\.${table} add column if not exists organization_id uuid not null`)
       );
@@ -84,7 +86,7 @@ describe("tenant and RLS migration contract", () => {
     expect(migrations).toContain(
       "new.organization_id is distinct from old.organization_id"
     );
-    [...tenantTables, "organization_memberships"].forEach((table) => {
+    [...tenantTables.slice(0, 7), "organization_memberships"].forEach((table) => {
       expect(migrations).toContain(`${table}_prevent_organization_transfer`);
     });
     expect(reconciliation).toContain("old.organization_id is not null");
@@ -121,7 +123,7 @@ describe("tenant and RLS migration contract", () => {
     ["organizations", "organization_memberships", ...tenantTables].forEach((table) => {
       expect(migrations).toContain(`create policy ${table}_select_member`);
     });
-    tenantTables.forEach((table) => {
+    tenantTables.slice(0, 7).forEach((table) => {
       expect(migrations).toContain(`create policy ${table}_insert_writer`);
       expect(migrations).toContain(`create policy ${table}_update_writer`);
       expect(migrations).toMatch(
@@ -134,6 +136,10 @@ describe("tenant and RLS migration contract", () => {
           `create policy ${table}_update_writer[\\s\\S]*?using \\([\\s\\S]*?with check \\(`
         )
       );
+    });
+    ["offer_revisions", "deal_closing_revisions"].forEach((table) => {
+      expect(migrations).toContain(`create policy ${table}_insert_writer`);
+      expect(migrations).not.toContain(`create policy ${table}_update_writer`);
     });
     expect(migrations).toContain("array['owner', 'admin', 'analyst']");
     expect(migrations).not.toContain("array['owner', 'admin', 'analyst', 'viewer']");
