@@ -10,6 +10,14 @@ insert into public.organization_memberships (organization_id, user_id, role, sta
   ('10000000-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-000000000003', 'viewer', 'active'),
   ('10000000-0000-0000-0000-00000000000b', 'bbbbbbbb-0000-0000-0000-000000000001', 'owner', 'active');
 
+insert into public.organization_settings (organization_id) values
+  ('10000000-0000-0000-0000-00000000000a'),
+  ('10000000-0000-0000-0000-00000000000b');
+
+insert into public.organization_provider_policies (organization_id, provider, enabled) values
+  ('10000000-0000-0000-0000-00000000000a', 'openai', false),
+  ('10000000-0000-0000-0000-00000000000b', 'openai', false);
+
 insert into public.deals (id, organization_id, property_address, phone) values
   ('20000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', '100 Test Avenue', '5550000001'),
   ('20000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000b', '200 Test Avenue', '5550000002');

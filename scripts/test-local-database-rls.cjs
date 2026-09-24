@@ -1,4 +1,4 @@
-const { readdirSync } = require("node:fs");
+const { readFileSync, readdirSync } = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -53,17 +53,25 @@ function assertSafeTarget(rawUrl, allowLocalTests) {
 }
 
 function psql(target, { capture = false, expectFailure = false, file, label, sql } = {}) {
-  const executable = process.env.PSQL_BIN || "psql";
-  const args = ["-X", "--no-psqlrc", "-v", "ON_ERROR_STOP=1"];
+  const dockerContainer = process.env.PSQL_DOCKER_CONTAINER;
+  const executable = dockerContainer ? "docker" : process.env.PSQL_BIN || "psql";
+  const args = dockerContainer
+    ? ["exec", "-i", dockerContainer, "psql", "-U", "postgres", "-d", target.database, "-X", "--no-psqlrc", "-v", "ON_ERROR_STOP=1"]
+    : ["-X", "--no-psqlrc", "-v", "ON_ERROR_STOP=1"];
   if (capture) args.push("--no-align", "--tuples-only");
-  if (file) args.push("--file", file);
+  if (file && !dockerContainer) args.push("--file", file);
   if (sql) args.push("--command", sql);
 
   const result = spawnSync(executable, args, {
     cwd: root,
     encoding: "utf8",
     env: { ...process.env, ...target.env },
-    stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+    input: file && dockerContainer ? readFileSync(file, "utf8") : undefined,
+    stdio: capture
+      ? [file && dockerContainer ? "pipe" : "ignore", "pipe", "pipe"]
+      : file && dockerContainer
+        ? ["pipe", "inherit", "inherit"]
+        : "inherit",
   });
 
   if (result.error?.code === "ENOENT") {
@@ -94,7 +102,7 @@ function activationMustFail(target, label) {
   psql(target, { expectFailure: true, file: activationFile, label });
   psql(target, {
     label: `${label} rollback verification`,
-    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity) then raise exception 'RLS changed after blocked activation'; end if; end $$;",
+    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
   });
 }
 
@@ -188,6 +196,7 @@ function validateTarget(target) {
   psql(target, { file: path.join(testsDirectory, "eo_val_01_seed.sql"), label: "Synthetic tenant bootstrap" });
   exerciseActivationSafety(target);
   psql(target, { file: path.join(testsDirectory, "eo_val_01_rls.sql"), label: "Authenticated RLS assertions" });
+  psql(target, { file: path.join(testsDirectory, "build6_assisted_pilot_acceptance.sql"), label: "Build 6 assisted pilot acceptance" });
   return psql(target, { capture: true, label: "Schema fingerprint", sql: fingerprintSql });
 }
 
@@ -198,7 +207,9 @@ function main(env = process.env) {
     throw new Error("Two distinct clean eo_val_ databases are required for rebuild comparison.");
   }
 
-  const version = spawnSync(env.PSQL_BIN || "psql", ["--version"], { encoding: "utf8" });
+  const version = env.PSQL_DOCKER_CONTAINER
+    ? spawnSync("docker", ["exec", env.PSQL_DOCKER_CONTAINER, "psql", "--version"], { encoding: "utf8" })
+    : spawnSync(env.PSQL_BIN || "psql", ["--version"], { encoding: "utf8" });
   if (version.error?.code === "ENOENT") {
     throw new Error("psql is required but was not found. Install PostgreSQL client tooling first.");
   }

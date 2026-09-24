@@ -192,8 +192,13 @@ describe("tenant and RLS migration contract", () => {
     tenantTables.forEach((table) => expect(migrations).toContain(`'${table}'`));
   });
 
-  it("keeps activation outside migrations and verifies readiness first", () => {
-    expect(migrations).not.toMatch(/enable row level security|force row level security/);
+  it("keeps accepted-table activation staged while immediately protecting new tables", () => {
+    ["pilot_provisioning_requests", "organization_settings", "organization_provider_policies", "organization_provider_usage"].forEach(
+      (table) => expect(migrations).toContain(`alter table public.${table} enable row level security`)
+    );
+    tenantTables.forEach((table) => {
+      expect(migrations).not.toContain(`alter table public.${table} enable row level security`);
+    });
     expect(activation).toContain("select public.assert_tenant_rls_ready()");
     expect(activation.indexOf("assert_tenant_rls_ready")).toBeLessThan(
       activation.indexOf("enable row level security")

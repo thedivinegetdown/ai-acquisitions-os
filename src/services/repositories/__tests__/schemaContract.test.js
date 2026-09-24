@@ -24,6 +24,8 @@ const persistedTables = [
   "message_logs",
   "offer_revisions",
   "organization_memberships",
+  "organization_provider_policies",
+  "organization_settings",
   "seller_tasks",
   "sequences",
 ];
@@ -280,11 +282,23 @@ describe("Supabase schema baseline", () => {
     expect(migrationSql).not.toMatch(/\bdrop\s+(table|column|schema)\b|\btruncate\b/);
   });
 
-  it("defines tenant ownership and policies without activating RLS in migrations", () => {
+  it("defines tenant ownership and immediately protects only new post-cutover tables", () => {
     expect(migrationSql).toMatch(/\borganization_id\b/);
     expect(migrationSql).toMatch(/create policy/);
-    expect(migrationSql).not.toMatch(
-      /enable row level security|force row level security/
-    );
+    [
+      "pilot_provisioning_requests",
+      "organization_settings",
+      "organization_provider_policies",
+      "organization_provider_usage",
+    ].forEach((table) => {
+      expect(migrationSql).toContain(
+        `alter table public.${table} enable row level security`
+      );
+    });
+    ["deals", "message_logs", "seller_tasks", "buyers"].forEach((table) => {
+      expect(migrationSql).not.toContain(
+        `alter table public.${table} enable row level security`
+      );
+    });
   });
 });
