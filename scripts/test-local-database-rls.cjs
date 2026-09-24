@@ -52,7 +52,7 @@ function assertSafeTarget(rawUrl, allowLocalTests) {
   };
 }
 
-function psql(target, { capture = false, expectFailure = false, file, label, sql } = {}) {
+function psql(target, { capture = false, expectFailure = false, expectedError, file, label, sql } = {}) {
   const dockerContainer = process.env.PSQL_DOCKER_CONTAINER;
   const executable = dockerContainer ? "docker" : process.env.PSQL_BIN || "psql";
   const args = dockerContainer
@@ -79,6 +79,9 @@ function psql(target, { capture = false, expectFailure = false, file, label, sql
   }
   if (expectFailure && result.status === 0) {
     throw new Error(`${label || "Expected SQL failure"} unexpectedly succeeded.`);
+  }
+  if (expectedError && !String(result.stderr || "").includes(expectedError)) {
+    throw new Error(`${label || "Expected SQL failure"} did not report ${expectedError}.`);
   }
   if (!expectFailure && result.status !== 0) {
     const detail = capture ? String(result.stderr || "").trim() : "";
@@ -186,17 +189,64 @@ from (
 ) fingerprint;
 `;
 
-function validateTarget(target) {
+const build6Migration = "202609240002_add_assisted_pilot_readiness.sql";
+const build6AclMigration = "202609240003_restrict_pilot_admin_function_execution.sql";
+const build6AclTest = path.join(testsDirectory, "build6_admin_acl.sql");
+
+function aclUpgradeFingerprint(target) {
+  return psql(target, { capture: true, sql: fingerprintSql }) + psql(target, {
+    capture: true,
+    label: "ACL-only upgrade data and function-body fingerprint",
+    sql: `select md5(string_agg(item, E'\\n' order by item)) from (
+      select 'data:' || tablename || ':' || query_to_xml(
+        format('select * from public.%I t order by to_jsonb(t)::text', tablename), true, false, '')::text as item
+      from pg_tables where schemaname='public'
+      union all
+      select 'function:' || oid::regprocedure::text || ':' || proowner::regrole::text || ':' || pg_get_functiondef(oid)
+      from pg_proc where pronamespace='public'::regnamespace and proname in (
+        'provision_assisted_pilot','set_assisted_pilot_status','configure_assisted_pilot_settings',
+        'configure_assisted_pilot_provider','consume_organization_provider_request',
+        'persist_assisted_pilot_import','export_assisted_pilot_data','pilot_support_diagnostics'
+      )
+    ) unchanged;`,
+  });
+}
+
+function validateTarget(target, { upgrade = false } = {}) {
   assertEmpty(target);
   psql(target, { file: path.join(testsDirectory, "eo_val_01_platform.sql"), label: "Local Supabase compatibility bootstrap" });
   for (const migration of listMigrations()) {
+    if (upgrade && path.basename(migration) === build6Migration) {
+      // Disposable fixture only: reproduce hosted named-role default EXECUTE grants.
+      psql(target, { sql: "alter default privileges in schema public grant execute on functions to anon, authenticated;" });
+    }
+    if (upgrade && path.basename(migration) === build6AclMigration) continue;
     psql(target, { file: migration, label: `Migration ${path.basename(migration)}` });
+    if (upgrade && path.basename(migration) === build6Migration) {
+      psql(target, { sql: "alter default privileges in schema public revoke execute on functions from anon, authenticated;" });
+    }
   }
   psql(target, { file: path.join(testsDirectory, "eo_val_01_schema.sql"), label: "Schema smoke checks" });
   psql(target, { file: path.join(testsDirectory, "eo_val_01_seed.sql"), label: "Synthetic tenant bootstrap" });
   exerciseActivationSafety(target);
   psql(target, { file: path.join(testsDirectory, "eo_val_01_rls.sql"), label: "Authenticated RLS assertions" });
+  if (upgrade) {
+    psql(target, {
+      capture: true, expectFailure: true, expectedError: "Build 6 admin ACL violation",
+      file: build6AclTest, label: "Build 6 inherited EXECUTE regression reproduced",
+    });
+    const before = aclUpgradeFingerprint(target);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      psql(target, { file: path.join(migrationsDirectory, build6AclMigration), label: "Build 6 ACL upgrade/idempotent retry" });
+      psql(target, { file: build6AclTest, label: "Build 6 corrected RPC authorization" });
+      if (aclUpgradeFingerprint(target) !== before) {
+        throw new Error("ACL correction changed data, function bodies/owners, schema, or RLS.");
+      }
+    }
+    console.log("Build 6 ACL upgrade passed: inherited grant regression reproduced, correction and retry preserve data/functions/RLS.");
+  }
   psql(target, { file: path.join(testsDirectory, "build6_assisted_pilot_acceptance.sql"), label: "Build 6 assisted pilot acceptance" });
+  psql(target, { file: build6AclTest, label: "Build 6 admin ACL and owner RPC assertions" });
   return psql(target, { capture: true, label: "Schema fingerprint", sql: fingerprintSql });
 }
 
@@ -215,7 +265,7 @@ function main(env = process.env) {
   }
 
   const fingerprintA = validateTarget(targetA);
-  const fingerprintB = validateTarget(targetB);
+  const fingerprintB = validateTarget(targetB, { upgrade: true });
   if (!fingerprintA || fingerprintA !== fingerprintB) {
     throw new Error("Clean rebuild fingerprints differ.");
   }
