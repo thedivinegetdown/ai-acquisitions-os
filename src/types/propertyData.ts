@@ -64,7 +64,7 @@ export type PropertyDataResult = {
   comps: ComparableSale[];
   confidence: PropertyDataConfidence;
   missingData: string[];
-  source: "manual" | "mock" | "api-placeholder";
+  source: "manual" | "mock" | "rentcast" | "api-placeholder";
   generatedAt: string;
 };
 

@@ -32,7 +32,7 @@ function usage() {
   status --organization-id UUID
   suspend|reactivate --organization-id UUID
   configure-settings --organization-id UUID --settings FILE.json
-  configure-provider --organization-id UUID --provider openai --enabled true|false [--monthly-request-cap N --max-prompt-characters N]
+  configure-provider --organization-id UUID --provider openai|rentcast --enabled true|false [--monthly-request-cap N --max-prompt-characters N]
   import-preview --organization-id UUID --csv FILE.csv --plan FILE.json [--default-market MARKET --default-lead-source SOURCE]
   import-apply --plan FILE.json --confirmation-token TOKEN
   export --organization-id UUID --output FILE.json`;

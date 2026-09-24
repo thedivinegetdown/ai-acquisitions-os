@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const aiChat = require("../ai-chat.js");
+const { consumeProviderRequests } = require("../_shared/provider-policy.cjs");
 const originalApiKey = process.env.OPENAI_API_KEY;
 
 afterEach(() => {
@@ -58,5 +59,17 @@ describe("organization provider policy", () => {
       p_prompt_characters: 5,
     });
     expect(providerRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("atomically reserves a bounded RentCast request group and fails closed at cap", async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: { allowed: true, request_count: 2, monthly_request_cap: 2 }, error: null })
+      .mockResolvedValueOnce({ data: { allowed: false, reason: "monthly-cap-reached" }, error: null });
+    expect((await consumeProviderRequests({ rpc }, { organizationId: "org-1", provider: "rentcast", requestCount: 2 })).policy.request_count).toBe(2);
+    const denied = await consumeProviderRequests({ rpc }, { organizationId: "org-1", provider: "rentcast", requestCount: 2 });
+    expect(denied.response.statusCode).toBe(429);
+    expect(rpc).toHaveBeenCalledWith("consume_organization_provider_requests", {
+      p_organization_id: "org-1", p_provider: "rentcast", p_request_count: 2,
+    });
   });
 });
