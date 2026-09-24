@@ -1,6 +1,7 @@
 export * from "./buyerRepository";
 export * from "./closingLifecycleRepository";
 export * from "./conversationRepository";
+export * from "./decisionMemoryRepository";
 export * from "./dealRepository";
 export * from "./documentRepository";
 export * from "./notificationRepository";

@@ -45,8 +45,10 @@ const tenantTables = [
   "sequences",
   "offer_revisions",
   "deal_closing_revisions",
+  "decision_recommendation_snapshots",
+  "decision_owner_decisions",
 ];
-const dealChildren = ["message_logs", "seller_tasks", "documents", "comps", "sequences", "offer_revisions", "deal_closing_revisions"];
+const dealChildren = ["message_logs", "seller_tasks", "documents", "comps", "sequences", "offer_revisions", "deal_closing_revisions", "decision_recommendation_snapshots"];
 
 describe("tenant and RLS migration contract", () => {
   it("defines organizations and constrained membership roles", () => {
@@ -79,6 +81,8 @@ describe("tenant and RLS migration contract", () => {
       expect(migrations).toContain(`${table}_deal_organization_fkey`);
       expect(migrations).toContain("foreign key (deal_id, organization_id)");
     });
+    expect(migrations).toContain("decision_owner_decisions_snapshot_scope_fkey");
+    expect(migrations).toContain("foreign key (recommendation_snapshot_id, deal_id, organization_id)");
   });
 
   it("allows one-time legacy assignment but prevents later tenant transfers", () => {
@@ -137,10 +141,12 @@ describe("tenant and RLS migration contract", () => {
         )
       );
     });
-    ["offer_revisions", "deal_closing_revisions"].forEach((table) => {
+    ["offer_revisions", "deal_closing_revisions", "decision_recommendation_snapshots"].forEach((table) => {
       expect(migrations).toContain(`create policy ${table}_insert_writer`);
       expect(migrations).not.toContain(`create policy ${table}_update_writer`);
     });
+    expect(migrations).toContain("create policy decision_owner_decisions_insert_owner");
+    expect(migrations).not.toContain("create policy decision_owner_decisions_update_writer");
     expect(migrations).toContain("array['owner', 'admin', 'analyst']");
     expect(migrations).not.toContain("array['owner', 'admin', 'analyst', 'viewer']");
     expect(migrations).not.toMatch(/create policy [_a-z]+_delete/);

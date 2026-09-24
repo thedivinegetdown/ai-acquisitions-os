@@ -6,7 +6,8 @@ begin
   from unnest(array[
     'organizations', 'organization_memberships', 'communication_consents',
     'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences',
-    'offer_revisions', 'deal_closing_revisions'
+    'offer_revisions', 'deal_closing_revisions',
+    'decision_recommendation_snapshots', 'decision_owner_decisions'
   ]) expected(table_name)
   where to_regclass('public.' || expected.table_name) is null;
   if missing_count <> 0 then
@@ -32,6 +33,10 @@ begin
     ('deal_closing_revisions', 'organization_id'),
     ('deal_closing_revisions', 'material_deadlines'),
     ('deal_closing_revisions', 'selected_buyer_id'),
+    ('decision_recommendation_snapshots', 'canonical_input_fingerprint'),
+    ('decision_recommendation_snapshots', 'recommendation_result'),
+    ('decision_owner_decisions', 'recommendation_snapshot_id'),
+    ('decision_owner_decisions', 'override_flag'),
     ('documents', 'offer_revision_id'),
     ('documents', 'closing_revision_id'),
     ('seller_tasks', 'source_type'),
@@ -59,6 +64,8 @@ begin
     'offer_revisions_deal_organization_fkey',
     'deal_closing_revisions_deal_organization_fkey',
     'deal_closing_revisions_buyer_organization_fkey',
+    'decision_recommendation_snapshots_deal_organization_fkey',
+    'decision_owner_decisions_snapshot_scope_fkey',
     'documents_offer_revision_organization_fkey',
     'documents_closing_revision_organization_fkey'
   ]) expected(constraint_name)
@@ -78,6 +85,8 @@ begin
     'communication_consents_org_status_idx',
     'offer_revisions_deal_latest_idx',
     'deal_closing_revisions_deal_latest_idx'
+    ,'decision_recommendation_snapshots_deal_latest_idx'
+    ,'decision_owner_decisions_deal_decided_idx'
   ]) expected(index_name)
   where to_regclass('public.' || expected.index_name) is null;
   if missing_count <> 0 then

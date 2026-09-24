@@ -31,8 +31,8 @@ grant usage on schema test_support to anon, authenticated, service_role;
 grant execute on all functions in schema test_support to anon, authenticated, service_role;
 
 select test_support.assert_true(
-  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 33,
-  'expected 33 tenant policies'
+  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 37,
+  'expected 37 tenant policies'
 );
 select test_support.assert_true(
   (
@@ -43,11 +43,12 @@ select test_support.assert_true(
       and relation.relname in (
         'organizations', 'organization_memberships', 'communication_consents',
         'deals', 'message_logs', 'seller_tasks', 'buyers', 'documents', 'comps', 'sequences',
-        'offer_revisions', 'deal_closing_revisions'
+        'offer_revisions', 'deal_closing_revisions',
+        'decision_recommendation_snapshots', 'decision_owner_decisions'
       )
       and relation.relrowsecurity
-  ) = 12,
-  'expected RLS enabled on all twelve tenant tables'
+  ) = 14,
+  'expected RLS enabled on all fourteen tenant tables'
 );
 
 -- Owner A: own-tenant read/write, cross-tenant denial, immutable ownership.
@@ -101,6 +102,33 @@ select test_support.assert_true(
   (select selected_buyer_id from public.deal_closing_revisions where id='24000000-0000-0000-0000-000000000001') = '50000000-0000-0000-0000-00000000000a',
   'selected buyer persists on closing snapshot'
 );
+insert into public.decision_recommendation_snapshots (
+  id, deal_id, organization_id, snapshot_number, memory_contract_version,
+  decision_contract_version, recalculation_contract_version, recommendation_result,
+  canonical_input_fingerprint, recommendation_basis, evaluated_at, actor_reference
+) values (
+  '25000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99, 'decision-memory-v1',
+  'decision-contract-v1', 'recommendation-recalculation-v1',
+  '{"recommendationId":"recommendation-1","label":"Prepare offer"}',
+  'fingerprint-1', '{"basisType":"readiness"}', now(),
+  'aaaaaaaa-0000-0000-0000-000000000001'
+);
+insert into public.decision_owner_decisions (
+  recommendation_snapshot_id, deal_id, organization_id, decision_type,
+  override_flag, actor_reference
+) values (
+  '25000000-0000-0000-0000-000000000001',
+  '20000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 'followed', false,
+  'aaaaaaaa-0000-0000-0000-000000000001'
+);
+select test_support.assert_true(
+  (select count(*) from public.decision_recommendation_snapshots) = 1
+    and (select count(*) from public.decision_owner_decisions) = 1,
+  'owner can append tenant-scoped Decision Memory'
+);
 update public.offer_revisions set offer_amount=1 where id='23000000-0000-0000-0000-000000000001';
 update public.deal_closing_revisions set status='cancelled' where id='24000000-0000-0000-0000-000000000001';
 select test_support.assert_true(
@@ -134,6 +162,18 @@ select test_support.assert_true((select count(*) from public.deals) = 2, 'analys
 insert into public.deals (id, organization_id, property_address)
 values ('22000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', 'Analyst A insert');
 update public.deals set notes = 'Analyst A update' where id = '22000000-0000-0000-0000-00000000000a';
+insert into public.decision_recommendation_snapshots (
+  id, deal_id, organization_id, snapshot_number, memory_contract_version,
+  decision_contract_version, recalculation_contract_version, recommendation_result,
+  canonical_input_fingerprint, recommendation_basis, evaluated_at, actor_reference
+) values (
+  '25000000-0000-0000-0000-000000000002',
+  '22000000-0000-0000-0000-00000000000a',
+  '10000000-0000-0000-0000-00000000000a', 99, 'decision-memory-v1',
+  'decision-contract-v1', 'recommendation-recalculation-v1',
+  '{"recommendationId":"recommendation-2","label":"Review"}',
+  'analyst-fingerprint', '{}', now(), 'aaaaaaaa-0000-0000-0000-000000000002'
+);
 select test_support.expect_error(
   $$insert into public.organization_memberships (organization_id, user_id, role, status) values ('10000000-0000-0000-0000-00000000000a', 'aaaaaaaa-0000-0000-0000-000000000005', 'owner', 'active')$$,
   'analyst cannot create membership'
@@ -144,6 +184,10 @@ where organization_id = '10000000-0000-0000-0000-00000000000a'
 select test_support.expect_error(
   $$insert into public.organization_memberships (organization_id, user_id, role, status) values ('10000000-0000-0000-0000-00000000000b', 'aaaaaaaa-0000-0000-0000-000000000002', 'owner', 'active')$$,
   'analyst cannot self-add to organization B'
+);
+select test_support.expect_error(
+  $$insert into public.decision_owner_decisions (recommendation_snapshot_id, deal_id, organization_id, decision_type, override_flag, actor_reference) values ('25000000-0000-0000-0000-000000000002', '22000000-0000-0000-0000-00000000000a', '10000000-0000-0000-0000-00000000000a', 'followed', false, 'analyst')$$,
+  'analyst cannot record an owner decision'
 );
 reset role;
 select test_support.assert_true(
@@ -224,6 +268,10 @@ select test_support.expect_error(
   $$insert into public.offer_revisions (deal_id, organization_id, revision_number, status, offer_amount) values ('20000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000a', 1, 'draft', 1)$$,
   'cross-tenant offer rejected'
 );
+select test_support.expect_error(
+  $$insert into public.decision_recommendation_snapshots (deal_id, organization_id, snapshot_number, memory_contract_version, decision_contract_version, recalculation_contract_version, recommendation_result, canonical_input_fingerprint, recommendation_basis, evaluated_at, actor_reference) values ('20000000-0000-0000-0000-00000000000b', '10000000-0000-0000-0000-00000000000a', 1, 'decision-memory-v1', 'decision-contract-v1', 'recommendation-recalculation-v1', '{}', 'cross-tenant', '{}', now(), 'owner-a')$$,
+  'cross-tenant recommendation snapshot rejected'
+);
 
 -- Communication consent follows the same read/write role and tenant boundaries.
 select test_support.assert_true((select count(*) from public.communication_consents) = 1, 'Org A consent visibility');
@@ -262,6 +310,14 @@ select test_support.expect_error(
 select test_support.expect_error(
   $$delete from public.deal_closing_revisions where id='24000000-0000-0000-0000-000000000001'$$,
   'closing snapshot trigger rejects service-role deletion'
+);
+select test_support.expect_error(
+  $$update public.decision_recommendation_snapshots set canonical_input_fingerprint='changed' where id='25000000-0000-0000-0000-000000000001'$$,
+  'recommendation snapshot trigger rejects service-role mutation'
+);
+select test_support.expect_error(
+  $$delete from public.decision_owner_decisions where recommendation_snapshot_id='25000000-0000-0000-0000-000000000001'$$,
+  'owner decision trigger rejects service-role deletion'
 );
 select test_support.expect_error(
   $$update public.deals set organization_id = '10000000-0000-0000-0000-00000000000b' where id = '20000000-0000-0000-0000-00000000000a'$$,
