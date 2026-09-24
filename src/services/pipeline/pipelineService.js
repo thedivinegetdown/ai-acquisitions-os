@@ -14,7 +14,6 @@ import {
 
 export const PIPELINE_RESULT_LIMIT = 250;
 
-const PIPELINE_SOURCE_LIMIT = 500;
 const PIPELINE_SIGNAL_LIMIT = 2500;
 const PIPELINE_SIGNAL_BATCH_SIZE = 250;
 const STALE_AFTER_DAYS = 14;
@@ -434,7 +433,7 @@ function indexConversationSignals(conversations = []) {
   const byDealId = new Map();
   const byPhone = new Map();
 
-  (Array.isArray(conversations) ? conversations : []).slice(0, 250).forEach((conversation) => {
+  (Array.isArray(conversations) ? conversations : []).forEach((conversation) => {
     if (!conversation || typeof conversation !== "object") return;
     const dealId = safeText(conversation.linkedDealId || conversation.dealId);
     const phone = normalizePhone(
@@ -564,7 +563,7 @@ export function buildPipelineReadModel({
   conversations = [],
   deals = [],
   errors = [],
-  limit = PIPELINE_RESULT_LIMIT,
+  limit = null,
   now = Date.now(),
   organizationId = "",
   role = "Owner",
@@ -577,12 +576,11 @@ export function buildPipelineReadModel({
   ).length;
   const boundedDeals = sourceDeals
     .filter((deal) => deal && typeof deal === "object" && !Array.isArray(deal))
-    .slice(0, PIPELINE_SOURCE_LIMIT)
     .filter((deal) => matchesTenantContext(deal, tenantId, organizationId));
-  const resultLimit = Math.min(
-    PIPELINE_RESULT_LIMIT,
-    Math.max(1, Number.isFinite(Number(limit)) ? Number(limit) : PIPELINE_RESULT_LIMIT)
-  );
+  const requestedLimit = Number(limit);
+  const resultLimit = limit === null || limit === undefined
+    ? boundedDeals.length
+    : Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : PIPELINE_RESULT_LIMIT);
   const sharedSignals = buildPipelineSignals(boundedDeals, now, role);
   const todayByDealId = indexTodayItems(sharedSignals.todayItems);
   const approvalsByDealId = indexApprovalItems(sharedSignals.approvalItems);
@@ -615,8 +613,7 @@ export function buildPipelineReadModel({
     sourceWarnings.push(`${deduped.duplicateCount} duplicate deal record(s) were consolidated.`);
   }
 
-  const truncated =
-    sourceDeals.length > PIPELINE_SOURCE_LIMIT || sortedItems.length > resultLimit;
+  const truncated = sortedItems.length > resultLimit;
   const notices = truncated
     ? [`Showing a bounded set of ${items.length} opportunities from ${sourceDeals.length} loaded records.`]
     : [];
@@ -639,6 +636,10 @@ export function buildPipelineReadModel({
     totalLoaded: sourceDeals.length,
     totalVisible: items.length,
     truncated,
+    hasMore: truncated,
+    continuation: truncated
+      ? { available: true, nextOffset: items.length, remaining: sortedItems.length - items.length }
+      : null,
     notices,
     organizationId: organizationId || null,
     tenantId: tenantId || null,

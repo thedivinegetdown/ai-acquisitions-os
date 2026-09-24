@@ -173,7 +173,7 @@ describe("pipelineService", () => {
     expect(model.sources).toContain("Universal Approval Inbox read model");
   });
 
-  it("bounds results, consolidates duplicate IDs, and reports malformed records", () => {
+  it("keeps every canonical deal after complete ranking and reports malformed duplicates", () => {
     const manyDeals = Array.from({ length: 280 }, (_, index) =>
       deal({
         id: `deal-${index}`,
@@ -183,15 +183,27 @@ describe("pipelineService", () => {
     );
     const model = buildPipelineReadModel({
       deals: [null, ...manyDeals, deal({ id: "deal-1" })],
-      limit: 999,
       now: NOW,
     });
 
-    expect(model.items).toHaveLength(250);
+    expect(model.items).toHaveLength(280);
     expect(model.items.map((item) => item.dealId)).toContain("deal-279");
-    expect(model.truncated).toBe(true);
+    expect(model.truncated).toBe(false);
+    expect(model.hasMore).toBe(false);
     expect(model.sourceStatus).toBe("partial");
     expect(model.sourceWarnings.join(" ")).toMatch(/malformed|duplicate/i);
+  });
+
+  it("exposes continuation state when an explicit consumer boundary is requested", () => {
+    const manyDeals = Array.from({ length: 280 }, (_, index) =>
+      deal({ id: `deal-${index}`, property_address: `${index} Main` })
+    );
+
+    const model = buildPipelineReadModel({ deals: manyDeals, limit: 250, now: NOW });
+
+    expect(model.items).toHaveLength(250);
+    expect(model.hasMore).toBe(true);
+    expect(model.continuation).toEqual({ available: true, nextOffset: 250, remaining: 30 });
   });
 
   it("preserves tenant context and excludes explicit cross-tenant records", () => {

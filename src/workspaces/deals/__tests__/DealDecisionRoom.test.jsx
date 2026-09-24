@@ -6,7 +6,9 @@ import { buildResearchMutation } from "../../../services/research-intelligence/r
 import { saveResearchCommand } from "../../../services/repositories/researchRepository";
 
 vi.mock("../../../services/repositories/researchRepository", () => ({ saveResearchCommand: vi.fn() }));
+vi.mock("../../../supabaseClient", () => ({ supabase: {} }));
 vi.mock("../DecisionMemoryPanel", () => ({ default: () => <div>Decision Memory</div> }));
+vi.mock("../RentCastPropertyEvidencePanel", () => ({ default: () => <div>RentCast Property Evidence</div> }));
 
 vi.mock("../../../components/AIInsights", () => ({
   default: () => <div>Existing AI Insights Panel</div>,

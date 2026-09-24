@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { updateOwnedDeal, updateSellerTask, updateSequenceStep } = vi.hoisted(() => ({
+const { recordOperationalFailure, updateOwnedDeal, updateSellerTask, updateSequenceStep } = vi.hoisted(() => ({
+  recordOperationalFailure: vi.fn(),
   updateOwnedDeal: vi.fn(),
   updateSellerTask: vi.fn(),
   updateSequenceStep: vi.fn(),
 }));
 
 vi.mock("../../repositories", () => ({
+  recordOperationalFailure,
   updateOwnedDeal,
   updateSellerTask,
   updateSequenceStep,
@@ -25,6 +27,7 @@ describe("Today commitment commands", () => {
     updateOwnedDeal.mockResolvedValue({ success: true, data: {} });
     updateSellerTask.mockResolvedValue({ success: true, data: {} });
     updateSequenceStep.mockResolvedValue({ success: true, data: {} });
+    recordOperationalFailure.mockResolvedValue({ success: true });
   });
 
   it("durably completes the source record", async () => {
@@ -78,5 +81,19 @@ describe("Today commitment commands", () => {
 
     expect(result.success).toBe(false);
     expect(updateSellerTask).not.toHaveBeenCalled();
+  });
+
+  it("persists a safe diagnostic when a lifecycle write fails", async () => {
+    updateSellerTask.mockResolvedValue({ success: false, error: { message: "Could not update task." } });
+    const item = { commitment: { sourceType: "seller-task", sourceId: "task-1" } };
+
+    const result = await completeTodayCommitment(item, { now: NOW });
+
+    expect(result.success).toBe(false);
+    expect(recordOperationalFailure).toHaveBeenCalledWith({
+      correlationId: "today-complete:seller-task:task-1",
+      errorClassification: "persistence-failed",
+      operationType: "today-complete",
+    });
   });
 });

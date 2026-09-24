@@ -1,4 +1,5 @@
 import ResearchResolutionPanel from "./ResearchResolutionPanel";
+import RentCastPropertyEvidencePanel from "./RentCastPropertyEvidencePanel";
 import { assembleDecisionRoomInputs } from "../../services/decision-intelligence/decisionRoomInputService";
 import { lazy, Suspense, useMemo, useState } from "react";
 import LazyPanelFallback from "../../components/LazyPanelFallback";
@@ -1115,6 +1116,7 @@ export default function DealDecisionRoom({
     if (sectionId === "decision") {
       return (
         <>
+        <RentCastPropertyEvidencePanel deal={deal} onSaved={handleResearchSaved} />
         <ResearchResolutionPanel key={deal.id} deal={deal} readModel={decisionReadModel} onSaved={handleResearchSaved} />
         <p role="status">{decisionReadModel?.recalculation
           ? `${decisionReadModel.recalculation.state}: ${decisionReadModel.recalculation.explanation}`

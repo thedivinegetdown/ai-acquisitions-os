@@ -28,9 +28,7 @@ export const APPROVAL_RESULT_LIMIT = 50;
 const MAX_RESULT_LIMIT = 100;
 const SOURCE_LIMITS = {
   campaigns: 50,
-  deals: 250,
   drafts: 50,
-  notifications: 100,
   workflows: 50,
 };
 
@@ -77,10 +75,11 @@ const TYPE_ORDER = {
   [APPROVAL_TYPES.HIGH_RISK_ACTION]: 1,
 };
 
-function safeArray(value, limit) {
-  return Array.isArray(value)
-    ? value.filter((item) => item && typeof item === "object").slice(0, limit)
+function safeArray(value, limit = null) {
+  const items = Array.isArray(value)
+    ? value.filter((item) => item && typeof item === "object")
     : [];
+  return limit === null ? items : items.slice(0, limit);
 }
 
 function safeText(value, fallback = "") {
@@ -640,11 +639,10 @@ export function buildApprovalReadModel({
   tenantId = "",
   workflowApprovals = [],
 } = {}) {
-  const boundedDeals = safeArray(deals, SOURCE_LIMITS.deals);
+  const boundedDeals = safeArray(deals);
   const inbox = dealNotifications === null ? buildActionInbox({ deals: boundedDeals }) : null;
   const notifications = safeArray(
-    dealNotifications === null ? inbox?.notifications : dealNotifications,
-    SOURCE_LIMITS.notifications
+    dealNotifications === null ? inbox?.notifications : dealNotifications
   );
   const boundedWorkflows = safeArray(workflowApprovals, SOURCE_LIMITS.workflows);
   const boundedDrafts = safeArray(messageDrafts, SOURCE_LIMITS.drafts);

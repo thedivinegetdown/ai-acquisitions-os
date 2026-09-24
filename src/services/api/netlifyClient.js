@@ -2,7 +2,6 @@ import { appConfig } from "../config";
 import { logger } from "../logging";
 import { monitorAsync } from "../monitoring";
 import { createFailure, createSuccess } from "./serviceResult";
-import { authenticatedFunctionFetch } from "./authenticatedFunctionFetch";
 
 const RETRY_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -34,6 +33,9 @@ export async function callNetlifyFunction(
     retryDelayMs = 250,
   } = {}
 ) {
+  // Load browser auth only when a server function is actually invoked. This keeps
+  // provider registration/status-free manual workflows independent of Supabase.
+  const { authenticatedFunctionFetch } = await import("./authenticatedFunctionFetch");
   return monitorAsync(`netlify:${functionName}`, async () => {
     const url = `${appConfig.apiBasePath}/${functionName}`;
     let lastError = null;

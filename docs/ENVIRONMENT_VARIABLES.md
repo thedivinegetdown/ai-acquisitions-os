@@ -42,13 +42,11 @@ These must remain server-side in Netlify environment variables.
 
 ### Property Data
 
-No live property data provider is required yet.
+RentCast is optional, disabled by default per organization, and never required for
+the manual workflow.
 
-Future provider variables should remain server-side only, for example:
-
-- `PROPERTY_DATA_PROVIDER`: optional selected provider identifier.
-- `PROPERTY_DATA_API_KEY`: future provider API key.
-- `PROPERTY_DATA_API_BASE_URL`: future provider API base URL.
+- `RENTCAST_API_KEY`: optional server-only RentCast API key. Never prefix this
+  variable with `VITE_` or expose it to browser code.
 
 ### Email
 

@@ -72,7 +72,7 @@ export function buildResearchMutation({ deal, command, actorReference, now }) {
   if (command.type === "record") {
     const source = requiredText(command.source, "Source");
     const sourceType = command.sourceType || "manual-research";
-    if (!["manual-research", "seller-statement", "document", "property-record", "comparable-sale", "land-comparable-sale"].includes(sourceType)) throw new Error("Unsupported research source type.");
+    if (!["manual-research", "seller-statement", "document", "property-record", "provider-valuation", "comparable-sale", "land-comparable-sale"].includes(sourceType)) throw new Error("Unsupported research source type.");
     if (!["verified", "unverified", "unknown"].includes(command.verificationState)) throw new Error("Choose a verification state.");
     const raw = requiredText(String(command.value ?? ""), "Fact value");
     const numberText = raw.replace(/[$,]/g, "").trim();
@@ -95,15 +95,35 @@ export function buildResearchMutation({ deal, command, actorReference, now }) {
         provenanceDetails: { storedValue: prior, compatibilityCurrentState: true },
       }));
     });
+    const providerEvidence = command.providerEvidence?.provider === "rentcast"
+      ? {
+          provider: "rentcast",
+          providerEvidenceId: requiredText(command.providerEvidence.evidenceId, "Provider evidence", 200),
+          providerRecordId: typeof command.providerEvidence.providerRecordId === "string" ? command.providerEvidence.providerRecordId.trim().slice(0, 240) : "",
+          providerField: requiredText(command.providerEvidence.providerField, "Provider field", 120),
+          retrievedAt: timestamp(command.providerEvidence.retrievedAt, "Provider retrieval time"),
+          limitation: typeof command.providerEvidence.limitation === "string" ? command.providerEvidence.limitation.trim().slice(0, 320) : "",
+        }
+      : null;
+    if (command.providerEvidence && !providerEvidence) throw new Error("Unsupported provider evidence.");
+    if (sourceType === "provider-valuation" && !providerEvidence) throw new Error("Provider valuation requires linked provider evidence.");
+    if (providerEvidence && source !== `rentcast:${providerEvidence.providerEvidenceId}:${providerEvidence.providerField}`) throw new Error("Provider source reference does not match its evidence link.");
+    if (providerEvidence && sourceTimestamp && sourceTimestamp !== providerEvidence.retrievedAt) throw new Error("Provider source time must match its retrieval time when supplied.");
     const existing = evidence.find((entry) => entry.relatedCanonicalField === command.field && entry.sourceRecordId === source && entry.sourceType === sourceType && entry.provenanceDetails?.storedValue === value);
+    if (providerEvidence && existing
+      && existing.provenanceDetails?.providerEvidenceId === providerEvidence.providerEvidenceId
+      && existing.provenanceDetails?.retrievedAt === providerEvidence.retrievedAt
+      && descriptor.columns.every((column) => deal[column] === value)) {
+      return { research_evidence: evidence, research_resolutions: resolutions, research_revision: deal.research_revision || 0 };
+    }
     const record = normalizeEvidenceReference({
       evidenceId: existing?.evidenceId || `research:${deal.id}:${descriptor.columns[0]}:${(deal.research_revision || 0) + 1}`,
       relatedCanonicalField: command.field, sourceType, sourceSystem: source, sourceRecordId: source,
       sourceField: descriptor.columns[0], sourceTimestamp: sourceTimestamp || existing?.sourceTimestamp || null, observedTimestamp,
       verificationState: command.verificationState, freshnessState: "unknown", conflictState: "none",
-      extractionMethod: "manual-research", relationship: "supports", valueSummary: String(value),
+      extractionMethod: providerEvidence ? "provider-import" : "manual-research", relationship: "supports", valueSummary: String(value),
       organizationId: deal.organization_id,
-      provenanceDetails: { storedValue: value, actorReference },
+      provenanceDetails: { storedValue: value, actorReference, ...(providerEvidence || {}) },
     });
     evidence = evidence.filter((entry) => entry.evidenceId !== record.evidenceId).concat(record);
     const conflictId = `conflict:deal:${encodeURIComponent(deal.id)}:field:${encodeURIComponent(command.field)}`;

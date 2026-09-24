@@ -29,6 +29,16 @@ vi.mock("../../organizations", () => ({ requireActiveOrganizationContext: async 
 const now = "2026-09-23T16:00:00.000Z";
 const residential = { id: "deal-1", organization_id: "org-1", asset_type: "residential-home", property_address: "123 Main St", owner_name: "Seller", phone: "5551112222", price: 120000, research_revision: 0 };
 const record = { type: "record", field: "property.afterRepairValue", value: "240000", source: "County appraisal 123", sourceType: "property-record", verificationState: "verified", sourceTimestamp: "2026-09-22T12:00:00.000Z" };
+const providerRecord = {
+  type: "record", field: "property.afterRepairValue", value: "255000",
+  source: "rentcast:evidence-1:valuation.estimatedValue", sourceType: "provider-valuation",
+  verificationState: "unverified", sourceTimestamp: now,
+  providerEvidence: {
+    provider: "rentcast", evidenceId: "evidence-1", providerRecordId: "rentcast-property-1",
+    providerField: "valuation.estimatedValue", retrievedAt: now,
+    limitation: "Provider AVM is current-value evidence and is not automatically ARV.",
+  },
+};
 function mutate(deal, command) { return { ...deal, ...buildResearchMutation({ deal, command, actorReference: "operator-1", now }) }; }
 function evaluate(deal, previous, extras = {}) {
   const result = buildCompatibilityDecisionReadModel({ ...assembleDecisionRoomInputs({ deal, now, ...extras }), previousRecalculation: previous?.recalculation });
@@ -108,6 +118,61 @@ describe("durable RDI research loop", () => {
     expect(after.recalculation.changedCategories).toContain("conflicts");
     expect(after.conflictReadModel.activeConflicts).toHaveLength(0);
     expect(after.vacantLandStrategyResult.factReadModel.factsById["legal-access"].value).toBeTruthy();
+  });
+
+  it("keeps RentCast disagreement explicit, links provenance, and only changes canonical Residential facts after resolution", () => {
+    const original = { ...residential, arv: 200000 };
+    const recorded = mutate(original, providerRecord);
+    expect(recorded.arv).toBe(200000);
+    expect(recorded.research_evidence).toHaveLength(2);
+    expect(recorded.research_evidence.find((entry) => entry.sourceSystem === providerRecord.source)).toMatchObject({
+      extractionMethod: "provider-import",
+      verificationState: "unverified",
+      provenanceDetails: {
+        provider: "rentcast", providerEvidenceId: "evidence-1",
+        providerRecordId: "rentcast-property-1", providerField: "valuation.estimatedValue",
+      },
+    });
+    const before = evaluate(recorded);
+    const conflict = before.conflictReadModel.activeConflicts.find((entry) => entry.canonicalField === providerRecord.field);
+    expect(conflict).toBeTruthy();
+    const candidate = conflict.candidateValues.find((entry) => entry.sourceRecordId === providerRecord.source);
+    const resolved = mutate(recorded, { type: "resolve", field: providerRecord.field, candidateId: candidate.candidateId, reason: "Owner reviewed the provider AVM and comparable context." });
+    expect(resolved.arv).toBe(255000);
+    const after = evaluate(resolved, before);
+    expect(after.recalculation.state).toBe("recalculated");
+    expect(after.recalculation.changedCategories).toEqual(expect.arrayContaining(["facts", "conflicts"]));
+  });
+
+  it("keeps identical accepted provider facts deterministic without duplicate evidence or DI-06 noise", () => {
+    const accepted = mutate(residential, providerRecord);
+    const initial = evaluate(accepted);
+    const repeated = mutate(accepted, providerRecord);
+    expect(repeated.research_revision).toBe(accepted.research_revision);
+    expect(repeated.research_evidence).toEqual(accepted.research_evidence);
+    expect(evaluate(repeated, initial).recalculation.state).toBe("unchanged");
+  });
+
+  it("uses the same provider-backed research path for Vacant Land without residential fallback", () => {
+    const land = { ...residential, asset_type: "vacant-residential-land", parcel_id: "APN-12", zoning: "AG", research_revision: 0 };
+    const command = {
+      ...providerRecord, field: "property.zoning", value: "R-1",
+      source: "rentcast:evidence-1:property.zoning", sourceType: "property-record",
+      sourceTimestamp: "",
+      providerEvidence: { ...providerRecord.providerEvidence, providerField: "property.zoning", limitation: "County-record zoning requires local verification." },
+    };
+    const recorded = mutate(land, command);
+    expect(recorded.zoning).toBe("AG");
+    const before = evaluate(recorded);
+    const conflict = before.conflictReadModel.activeConflicts.find((entry) => entry.canonicalField === "property.zoning");
+    expect(conflict).toBeTruthy();
+    const candidate = conflict.candidateValues.find((entry) => entry.sourceRecordId === command.source);
+    const resolved = mutate(recorded, { type: "resolve", field: command.field, candidateId: candidate.candidateId, reason: "Owner verified the provider zoning evidence." });
+    expect(resolved.zoning).toBe("R-1");
+    const after = evaluate(resolved, before);
+    expect(after.vacantLandStrategyResult.eligible).toBe(true);
+    expect(after.residentialStrategyResult).toBeNull();
+    expect(after.recalculation.state).toBe("recalculated");
   });
 
   it("rejects stale saves, unrelated fields, cross-organization edits and malformed values", async () => {

@@ -11,6 +11,8 @@ import {
   stripOrganizationOwnership,
 } from "../organizations";
 
+export const SEQUENCE_STEP_PAGE_SIZE = 200;
+
 export async function listSequencesByDeal(
   dealId,
   { limit = REPOSITORY_LIST_LIMIT } = {}
@@ -33,18 +35,30 @@ export async function listSequencesByDeal(
   }, "Could not load follow-up sequence.");
 }
 
-export async function listSequenceSteps({ limit = REPOSITORY_LIST_LIMIT } = {}) {
+export async function listSequenceSteps({ pageSize = SEQUENCE_STEP_PAGE_SIZE } = {}) {
   return runRepositoryOperation(async () => {
     const { organizationId } = await requireActiveOrganizationContext();
-    const { data, error } = await supabase
-      .from("sequences")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("due_date", { ascending: true })
-      .limit(normalizeRepositoryListLimit(limit));
+    const safePageSize = Math.min(500, Math.max(1, Number(pageSize) || SEQUENCE_STEP_PAGE_SIZE));
+    const rows = [];
+    let offset = 0;
 
-    if (error) throw error;
-    return repositorySuccess(data || []);
+    while (true) {
+      const { data, error } = await supabase
+        .from("sequences")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("due_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + safePageSize - 1);
+
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < safePageSize) break;
+      offset += page.length;
+    }
+
+    return repositorySuccess(rows, { pageSize: safePageSize, complete: true });
   }, "Could not load sequence commitments.");
 }
 

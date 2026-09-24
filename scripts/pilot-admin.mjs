@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
@@ -16,6 +16,14 @@ const COMMANDS = new Set([
   "import-apply",
   "export",
 ]);
+const PILOT_DEAL_PAGE_SIZE = 500;
+const PILOT_IMPORT_BATCH_SIZE = 200;
+const activeOperation = {
+  client: null,
+  command: "unknown",
+  correlationId: randomUUID(),
+  organizationId: null,
+};
 
 function usage() {
   return `Assisted pilot administration (server credentials required)
@@ -24,7 +32,7 @@ function usage() {
   status --organization-id UUID
   suspend|reactivate --organization-id UUID
   configure-settings --organization-id UUID --settings FILE.json
-  configure-provider --organization-id UUID --provider openai --enabled true|false [--monthly-request-cap N --max-prompt-characters N]
+  configure-provider --organization-id UUID --provider openai|rentcast --enabled true|false [--monthly-request-cap N --max-prompt-characters N]
   import-preview --organization-id UUID --csv FILE.csv --plan FILE.json [--default-market MARKET --default-lead-source SOURCE]
   import-apply --plan FILE.json --confirmation-token TOKEN
   export --organization-id UUID --output FILE.json`;
@@ -66,6 +74,53 @@ async function rpc(client, name, parameters) {
   const { data, error } = await client.rpc(name, parameters);
   if (error) throw new Error(error.message || `${name} failed.`);
   return data;
+}
+
+async function recordPilotFailure(client, {
+  classification,
+  command,
+  correlationId,
+  organizationId,
+}) {
+  if (!client || !organizationId) return;
+  await rpc(client, "record_pilot_operation_failure", {
+    p_organization_id: organizationId,
+    p_operation_type: `pilot-${command}`,
+    p_error_classification: classification,
+    p_correlation_id: correlationId,
+  });
+}
+
+function classifyAdminFailure(error) {
+  const message = String(error?.message || "").toLowerCase();
+  if (/not found|missing required/.test(message)) return "not-found";
+  if (/permission|forbidden|not authorized|row-level security/.test(message)) return "authorization-rejected";
+  if (/duplicate|unique|already/.test(message)) return "conflict";
+  if (/limit|cap|disabled|suspended/.test(message)) return "policy-rejected";
+  if (/invalid|required|must|match|unsupported/.test(message)) return "validation-rejected";
+  return "operation-failed";
+}
+
+async function loadAllPilotDeals(client, organizationId) {
+  const rows = [];
+  let offset = 0;
+
+  while (true) {
+    const { data, error } = await client
+      .from("deals")
+      .select("id, organization_id, phone, email, seller_email, property_address")
+      .eq("organization_id", organizationId)
+      .order("id", { ascending: true })
+      .range(offset, offset + PILOT_DEAL_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < PILOT_DEAL_PAGE_SIZE) break;
+    offset += page.length;
+  }
+
+  return rows;
 }
 
 function stableImportPayload(organizationId, records) {
@@ -110,12 +165,7 @@ async function previewImport(client, options) {
     throw new Error("Target pilot organization is not active.");
   }
 
-  const { data: existingDeals, error: dealsError } = await client
-    .from("deals")
-    .select("id, organization_id, phone, email, seller_email, property_address")
-    .eq("organization_id", organizationId)
-    .order("id", { ascending: true });
-  if (dealsError) throw new Error(dealsError.message);
+  const existingDeals = await loadAllPilotDeals(client, organizationId);
 
   const csvText = await readFile(csvPath, "utf8");
   const { parseCsvLeadText, toDealImportPayload } = await loadIntakeServices();
@@ -165,19 +215,60 @@ async function applyImport(client, options) {
     throw new Error("Unsupported assisted import plan.");
   }
   const expectedToken = confirmationToken(plan.organizationId, plan.records || []);
+  activeOperation.organizationId = plan.organizationId;
   if (suppliedToken !== expectedToken || plan.confirmationToken !== expectedToken) {
     throw new Error("Confirmation token does not match the reviewed import plan.");
   }
-  return rpc(client, "persist_assisted_pilot_import", {
-    p_organization_id: plan.organizationId,
-    p_confirmation_token: expectedToken,
-    p_records: plan.records,
-  });
+  const outcomes = [];
+  const records = Array.isArray(plan.records) ? plan.records : [];
+  if (records.length === 0) {
+    throw new Error("Confirmed import records are required.");
+  }
+  let importedCount = 0;
+  let duplicateCount = 0;
+  let failedCount = 0;
+
+  for (let index = 0; index < records.length; index += PILOT_IMPORT_BATCH_SIZE) {
+    const batch = await rpc(client, "persist_assisted_pilot_import", {
+      p_organization_id: plan.organizationId,
+      p_confirmation_token: expectedToken,
+      p_records: records.slice(index, index + PILOT_IMPORT_BATCH_SIZE),
+    });
+    outcomes.push(...(batch.results || []));
+    importedCount += Number(batch.importedCount || 0);
+    duplicateCount += Number(batch.duplicateCount || 0);
+    failedCount += Number(batch.failedCount || 0);
+  }
+
+  if (failedCount > 0) {
+    await recordPilotFailure(client, {
+      classification: "record-rejected",
+      command: "import-apply",
+      correlationId: activeOperation.correlationId,
+      organizationId: plan.organizationId,
+    });
+  }
+  if (outcomes.length !== records.length) {
+    throw new Error("Assisted import returned an incomplete result set; retry the same confirmed plan.");
+  }
+
+  return {
+    organization_id: plan.organizationId,
+    confirmation_token: expectedToken,
+    results: outcomes,
+    importedCount,
+    duplicateCount,
+    failedCount,
+    complete: true,
+  };
 }
 
 async function run() {
   const { command, options } = parseArguments(process.argv.slice(2));
   const client = serverClient();
+  activeOperation.client = client;
+  activeOperation.command = command;
+  activeOperation.organizationId = options["organization-id"] || null;
   let result;
 
   if (command === "provision") {
@@ -228,7 +319,17 @@ async function run() {
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
-run().catch((error) => {
-  process.stderr.write(`Pilot admin command failed: ${error.message}\n`);
+run().catch(async (error) => {
+  try {
+    await recordPilotFailure(activeOperation.client, {
+      classification: classifyAdminFailure(error),
+      command: activeOperation.command,
+      correlationId: activeOperation.correlationId,
+      organizationId: activeOperation.organizationId,
+    });
+  } catch {
+    // Failure recording is best-effort and must not mask the original action failure.
+  }
+  process.stderr.write(`Pilot admin command failed [${activeOperation.correlationId}]: ${error.message}\n`);
   process.exitCode = 1;
 });

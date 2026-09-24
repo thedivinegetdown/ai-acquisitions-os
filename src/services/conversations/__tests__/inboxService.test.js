@@ -204,6 +204,8 @@ describe("Inbox read model", () => {
     expect(model.items).toHaveLength(INBOX_RESULT_LIMIT);
     expect(model.items[0].needsReply).toBe(true);
     expect(model.truncated).toBe(true);
+    expect(model.hasMore).toBe(true);
+    expect(model.continuation).toEqual(expect.objectContaining({ available: false }));
   });
 
   it("uses one search and supported filter contract", () => {
