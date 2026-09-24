@@ -5,6 +5,7 @@ export * from "./decisionMemoryRepository";
 export * from "./dealRepository";
 export * from "./documentRepository";
 export * from "./notificationRepository";
+export * from "./operationalDiagnosticRepository";
 export * from "./offerLifecycleRepository";
 export * from "./organizationRepository";
 export * from "./organizationSettingsRepository";

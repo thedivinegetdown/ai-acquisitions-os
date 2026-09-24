@@ -105,7 +105,7 @@ function activationMustFail(target, label) {
   psql(target, { expectFailure: true, file: activationFile, label });
   psql(target, {
     label: `${label} rollback verification`,
-    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
+    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage','operational_failure_diagnostics')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
   });
 }
 
@@ -246,6 +246,7 @@ function validateTarget(target, { upgrade = false } = {}) {
     console.log("Build 6 ACL upgrade passed: inherited grant regression reproduced, correction and retry preserve data/functions/RLS.");
   }
   psql(target, { file: path.join(testsDirectory, "build6_assisted_pilot_acceptance.sql"), label: "Build 6 assisted pilot acceptance" });
+  psql(target, { file: path.join(testsDirectory, "priority7_scale_safety_acceptance.sql"), label: "Priority 7 scale safety acceptance" });
   psql(target, { file: build6AclTest, label: "Build 6 admin ACL and owner RPC assertions" });
   return psql(target, { capture: true, label: "Schema fingerprint", sql: fingerprintSql });
 }

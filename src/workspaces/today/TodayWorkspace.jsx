@@ -431,6 +431,9 @@ export default function TodayWorkspace({
       ) : (
         <div className="workspace__content">
           <SourceWarnings warnings={briefing.warnings} />
+          {readModel.notices.map((notice) => (
+            <Card key={notice} muted>{notice}</Card>
+          ))}
           <BriefingCard briefing={briefing} />
           {readModel.items.length === 0 ? (
             <EmptyState

@@ -403,7 +403,6 @@ function buildCompletedItems(deals = [], { now = Date.now() } = {}) {
 function buildSellerReplyItems(conversations = [], { now = Date.now() } = {}) {
   return conversations
     .filter(conversationNeedsReply)
-    .slice(0, 10)
     .map((conversation) => {
       const phone = conversation.phone || conversation.participantIdentifier || "";
       const dealId = conversation.linkedDealId || conversation.dealId || null;
@@ -529,9 +528,9 @@ export function buildTodayReadModel({
   sequenceSteps = [],
 } = {}) {
   const safeDeals = Array.isArray(deals)
-    ? deals.filter((deal) => deal && typeof deal === "object").slice(0, 250)
+    ? deals.filter((deal) => deal && typeof deal === "object")
     : [];
-  const safeConversations = Array.isArray(conversations) ? conversations.slice(0, 25) : [];
+  const safeConversations = Array.isArray(conversations) ? conversations : [];
   const inbox = buildActionInbox({ deals: safeDeals, now, stateById: notificationStateById });
   const sourceWarnings = [...(inbox.missingData || []), ...errors.filter(Boolean)];
   const operatorNotifications = (inbox.notifications || []).filter(
@@ -562,7 +561,7 @@ export function buildTodayReadModel({
     now,
   });
 
-  const items = dedupeTodayItems([
+  const rankedItems = dedupeTodayItems([
     ...sellerTaskItems,
     ...sequenceItems,
     ...notificationItems,
@@ -572,15 +571,25 @@ export function buildTodayReadModel({
     ...buildCompletedItems(safeDeals, { now }),
   ])
     .map((item) => applyTodayPrioritization(item, { evaluatedTimestamp: nowIso(now) }))
-    .sort(compareTodayItems)
-    .slice(0, Math.max(1, limit));
+    .sort(compareTodayItems);
+  const resultLimit = Math.max(1, limit);
+  const items = rankedItems.slice(0, resultLimit);
+  const hasMore = rankedItems.length > resultLimit;
 
   return {
     categories: TODAY_CATEGORIES.map((id) => ({ id, label: TODAY_CATEGORY_LABELS[id], count: buildCounts(items)[id] })),
     counts: buildCounts(items),
     generatedAt: nowIso(now),
     items,
-    limit,
+    limit: resultLimit,
+    totalRelevant: rankedItems.length,
+    hasMore,
+    continuation: hasMore
+      ? { available: true, targetWorkspaces: ["pipeline", "inbox", "approvals"] }
+      : null,
+    notices: hasMore
+      ? [`Showing the ${items.length} highest-priority items from ${rankedItems.length} relevant Today items.`]
+      : [],
     role,
     sourceWarnings,
     sourceStatus: sourceWarnings.length ? "partial" : "complete",

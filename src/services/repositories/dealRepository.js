@@ -9,19 +9,38 @@ import {
   requireActiveOrganizationContext,
   stripOrganizationOwnership,
 } from "../organizations";
+import { recordOperationalFailure } from "./operationalDiagnosticRepository";
 
 const DEAL_SELECT = "*";
+export const DEAL_PAGE_SIZE = 200;
 
 export async function listDeals() {
   return runRepositoryOperation(async () => {
-    const { data, error } = await supabase
-      .from("deals")
-      .select(DEAL_SELECT)
-      .order("property_address", { ascending: true });
+    const { organizationId } = await requireActiveOrganizationContext();
+    const rows = [];
+    let offset = 0;
 
-    if (error) throw error;
+    while (true) {
+      const { data, error } = await supabase
+        .from("deals")
+        .select(DEAL_SELECT)
+        .eq("organization_id", organizationId)
+        .order("property_address", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + DEAL_PAGE_SIZE - 1);
 
-    return repositorySuccess(data || []);
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < DEAL_PAGE_SIZE) break;
+      offset += page.length;
+    }
+
+    return repositorySuccess(rows, {
+      pageSize: DEAL_PAGE_SIZE,
+      pages: Math.max(1, Math.ceil(rows.length / DEAL_PAGE_SIZE)),
+      complete: true,
+    });
   }, "Could not load deals.");
 }
 
@@ -120,6 +139,7 @@ export async function persistImportedDeals(records = []) {
   return runRepositoryOperation(async () => {
     const { organizationId } = await requireActiveOrganizationContext();
     const results = [];
+    const correlationId = `lead-import:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`;
 
     for (const record of records) {
       const ownedPayload = {
@@ -138,18 +158,28 @@ export async function persistImportedDeals(records = []) {
         results.push({
           rowNumber: record.rowNumber,
           status: "failed",
-          error: error.message || "Database insert failed.",
+          error: "Record was rejected by persistence validation.",
         });
       } else {
         results.push({ rowNumber: record.rowNumber, status: "imported", deal: data?.[0] || ownedPayload });
       }
     }
 
+    const failedCount = results.filter((result) => result.status === "failed").length;
+    if (failedCount > 0) {
+      await recordOperationalFailure({
+        correlationId,
+        errorClassification: "persistence-failed",
+        operationType: "lead-import",
+      });
+    }
+
     return repositorySuccess({
       results,
       importedCount: results.filter((result) => result.status === "imported").length,
       duplicateCount: results.filter((result) => result.status === "duplicate").length,
-      failedCount: results.filter((result) => result.status === "failed").length,
+      failedCount,
+      correlationId: failedCount > 0 ? correlationId : null,
     });
   }, "Could not import leads.");
 }

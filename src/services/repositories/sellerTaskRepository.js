@@ -13,18 +13,32 @@ import {
   stripOrganizationOwnership,
 } from "../organizations";
 
-export async function listSellerTasks({ limit = REPOSITORY_LIST_LIMIT } = {}) {
+export const SELLER_TASK_PAGE_SIZE = 200;
+
+export async function listSellerTasks({ pageSize = SELLER_TASK_PAGE_SIZE } = {}) {
   return runRepositoryOperation(async () => {
     const { organizationId } = await requireActiveOrganizationContext();
-    const { data, error } = await supabase
-      .from("seller_tasks")
-      .select("*")
-      .eq("organization_id", organizationId)
-      .order("due_at", { ascending: true })
-      .limit(normalizeRepositoryListLimit(limit));
+    const safePageSize = Math.min(500, Math.max(1, Number(pageSize) || SELLER_TASK_PAGE_SIZE));
+    const rows = [];
+    let offset = 0;
 
-    if (error) throw error;
-    return repositorySuccess(data || []);
+    while (true) {
+      const { data, error } = await supabase
+        .from("seller_tasks")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .order("due_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + safePageSize - 1);
+
+      if (error) throw error;
+      const page = data || [];
+      rows.push(...page);
+      if (page.length < safePageSize) break;
+      offset += page.length;
+    }
+
+    return repositorySuccess(rows, { pageSize: safePageSize, complete: true });
   }, "Could not load seller tasks.");
 }
 

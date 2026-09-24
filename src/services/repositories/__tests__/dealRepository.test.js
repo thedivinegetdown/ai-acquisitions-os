@@ -5,6 +5,7 @@ const query = {
   in: vi.fn(() => query),
   limit: vi.fn(() => query),
   order: vi.fn(() => query),
+  range: vi.fn(),
   select: vi.fn(() => query),
   insert: vi.fn(() => query),
   update: vi.fn(() => query),
@@ -24,10 +25,14 @@ vi.mock("../../organizations", () => ({
     Object.fromEntries(Object.entries(payload).filter(([key]) => key !== "organization_id")),
 }));
 
+const recordOperationalFailure = vi.fn().mockResolvedValue({ success: true });
+vi.mock("../operationalDiagnosticRepository", () => ({ recordOperationalFailure }));
+
 describe("dealRepository", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    query.order.mockResolvedValue({ data: [{ id: "1" }], error: null });
+    query.order.mockReturnValue(query);
+    query.range.mockResolvedValue({ data: [{ id: "1" }], error: null });
     query.limit.mockResolvedValue({ data: [{ id: "1" }], error: null });
     query.select.mockReturnValue(query);
     query.insert.mockReturnValue(query);
@@ -44,6 +49,25 @@ describe("dealRepository", () => {
     expect(from).toHaveBeenCalledWith("deals");
     expect(query.select).toHaveBeenCalledWith("*");
     expect(query.order).toHaveBeenCalledWith("property_address", { ascending: true });
+    expect(query.order).toHaveBeenCalledWith("id", { ascending: true });
+    expect(query.eq).toHaveBeenCalledWith("organization_id", "org-1");
+    expect(query.range).toHaveBeenCalledWith(0, 199);
+  });
+
+  it("returns every tenant deal exactly once across deterministic pages", async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({ id: `deal-${String(index).padStart(3, "0")}` }));
+    const secondPage = [{ id: "deal-200" }, { id: "deal-201" }];
+    query.range
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: secondPage, error: null });
+    const { listDeals } = await import("../dealRepository");
+
+    const result = await listDeals();
+
+    expect(result.success).toBe(true);
+    expect(result.data).toHaveLength(202);
+    expect(new Set(result.data.map((row) => row.id)).size).toBe(202);
+    expect(query.range.mock.calls).toEqual([[0, 199], [200, 399]]);
   });
 
   it("rejects updates without a deal id before calling Supabase", async () => {
@@ -92,6 +116,11 @@ describe("dealRepository", () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({ importedCount: 1, duplicateCount: 1, failedCount: 1 });
+    expect(recordOperationalFailure).toHaveBeenCalledWith(expect.objectContaining({
+      errorClassification: "persistence-failed",
+      operationType: "lead-import",
+    }));
+    expect(result.data.results[2].error).toBe("Record was rejected by persistence validation.");
     expect(result.data.results.map((row) => row.status)).toEqual([
       "imported",
       "duplicate",

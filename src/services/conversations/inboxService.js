@@ -118,7 +118,6 @@ function buildDealIndexes(deals = []) {
 
   (Array.isArray(deals) ? deals : [])
     .filter((deal) => deal && typeof deal === "object" && !Array.isArray(deal))
-    .slice(0, 500)
     .forEach((deal) => {
       const dealId = getDealId(deal);
       const normalizedPhone = normalizePhone(getDealPhone(deal));
@@ -512,9 +511,17 @@ export function buildInboxReadModel({
     counts,
     generatedAt: new Date(now).toISOString(),
     totalLoaded: sourceInput.length,
+    totalAvailable: sourceMetadata.uniqueCount || sourceInput.length,
     totalVisible: items.length,
     limit: resultLimit,
     truncated,
+    hasMore: truncated,
+    continuation: truncated
+      ? sourceMetadata.continuation || {
+          available: false,
+          reason: "The Inbox shows the highest-attention bounded set; conversation threads retain their own history continuation.",
+        }
+      : null,
     notices: truncated
       ? [
           `Showing a bounded set of ${items.length} conversations from the available message history.`,

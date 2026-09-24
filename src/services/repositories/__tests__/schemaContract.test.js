@@ -23,6 +23,7 @@ const persistedTables = [
   "documents",
   "message_logs",
   "offer_revisions",
+  "operational_failure_diagnostics",
   "organization_memberships",
   "organization_provider_policies",
   "organization_settings",
@@ -215,6 +216,16 @@ describe("Supabase schema baseline", () => {
       "actor_reference",
       "decided_at",
     ]);
+    expectColumns("operational_failure_diagnostics", [
+      "id",
+      "organization_id",
+      "operation_type",
+      "error_classification",
+      "correlation_id",
+      "status",
+      "occurred_at",
+      "resolved_at",
+    ]);
     expectColumns("comps", [
       "id",
       "deal_id",
@@ -276,6 +287,7 @@ describe("Supabase schema baseline", () => {
       "deal_closing_revisions_deal_latest_idx",
       "decision_recommendation_snapshots_deal_latest_idx",
       "decision_owner_decisions_deal_decided_idx",
+      "operational_failure_diagnostics_org_occurred_idx",
     ].forEach((index) => expect(migrationSql).toContain(index));
 
     expect(migrationSql).not.toMatch(/on delete cascade/);
@@ -290,6 +302,7 @@ describe("Supabase schema baseline", () => {
       "organization_settings",
       "organization_provider_policies",
       "organization_provider_usage",
+      "operational_failure_diagnostics",
     ].forEach((table) => {
       expect(migrationSql).toContain(
         `alter table public.${table} enable row level security`

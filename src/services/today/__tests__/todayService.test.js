@@ -360,6 +360,40 @@ describe("buildTodayReadModel", () => {
 
     expect(model.items.length).toBeLessThanOrEqual(12);
     expect(TODAY_RESULT_LIMIT).toBe(50);
+    expect(model.hasMore).toBe(true);
+    expect(model.totalRelevant).toBeGreaterThan(12);
+    expect(model.notices[0]).toMatch(/highest-priority/i);
+  });
+
+  it("ranks the complete deal and conversation inputs before applying the Today boundary", () => {
+    const deals = Array.from({ length: 300 }, (_, index) =>
+      deal({
+        id: `routine-${index}`,
+        next_action: "Call seller",
+        due_date: TOMORROW,
+        property_address: `${String(index).padStart(3, "0")} Routine Street`,
+      })
+    );
+    deals.push(deal({
+      id: "highest-priority-beyond-old-cap",
+      due_date: YESTERDAY,
+      next_action: "Call seller",
+      property_address: "999 Priority Street",
+    }));
+    const conversations = Array.from({ length: 20 }, (_, index) => ({
+      phone: `+1555000${String(index).padStart(4, "0")}`,
+      direction: "inbound",
+      lastMessagePreview: `Reply ${index}`,
+      lastMessageAt: new Date(NOW - index * 1000).toISOString(),
+    }));
+
+    const model = buildTodayReadModel({ conversations, deals, now: NOW });
+
+    expect(model.items[0]).toMatchObject({
+      category: "at-risk",
+      target: expect.objectContaining({ dealId: "highest-priority-beyond-old-cap" }),
+    });
+    expect(model.items.filter((item) => item.type === "seller-reply")).toHaveLength(20);
   });
 
   it("handles malformed or missing data safely", () => {

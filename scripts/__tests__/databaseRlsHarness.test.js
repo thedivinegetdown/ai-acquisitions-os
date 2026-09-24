@@ -39,7 +39,7 @@ describe("EO-VAL-01 guarded database harness", () => {
 
   it("discovers all committed migrations in deterministic order", () => {
     const migrations = listMigrations().map((file) => path.basename(file));
-    expect(migrations).toHaveLength(15);
+    expect(migrations).toHaveLength(16);
     expect(migrations).toEqual([...migrations].sort());
     migrations.forEach((migration) =>
       expect(migration).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/)

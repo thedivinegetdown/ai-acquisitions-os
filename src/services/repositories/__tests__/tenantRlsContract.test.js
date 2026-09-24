@@ -193,7 +193,7 @@ describe("tenant and RLS migration contract", () => {
   });
 
   it("keeps accepted-table activation staged while immediately protecting new tables", () => {
-    ["pilot_provisioning_requests", "organization_settings", "organization_provider_policies", "organization_provider_usage"].forEach(
+    ["pilot_provisioning_requests", "organization_settings", "organization_provider_policies", "organization_provider_usage", "operational_failure_diagnostics"].forEach(
       (table) => expect(migrations).toContain(`alter table public.${table} enable row level security`)
     );
     tenantTables.forEach((table) => {
