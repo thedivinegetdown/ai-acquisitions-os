@@ -1,6 +1,10 @@
 import Papa from "papaparse";
 import { detectDuplicateLeads } from "./duplicateLeadService";
-import { normalizeLead, toDealPreviewPayload } from "./leadNormalizationService";
+import {
+  normalizeLead,
+  toDealImportPayload,
+  toDealPreviewPayload,
+} from "./leadNormalizationService";
 import { validateLeads } from "./leadValidationService";
 
 function summarizeWarnings(leads = []) {
@@ -37,7 +41,7 @@ function buildImportAnalysis(leads = [], existingDeals = []) {
     recommendedNextAction:
       parsedLeads.length === 0
         ? "Add a manual lead or upload a CSV to preview intake."
-        : "Review warnings and duplicates before enabling any future database import.",
+        : "Review warnings and duplicates, then confirm the accepted records.",
     summary:
       parsedLeads.length === 0
         ? "No leads parsed yet."
@@ -96,14 +100,36 @@ export function parseCsvLeadText({
   });
 }
 
-export function confirmPreviewOnlyImport(analysis = {}) {
+export async function confirmLeadImport(analysis = {}) {
+  const acceptedLeads = Array.isArray(analysis.validLeads) ? analysis.validLeads : [];
+  if (acceptedLeads.length === 0) {
+    return {
+      success: false,
+      error: { message: "No validated, non-duplicate leads are available to import." },
+    };
+  }
+
+  const { persistImportedDeals } = await import("../repositories");
+  const result = await persistImportedDeals(
+    acceptedLeads.map((lead) => ({
+      rowNumber: lead.rowNumber,
+      payload: toDealImportPayload(lead),
+    }))
+  );
+
+  if (!result.success) return result;
+
+  const { importedCount, duplicateCount, failedCount } = result.data;
   return {
-    success: true,
+    ...result,
     data: {
-      imported: false,
+      ...result.data,
       previewCount: analysis.parsedLeads?.length || 0,
-      message:
-        "Lead intake foundation is preview-only. No records were inserted or changed.",
+      rejectedCount: Math.max(
+        0,
+        (analysis.parsedLeads?.length || 0) - acceptedLeads.length
+      ),
+      message: `${importedCount} imported, ${duplicateCount} duplicate retries skipped, ${failedCount} failed.`,
       confirmedAt: new Date().toISOString(),
     },
   };

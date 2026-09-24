@@ -1,7 +1,7 @@
 export {
   analyzeLeadRows,
   analyzeManualLead,
-  confirmPreviewOnlyImport,
+  confirmLeadImport,
   parseCsvLeadText,
 } from "./leadImportService";
 export {
@@ -9,6 +9,8 @@ export {
   normalizeLead,
   normalizePropertyAddress,
   normalizeSellerName,
+  getLeadImportId,
+  toDealImportPayload,
   toDealPreviewPayload,
 } from "./leadNormalizationService";
 export { validateLead, validateLeads } from "./leadValidationService";

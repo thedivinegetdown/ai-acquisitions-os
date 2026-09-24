@@ -240,6 +240,85 @@ describe("buildTodayReadModel", () => {
     expect(model.items.filter((item) => item.type === "seller-reply")).toHaveLength(1);
   });
 
+  it("projects seller tasks and sequence steps into one dated commitment queue", () => {
+    const model = buildTodayReadModel({
+      deals: [deal({ next_action: "Call seller", due_date: TODAY })],
+      sellerTasks: [
+        {
+          id: "task-1",
+          deal_id: "deal-1",
+          title: "Call seller",
+          due_at: `${TODAY}T12:00:00.000Z`,
+          status: "open",
+          created_at: `${TODAY}T08:00:00.000Z`,
+        },
+      ],
+      sequenceSteps: [
+        {
+          id: "step-1",
+          deal_id: "deal-1",
+          action_type: "Call seller",
+          due_date: TODAY,
+          status: "Pending",
+        },
+      ],
+      now: NOW,
+    });
+
+    const matching = model.items.filter((item) => item.obligationKey?.includes("call seller"));
+    expect(matching).toHaveLength(1);
+    expect(matching[0]).toMatchObject({
+      category: "act-now",
+      commitment: { sourceType: "seller-task", sourceId: "task-1" },
+      source: "Seller Tasks",
+    });
+  });
+
+  it("moves a persisted commitment from waiting to due on its revisit date", () => {
+    const task = {
+      id: "task-future",
+      deal_id: "deal-1",
+      title: "Call seller",
+      due_at: "2026-08-10T12:00:00.000Z",
+      status: "open",
+    };
+
+    const waiting = buildTodayReadModel({
+      deals: [deal()],
+      sellerTasks: [task],
+      now: new Date("2026-08-04T12:00:00.000Z").getTime(),
+    });
+    const due = buildTodayReadModel({
+      deals: [deal()],
+      sellerTasks: [task],
+      now: new Date("2026-08-10T12:00:00.000Z").getTime(),
+    });
+
+    expect(waiting.items.find((item) => item.id === "commitment:seller-task:task-future")).toMatchObject({ category: "waiting" });
+    expect(due.items.find((item) => item.id === "commitment:seller-task:task-future")).toMatchObject({ category: "act-now" });
+  });
+
+  it("keeps completed commitments out of active categories after reload", () => {
+    const model = buildTodayReadModel({
+      deals: [deal()],
+      sellerTasks: [
+        {
+          id: "task-complete",
+          deal_id: "deal-1",
+          title: "Call seller",
+          due_at: `${TODAY}T12:00:00.000Z`,
+          status: "completed",
+          updated_at: `${TODAY}T13:00:00.000Z`,
+        },
+      ],
+      now: NOW,
+    });
+
+    const completed = model.items.find((item) => item.id === "commitment:seller-task:task-complete");
+    expect(completed).toMatchObject({ category: "completed", status: "completed" });
+    expect(model.items.filter((item) => item.commitment?.sourceId === "task-complete" && item.category !== "completed")).toHaveLength(0);
+  });
+
   it("orders high-risk and overdue work before lower-priority waiting work", () => {
     const model = buildTodayReadModel({
       deals: [

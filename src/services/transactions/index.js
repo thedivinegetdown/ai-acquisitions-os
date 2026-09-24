@@ -15,3 +15,10 @@ export {
   TITLE_STATUSES,
   TRANSACTION_STATUSES,
 } from "./transactionService";
+export {
+  buildClosingCommitments,
+  buildClosingRevisionPayload,
+  CLOSING_LIFECYCLE_STATUSES,
+  normalizeMaterialDeadlines,
+  projectLatestClosingRevision,
+} from "./closingLifecycleService";

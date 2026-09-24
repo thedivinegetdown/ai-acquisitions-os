@@ -21,14 +21,13 @@ function leadMatchesDeal(lead = {}, deal = {}) {
   );
 }
 
-function getLeadDuplicateKey(lead = {}) {
+function getLeadDuplicateKeys(lead = {}) {
   return [
     lead.phone ? `phone:${normalizePhone(lead.phone)}` : "",
     lead.email ? `email:${lead.email}` : "",
     lead.propertyAddress ? `address:${addressKey(lead.propertyAddress)}` : "",
   ]
-    .filter(Boolean)
-    .join("|");
+    .filter(Boolean);
 }
 
 export function detectDuplicateLeads({ leads = [], existingDeals = [] } = {}) {
@@ -38,12 +37,14 @@ export function detectDuplicateLeads({ leads = [], existingDeals = [] } = {}) {
     const duplicateMatches = existingDeals.filter((deal) =>
       leadMatchesDeal(lead, deal)
     );
-    const batchKey = getLeadDuplicateKey(lead);
-    const batchDuplicate = batchKey && batchSeen.has(batchKey);
+    const batchKeys = getLeadDuplicateKeys(lead);
+    const batchDuplicate = batchKeys.some((key) => batchSeen.has(key));
 
-    if (batchKey && !batchSeen.has(batchKey)) {
-      batchSeen.set(batchKey, lead.rowNumber || lead.sellerName || batchKey);
-    }
+    batchKeys.forEach((key) => {
+      if (!batchSeen.has(key)) {
+        batchSeen.set(key, lead.rowNumber || lead.sellerName || key);
+      }
+    });
 
     const duplicateReasons = [];
     if (duplicateMatches.length > 0) {

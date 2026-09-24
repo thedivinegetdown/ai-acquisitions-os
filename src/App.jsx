@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useDealData } from "./hooks/useDealData";
 import { useConversationData } from "./hooks/useConversationData";
+import { useDailyCommitmentData } from "./hooks/useDailyCommitmentData";
 import CommandPalette from "./components/CommandPalette";
 import { AppShell } from "./design-system";
 import { workspaceDefinitions } from "./navigation/workspaces";
@@ -34,8 +35,9 @@ navigateToWorkspace,
 const conversationData = useConversationData({
   dealLoadError: error,
   deals,
-  enabled: ["today", "pipeline", "inbox"].includes(currentWorkspaceId),
+  enabled: ["today", "pipeline", "inbox", "deal-decision-room"].includes(currentWorkspaceId),
 });
+const commitmentData = useDailyCommitmentData({ enabled: ["today", "deal-decision-room"].includes(currentWorkspaceId) });
 
 const toggleSelect = useCallback((id) => {
 setSelectedIds((current) =>
@@ -69,6 +71,8 @@ return (
     conversationLoading={conversationData.loading}
     conversationReadModel={conversationData.readModel}
     conversations={conversationData.conversations}
+    commitmentErrors={commitmentData.errors}
+    commitmentLoading={commitmentData.loading}
     deals={deals}
     dealLoadError={error}
     filteredDeals={filteredDeals}
@@ -81,6 +85,9 @@ return (
     openDeal={(deal) => navigateToDeal(getDealAliasText(deal, "id"))}
     refresh={loadDeals}
     refreshConversations={conversationData.refresh}
+    refreshCommitments={commitmentData.loadCommitments}
+    sellerTasks={commitmentData.sellerTasks}
+    sequenceSteps={commitmentData.sequenceSteps}
     selectedIds={selectedIds}
     selectedPhone={selectedPhone}
     setFilteredDeals={setFilteredDeals}

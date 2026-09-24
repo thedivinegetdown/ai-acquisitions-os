@@ -34,9 +34,11 @@ export async function listDocumentsByDeal(
 export async function createDocument(document) {
   const payload = {
     deal_id: document?.deal_id,
+    closing_revision_id: document?.closing_revision_id || null,
     doc_type: safeTrim(document?.doc_type) || "Other",
     notes: safeTrim(document?.notes) || null,
     title: safeTrim(document?.title),
+    offer_revision_id: document?.offer_revision_id || null,
     url: safeTrim(document?.url) || null,
   };
 

@@ -2,6 +2,10 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import DealDecisionRoom from "../DealDecisionRoom";
+import { buildResearchMutation } from "../../../services/research-intelligence/researchResolutionService";
+import { saveResearchCommand } from "../../../services/repositories/researchRepository";
+
+vi.mock("../../../services/repositories/researchRepository", () => ({ saveResearchCommand: vi.fn() }));
 
 vi.mock("../../../components/AIInsights", () => ({
   default: () => <div>Existing AI Insights Panel</div>,
@@ -141,6 +145,37 @@ function renderRoom(overrides = {}) {
 }
 
 describe("DealDecisionRoom", () => {
+  it("saves research, resolves a source-linked conflict, refreshes the decision and reproduces it after reload", async () => {
+    const now = "2026-09-23T16:00:00.000Z";
+    let persisted = { ...deal, organization_id: "org-1", arv: 200000, research_revision: 0 };
+    saveResearchCommand.mockImplementation(async (current, command) => {
+      persisted = JSON.parse(JSON.stringify({ ...current, ...buildResearchMutation({ deal: current, command, actorReference: "operator-1", now }) }));
+      return { success: true, data: persisted };
+    });
+    const room = renderRoom({ deals: [persisted], decisionContext: { now } });
+    fireEvent.change(screen.getByLabelText("Research fact"), { target: { value: "property.afterRepairValue" } });
+    fireEvent.change(screen.getByLabelText("Researched value"), { target: { value: "240000" } });
+    fireEvent.change(screen.getByLabelText("Source reference"), { target: { value: "County appraisal 123" } });
+    fireEvent.change(screen.getByLabelText("Verification"), { target: { value: "verified" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save researched fact" }));
+    expect(await screen.findByText("Conflicting values require an explicit resolution.")).toBeInTheDocument();
+    const candidate = [...screen.getByLabelText("Resolution candidate").options].find((option) => option.textContent.includes("County appraisal 123"));
+    fireEvent.change(screen.getByLabelText("Resolution candidate"), { target: { value: candidate.value } });
+    fireEvent.change(screen.getByLabelText("Resolution reason"), { target: { value: "Reviewed the appraisal" } });
+    fireEvent.click(screen.getByRole("button", { name: "Resolve selected conflict" }));
+    expect(await screen.findByText("Resolved: 240000 — Reviewed the appraisal")).toBeInTheDocument();
+    expect(screen.getByText(/recalculated: Decision refreshed:/)).toBeInTheDocument();
+    expect(persisted.arv).toBe(240000);
+    expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
+    room.unmount();
+    renderRoom({ deals: [JSON.parse(JSON.stringify(persisted))], decisionContext: { now } });
+    fireEvent.change(screen.getByLabelText("Research fact"), { target: { value: "property.afterRepairValue" } });
+    expect(screen.getByText("Resolved: 240000 — Reviewed the appraisal")).toBeInTheDocument();
+    expect(screen.getByText("Current value: 240000")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Saved research sources" })).toHaveTextContent("County appraisal 123 — verified");
+    expect(screen.queryByText("Conflicting values require an explicit resolution.")).not.toBeInTheDocument();
+  });
+
   it("renders the selected deal as a route-level Decision Room", async () => {
     renderRoom();
 
@@ -164,7 +199,7 @@ describe("DealDecisionRoom", () => {
       screen.getAllByText("Residential Acquisition Strategy v1").length
     ).toBeGreaterThan(0);
     expect(await screen.findByText("Residential Strategy Summary")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
+    expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
   });
 
   it("requires classification for an unknown asset and does not mount residential insight", () => {
@@ -175,7 +210,7 @@ describe("DealDecisionRoom", () => {
     ).toBeGreaterThan(0);
     expect(screen.getAllByText("Classification Required").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeDisabled();
-    expect(screen.getByRole("heading", { name: "Residential analysis unavailable" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "AI-assisted insight" })).not.toBeInTheDocument();
     expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
   });
 
@@ -206,12 +241,13 @@ describe("DealDecisionRoom", () => {
     ["small-multifamily", "Small multifamily - Strategy Not Yet Implemented"],
     ["manufactured-home", "Manufactured home - Deferred"],
     ["commercial", "Commercial - Deferred"],
-  ])("shows truthful strategy status for %s", (assetType, expectedStatus) => {
+  ])("shows truthful strategy status for %s", async (assetType, expectedStatus) => {
     renderRoom({ deals: [{ ...deal, asset_type: assetType }] });
 
     expect(screen.getAllByText(expectedStatus).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Prepare Offer" })).toBeDisabled();
     expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
+    if (assetType === "vacant-residential-land") expect(await screen.findByText("Vacant Land Strategy Summary")).toBeInTheDocument();
   });
 
   it("shows classification provenance and blocked reasons in the existing Decision Basis", () => {
@@ -296,15 +332,12 @@ describe("DealDecisionRoom", () => {
     expect(screen.getByText("Residential Strategy Summary")).toBeInTheDocument();
   });
 
-  it("keeps deterministic Decision Intelligence separate from optional AI-assisted insight", async () => {
+  it("uses only canonical recommendations in the active Decision Room", async () => {
     renderRoom();
 
     expect(screen.getAllByText(/Deterministic Residential Strategy|Deterministic strategy/).length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "AI-assisted insight" })).toBeInTheDocument();
-    expect(
-      screen.getByText(/separate from deterministic Residential Strategy underwriting/i)
-    ).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText("Existing AI Insights Panel")).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: "AI-assisted insight" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Existing AI Insights Panel")).not.toBeInTheDocument();
   });
 
   it("shows partial source warnings without hiding the usable decision", () => {
@@ -384,9 +417,10 @@ describe("DealDecisionRoom", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Numbers" }));
 
-    await waitFor(() => expect(screen.getByText("Existing Deal Analyzer Panel")).toBeInTheDocument());
-    expect(screen.getByText("Existing Offer Engine Panel")).toBeInTheDocument();
-    expect(screen.getByText("Existing Negotiation Tracker Panel")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Residential Strategy Summary")).toBeInTheDocument());
+    expect(screen.queryByText("Existing Deal Analyzer Panel")).not.toBeInTheDocument();
+    expect(await screen.findByText("Existing Offer Engine Panel")).toBeInTheDocument();
+    expect(await screen.findByText("Existing Negotiation Tracker Panel")).toBeInTheDocument();
   });
 
   it("mounts existing residential property and buyer tools only after selection", async () => {

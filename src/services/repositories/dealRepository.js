@@ -5,7 +5,10 @@ import {
   repositorySuccess,
   runRepositoryOperation,
 } from "./repositoryResult";
-import { stripOrganizationOwnership } from "../organizations";
+import {
+  requireActiveOrganizationContext,
+  stripOrganizationOwnership,
+} from "../organizations";
 
 const DEAL_SELECT = "*";
 
@@ -79,4 +82,74 @@ export async function updateDeals(dealIds = [], payload) {
 
     return repositorySuccess(data || []);
   }, "Could not update deals.");
+}
+
+export async function updateOwnedDeal(dealId, payload, { expectedStage } = {}) {
+  if (!dealId) {
+    return repositoryFailure("Missing deal ID.", "Could not update deal.");
+  }
+
+  return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    let query = supabase
+      .from("deals")
+      .update(stripOrganizationOwnership(payload))
+      .eq("id", dealId)
+      .eq("organization_id", organizationId);
+
+    if (expectedStage) query = query.eq("stage", expectedStage);
+
+    const { data, error } = await query.select().limit(1);
+    if (error) throw error;
+    if (!data?.[0]) {
+      return repositoryFailure(
+        "The deal was not found in the active organization or changed before this update.",
+        "Could not update deal."
+      );
+    }
+
+    return repositorySuccess(data[0]);
+  }, "Could not update deal.");
+}
+
+export async function persistImportedDeals(records = []) {
+  if (!Array.isArray(records) || records.length === 0) {
+    return repositoryFailure("Missing accepted leads.", "Could not import leads.");
+  }
+
+  return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    const results = [];
+
+    for (const record of records) {
+      const ownedPayload = {
+        ...stripOrganizationOwnership(record.payload || {}),
+        organization_id: organizationId,
+      };
+      const { data, error } = await supabase
+        .from("deals")
+        .insert(ownedPayload)
+        .select()
+        .limit(1);
+
+      if (error?.code === "23505") {
+        results.push({ rowNumber: record.rowNumber, status: "duplicate" });
+      } else if (error) {
+        results.push({
+          rowNumber: record.rowNumber,
+          status: "failed",
+          error: error.message || "Database insert failed.",
+        });
+      } else {
+        results.push({ rowNumber: record.rowNumber, status: "imported", deal: data?.[0] || ownedPayload });
+      }
+    }
+
+    return repositorySuccess({
+      results,
+      importedCount: results.filter((result) => result.status === "imported").length,
+      duplicateCount: results.filter((result) => result.status === "duplicate").length,
+      failedCount: results.filter((result) => result.status === "failed").length,
+    });
+  }, "Could not import leads.");
 }
