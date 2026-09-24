@@ -28,7 +28,11 @@ begin
     ('offer_revisions', 'offer_revisions_select_member'), ('offer_revisions', 'offer_revisions_insert_writer'),
     ('deal_closing_revisions', 'deal_closing_revisions_select_member'), ('deal_closing_revisions', 'deal_closing_revisions_insert_writer'),
     ('decision_recommendation_snapshots', 'decision_recommendation_snapshots_select_member'), ('decision_recommendation_snapshots', 'decision_recommendation_snapshots_insert_writer'),
-    ('decision_owner_decisions', 'decision_owner_decisions_select_member'), ('decision_owner_decisions', 'decision_owner_decisions_insert_owner')
+    ('decision_owner_decisions', 'decision_owner_decisions_select_member'), ('decision_owner_decisions', 'decision_owner_decisions_insert_owner'),
+    ('organization_settings', 'organization_settings_select_member'),
+    ('organization_settings', 'organization_settings_insert_owner'),
+    ('organization_settings', 'organization_settings_update_owner'),
+    ('organization_provider_policies', 'organization_provider_policies_select_member')
   ) required(table_name, policy_name)
   where not exists (
     select 1 from pg_catalog.pg_policies existing_policy
@@ -56,6 +60,10 @@ alter table public.offer_revisions enable row level security;
 alter table public.deal_closing_revisions enable row level security;
 alter table public.decision_recommendation_snapshots enable row level security;
 alter table public.decision_owner_decisions enable row level security;
+alter table public.pilot_provisioning_requests enable row level security;
+alter table public.organization_settings enable row level security;
+alter table public.organization_provider_policies enable row level security;
+alter table public.organization_provider_usage enable row level security;
 
 do $$
 begin
@@ -65,7 +73,9 @@ begin
       ('organizations'), ('organization_memberships'), ('communication_consents'), ('deals'),
       ('message_logs'), ('seller_tasks'), ('buyers'), ('documents'),
       ('comps'), ('sequences'), ('offer_revisions'), ('deal_closing_revisions'),
-      ('decision_recommendation_snapshots'), ('decision_owner_decisions')
+      ('decision_recommendation_snapshots'), ('decision_owner_decisions'),
+      ('pilot_provisioning_requests'), ('organization_settings'),
+      ('organization_provider_policies'), ('organization_provider_usage')
     ) required(table_name)
     left join (
       select relation.oid, relation.relname, relation.relrowsecurity

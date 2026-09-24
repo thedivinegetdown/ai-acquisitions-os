@@ -10,6 +10,7 @@ const {
   MEMBERSHIP_ROLES,
   requireTenantContext,
 } = require("./auth.cjs");
+const { consumeProviderRequest } = require("./provider-policy.cjs");
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 const MAX_PROMPT_CHARS = 28000;
@@ -82,6 +83,7 @@ function createAiHandler(
   },
   {
     authorize = requireTenantContext,
+    providerAuthorization = consumeProviderRequest,
     providerRequest = callOpenAi,
   } = {}
 ) {
@@ -108,6 +110,17 @@ function createAiHandler(
     if (validationError) {
       return json(400, { success: false, error: validationError });
     }
+
+    const providerAccess = await providerAuthorization(
+      authorization.clients.adminClient,
+      {
+        organizationId: authorization.context.organizationId,
+        provider: "openai",
+        promptCharacters:
+          parsed.body.user.length + (parsed.body.system?.length || 0),
+      }
+    );
+    if (providerAccess.response) return providerAccess.response;
 
     try {
       const result = await providerRequest({

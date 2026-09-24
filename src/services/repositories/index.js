@@ -7,6 +7,7 @@ export * from "./documentRepository";
 export * from "./notificationRepository";
 export * from "./offerLifecycleRepository";
 export * from "./organizationRepository";
+export * from "./organizationSettingsRepository";
 export * from "./ownerOperatingReportRepository";
 export * from "./propertyRepository";
 export * from "./sellerTaskRepository";

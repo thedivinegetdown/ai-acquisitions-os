@@ -28,6 +28,7 @@ function authorized({ organizationId = "org-1", role = "analyst" } = {}) {
   const insert = vi.fn().mockResolvedValue({ error: null });
   const adminClient = {
     from: vi.fn(() => ({ insert })),
+    rpc: vi.fn().mockResolvedValue({ data: { allowed: true }, error: null }),
   };
 
   return {

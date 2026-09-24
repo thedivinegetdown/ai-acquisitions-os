@@ -14,6 +14,7 @@
     "test:smoke:preview": "node scripts/test-deploy-preview-smoke.cjs",
     "test": "vitest",
     "test:rls": "node scripts/test-local-database-rls.cjs",
+    "pilot:admin": "node scripts/pilot-admin.mjs",
     "test:run": "vitest run",
     "check": "npm run test:run && npm run build"
   },
