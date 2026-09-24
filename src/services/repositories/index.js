@@ -6,6 +6,7 @@ export * from "./documentRepository";
 export * from "./notificationRepository";
 export * from "./offerLifecycleRepository";
 export * from "./organizationRepository";
+export * from "./ownerOperatingReportRepository";
 export * from "./propertyRepository";
 export * from "./sellerTaskRepository";
 export * from "./transactionRepository";
