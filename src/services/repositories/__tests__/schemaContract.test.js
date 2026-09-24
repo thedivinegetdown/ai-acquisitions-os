@@ -18,6 +18,8 @@ const persistedTables = [
   "comps",
   "deal_closing_revisions",
   "deals",
+  "decision_owner_decisions",
+  "decision_recommendation_snapshots",
   "documents",
   "message_logs",
   "offer_revisions",
@@ -185,6 +187,32 @@ describe("Supabase schema baseline", () => {
       "created_at",
       "updated_at",
     ]);
+    expectColumns("decision_recommendation_snapshots", [
+      "id",
+      "deal_id",
+      "organization_id",
+      "snapshot_number",
+      "decision_contract_version",
+      "recalculation_contract_version",
+      "recommendation_result",
+      "canonical_input_fingerprint",
+      "recommendation_basis",
+      "evaluated_at",
+      "actor_reference",
+      "created_at",
+    ]);
+    expectColumns("decision_owner_decisions", [
+      "id",
+      "recommendation_snapshot_id",
+      "deal_id",
+      "organization_id",
+      "decision_type",
+      "override_flag",
+      "alternative_result",
+      "reason",
+      "actor_reference",
+      "decided_at",
+    ]);
     expectColumns("comps", [
       "id",
       "deal_id",
@@ -244,6 +272,8 @@ describe("Supabase schema baseline", () => {
       "deals_organization_import_id_uidx",
       "offer_revisions_deal_latest_idx",
       "deal_closing_revisions_deal_latest_idx",
+      "decision_recommendation_snapshots_deal_latest_idx",
+      "decision_owner_decisions_deal_decided_idx",
     ].forEach((index) => expect(migrationSql).toContain(index));
 
     expect(migrationSql).not.toMatch(/on delete cascade/);

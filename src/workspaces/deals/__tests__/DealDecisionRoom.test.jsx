@@ -6,6 +6,7 @@ import { buildResearchMutation } from "../../../services/research-intelligence/r
 import { saveResearchCommand } from "../../../services/repositories/researchRepository";
 
 vi.mock("../../../services/repositories/researchRepository", () => ({ saveResearchCommand: vi.fn() }));
+vi.mock("../DecisionMemoryPanel", () => ({ default: () => <div>Decision Memory</div> }));
 
 vi.mock("../../../components/AIInsights", () => ({
   default: () => <div>Existing AI Insights Panel</div>,

@@ -1,32 +1,23 @@
 import { lazy, Suspense } from "react";
 import LazyPanelFallback from "../components/LazyPanelFallback";
-import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system";
+import { Button, Card, EmptyState, PageHeader, SectionHeader } from "../design-system/components";
 import TodayWorkspace from "./today/TodayWorkspace";
 
 const DealDecisionRoom = lazy(() => import("./deals/DealDecisionRoom"));
 const ApprovalInboxWorkspace = lazy(() => import("./approvals/ApprovalInboxWorkspace"));
 const PipelineWorkspace = lazy(() => import("./pipeline/PipelineWorkspace"));
 const InboxWorkspace = lazy(() => import("./inbox/InboxWorkspace"));
-const ExecutiveDashboard = lazy(() =>
-  import("../features/dashboard").then((module) => ({ default: module.ExecutiveDashboard }))
-);
+const ReportsWorkspace = lazy(() => import("./reports/ReportsWorkspace"));
 const TeamRolesPanel = lazy(() => import("../components/TeamRolesPanel"));
 const OrganizationSettingsPanel = lazy(() => import("../components/OrganizationSettingsPanel"));
 const SaaSReadinessPanel = lazy(() => import("../components/SaaSReadinessPanel"));
 const BillingSubscriptionPanel = lazy(() => import("../components/BillingSubscriptionPanel"));
 const AdminHealthCenter = lazy(() => import("../components/AdminHealthCenter"));
-const CampaignTrackingPanel = lazy(() => import("../components/CampaignTrackingPanel"));
 const SearchCommandCenter = lazy(() => import("../components/SearchCommandCenter"));
 const LeadImporter = lazy(() => import("../components/LeadImporter"));
 const DuplicateDetector = lazy(() => import("../components/DuplicateDetector"));
 const DataHealthCenter = lazy(() => import("../components/DataHealthCenter"));
 const AutoLeadScoring = lazy(() => import("../components/AutoLeadScoring"));
-const ExecutiveScorecard = lazy(() => import("../components/ExecutiveScorecard"));
-const RevenueBoard = lazy(() => import("../components/RevenueBoard"));
-const AnalyticsBoard = lazy(() => import("../components/AnalyticsBoard"));
-const DashboardStats = lazy(() => import("../components/DashboardStats"));
-const KPIBoard = lazy(() => import("../components/KPIBoard"));
-const SourceBoard = lazy(() => import("../components/SourceBoard"));
 const BuyersBoard = lazy(() => import("../components/BuyersBoard"));
 
 function WorkspaceContainer({ children, description, title }) {
@@ -82,28 +73,6 @@ function BuyersWorkspace() {
       <CompatibilityGroup title="Buyer compatibility panels">
         <LazyCompatibility label="Loading buyer panels...">
           <BuyersBoard />
-        </LazyCompatibility>
-      </CompatibilityGroup>
-    </WorkspaceContainer>
-  );
-}
-
-function ReportsWorkspace({ deals }) {
-  return (
-    <WorkspaceContainer
-      description="Existing reporting panels grouped under the Reports workspace."
-      title="Reports"
-    >
-      <CompatibilityGroup title="Reporting compatibility panels">
-        <LazyCompatibility label="Loading reports...">
-          <ExecutiveDashboard deals={deals} />
-          <ExecutiveScorecard deals={deals} />
-          <RevenueBoard deals={deals} />
-          <AnalyticsBoard deals={deals} />
-          <DashboardStats deals={deals} />
-          <KPIBoard deals={deals} />
-          <SourceBoard deals={deals} />
-          <CampaignTrackingPanel deals={deals} />
         </LazyCompatibility>
       </CompatibilityGroup>
     </WorkspaceContainer>
@@ -176,7 +145,11 @@ export default function WorkspaceRoutes({ workspaceId, isUnknownRoute, onNavigat
     case "buyers":
       return <BuyersWorkspace {...props} />;
     case "reports":
-      return <ReportsWorkspace {...props} />;
+      return (
+        <LazyCompatibility label="Loading owner report...">
+          <ReportsWorkspace {...props} />
+        </LazyCompatibility>
+      );
     case "settings":
       return <SettingsWorkspace {...props} />;
     default:

@@ -26,7 +26,9 @@ begin
     ('comps', 'comps_select_member'), ('comps', 'comps_insert_writer'), ('comps', 'comps_update_writer'),
     ('sequences', 'sequences_select_member'), ('sequences', 'sequences_insert_writer'), ('sequences', 'sequences_update_writer'),
     ('offer_revisions', 'offer_revisions_select_member'), ('offer_revisions', 'offer_revisions_insert_writer'),
-    ('deal_closing_revisions', 'deal_closing_revisions_select_member'), ('deal_closing_revisions', 'deal_closing_revisions_insert_writer')
+    ('deal_closing_revisions', 'deal_closing_revisions_select_member'), ('deal_closing_revisions', 'deal_closing_revisions_insert_writer'),
+    ('decision_recommendation_snapshots', 'decision_recommendation_snapshots_select_member'), ('decision_recommendation_snapshots', 'decision_recommendation_snapshots_insert_writer'),
+    ('decision_owner_decisions', 'decision_owner_decisions_select_member'), ('decision_owner_decisions', 'decision_owner_decisions_insert_owner')
   ) required(table_name, policy_name)
   where not exists (
     select 1 from pg_catalog.pg_policies existing_policy
@@ -52,6 +54,8 @@ alter table public.comps enable row level security;
 alter table public.sequences enable row level security;
 alter table public.offer_revisions enable row level security;
 alter table public.deal_closing_revisions enable row level security;
+alter table public.decision_recommendation_snapshots enable row level security;
+alter table public.decision_owner_decisions enable row level security;
 
 do $$
 begin
@@ -60,7 +64,8 @@ begin
     from (values
       ('organizations'), ('organization_memberships'), ('communication_consents'), ('deals'),
       ('message_logs'), ('seller_tasks'), ('buyers'), ('documents'),
-      ('comps'), ('sequences'), ('offer_revisions'), ('deal_closing_revisions')
+      ('comps'), ('sequences'), ('offer_revisions'), ('deal_closing_revisions'),
+      ('decision_recommendation_snapshots'), ('decision_owner_decisions')
     ) required(table_name)
     left join (
       select relation.oid, relation.relname, relation.relrowsecurity

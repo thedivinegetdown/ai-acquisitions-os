@@ -8,3 +8,4 @@ export * from "./confidence-reliability";
 export * from "./prioritization";
 export * from "./recalculationService";
 export * from "./decisionRoomInputService";
+export * from "./decisionMemoryService";

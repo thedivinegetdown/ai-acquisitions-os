@@ -29,6 +29,14 @@ vi.mock("../inbox/InboxWorkspace", () => ({
     </section>
   ),
 }));
+vi.mock("../reports/ReportsWorkspace", () => ({
+  default: () => (
+    <section>
+      <h1>Owner report</h1>
+      <div>Canonical Owner Report Mock</div>
+    </section>
+  ),
+}));
 
 const baseProps = {
   clearSelection: vi.fn(),
@@ -77,6 +85,15 @@ describe("WorkspaceRoutes", () => {
 
     await waitFor(() => expect(screen.getByText("Approval Inbox Mock")).toBeInTheDocument());
     expect(screen.queryByText("Pipeline Board Mock")).not.toBeInTheDocument();
+  });
+
+  it("loads only the canonical owner report for the Reports route", async () => {
+    render(<WorkspaceRoutes {...baseProps} workspaceId="reports" />);
+
+    await waitFor(() => expect(screen.getByText("Canonical Owner Report Mock")).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Owner report" })).toBeInTheDocument();
+    expect(screen.queryByText("Business Intelligence")).not.toBeInTheDocument();
+    expect(screen.queryByText("Revenue Forecast")).not.toBeInTheDocument();
   });
 
   it("renders a safe unknown-route fallback", () => {

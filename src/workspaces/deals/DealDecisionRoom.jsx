@@ -27,6 +27,7 @@ import { getDealIdFromRoute } from "../../navigation/workspaces";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 import MissingInformationAutopilot from "./MissingInformationAutopilot";
+import DecisionMemoryPanel from "./DecisionMemoryPanel";
 
 const ActivityTimeline = lazy(() => import("../../components/ActivityTimeline"));
 const BuyerBlast = lazy(() => import("../../components/BuyerBlast"));
@@ -1124,6 +1125,7 @@ export default function DealDecisionRoom({
           onAction={handlePrimaryAction}
           onNavigateWorkspace={onNavigateWorkspace}
         />
+        {decisionReadModel ? <DecisionMemoryPanel deal={deal} readModel={decisionReadModel} /> : null}
         </>
       );
     }

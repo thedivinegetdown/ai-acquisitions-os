@@ -1,0 +1,71 @@
+.owner-report__evaluated {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-3);
+  margin-top: calc(var(--space-4) * -1);
+}
+.owner-report__warning {
+  color: var(--color-text);
+}
+
+.owner-report__warning ul {
+  margin-bottom: 0;
+}
+
+.owner-report__section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.owner-report__metrics {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin: 0;
+}
+
+.owner-report__metric {
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+}
+
+.owner-report__metric dt {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.owner-report__metric dd {
+  color: var(--color-text);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  margin: 0;
+}
+
+.owner-report__metric p,
+.owner-report__metric small,
+.owner-report__gaps p {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  margin: 0;
+}
+
+.owner-report__metric--unavailable dd {
+  font-size: var(--text-lg);
+}
+
+.owner-report__gaps > div {
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
