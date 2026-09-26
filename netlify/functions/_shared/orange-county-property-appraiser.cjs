@@ -194,6 +194,7 @@ module.exports = {
   OCPA_FIELDS,
   OCPA_LAYER_URL,
   OCPA_SOURCE,
+  enrichCandidatesWithOcpa: enrichTaxSaleCandidatesWithOcpa,
   enrichTaxSaleCandidatesWithOcpa,
   normalizeOcpaFeature,
   normalizeParcelId,

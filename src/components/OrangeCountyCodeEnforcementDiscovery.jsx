@@ -1,0 +1,130 @@
+import { useState } from "react";
+import {
+  fetchOrangeCountyCodeEnforcementCandidates,
+  ORANGE_COUNTY_CODE_ENFORCEMENT_SOURCE,
+} from "../services/leadDiscovery/orangeCountyCodeEnforcementSource";
+
+const panelStyle = {
+  background: "#fff7ed",
+  border: "1px solid #fdba74",
+  borderRadius: 10,
+  marginBottom: 16,
+  padding: 14,
+};
+
+function formatValue(value) {
+  return value === null || value === undefined || value === "" ? "Not provided" : value;
+}
+
+export default function OrangeCountyCodeEnforcementDiscovery() {
+  const [state, setState] = useState({
+    status: "idle",
+    candidates: [],
+    rejected: [],
+    page: null,
+    retrievedAt: null,
+    error: "",
+  });
+
+  async function loadPage(cursor = 0) {
+    setState((current) => ({ ...current, status: "loading", error: "" }));
+    const result = await fetchOrangeCountyCodeEnforcementCandidates({ cursor });
+    if (!result.success) {
+      setState({
+        status: "unavailable",
+        candidates: [],
+        rejected: [],
+        page: null,
+        retrievedAt: null,
+        error:
+          result.error?.message || "Orange County Active Code Enforcement data is unavailable.",
+      });
+      return;
+    }
+
+    setState({
+      status: result.data.status,
+      candidates: result.data.candidates || [],
+      rejected: result.data.rejected || [],
+      page: result.data.page || null,
+      retrievedAt: result.data.retrievedAt || null,
+      error: "",
+    });
+  }
+
+  return (
+    <section aria-label="Orange County Active Code Enforcement" style={panelStyle}>
+      <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "space-between" }}>
+        <div>
+          <strong>Orange County Active Code Enforcement</strong>
+          <div style={{ color: "#9a3412", fontSize: 12, marginTop: 3 }}>
+            Candidate discovery only · preview does not create deals
+          </div>
+        </div>
+        <button type="button" disabled={state.status === "loading"} onClick={() => loadPage(0)}>
+          {state.status === "loading" ? "Loading..." : "Refresh Code Enforcement Preview"}
+        </button>
+      </div>
+
+      {state.error && <p role="alert">Unavailable: {state.error}</p>}
+
+      {state.status === "available" && (
+        <>
+          <p aria-live="polite" style={{ color: "#7c2d12", fontSize: 13 }}>
+            {state.candidates.length} candidates ready for owner review; {state.rejected.length} rows rejected.
+            {state.retrievedAt ? ` Retrieved ${state.retrievedAt}.` : ""}
+          </p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {state.candidates.map((candidate) => (
+              <article key={candidate.externalId} style={{ background: "white", border: "1px solid #fed7aa", borderRadius: 8, padding: 10 }}>
+                <strong>{candidate.codeEnforcementCaseId}</strong>
+                <div style={{ color: "#431407", fontSize: 13, marginTop: 4 }}>
+                  Address: {formatValue(candidate.address)} | ZIP: {formatValue(candidate.zipCode)} | Parcel: {formatValue(candidate.parcelNumber)}
+                </div>
+                <div style={{ color: "#431407", fontSize: 13, marginTop: 4 }}>
+                  Due: {formatValue(candidate.dueDate)} | Status: {formatValue(candidate.caseStatus)} | Source: {candidate.source}
+                </div>
+                <div style={{ color: "#431407", fontSize: 13, marginTop: 4 }}>
+                  Retrieved: {formatValue(candidate.retrievedAt)} | OCPA: {formatValue(candidate.enrichment?.status)}
+                </div>
+                {candidate.enrichment?.status === "ambiguous" && (
+                  <div style={{ color: "#9a3412", fontSize: 13, marginTop: 4 }}>
+                    Multiple exact parcel records returned; property facts withheld.
+                  </div>
+                )}
+                {candidate.enrichment?.status === "unmatched" && (
+                  <div style={{ color: "#9a3412", fontSize: 13, marginTop: 4 }}>
+                    No exact parcel record returned; property facts withheld.
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+          {state.rejected.length > 0 && (
+            <details style={{ marginTop: 10 }}>
+              <summary>Rejected source rows ({state.rejected.length})</summary>
+              <ul>
+                {state.rejected.map((row, index) => (
+                  <li key={`${row.candidate?.sourceRecordId || "row"}-${index}`}>
+                    Record {row.candidate?.sourceRecordId || "unknown"}: {row.rejectionReasons.join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {state.page?.hasMore && (
+            <button type="button" onClick={() => loadPage(state.page.nextCursor)} style={{ marginTop: 10 }}>
+              Next source page
+            </button>
+          )}
+        </>
+      )}
+
+      {state.status === "idle" && (
+        <p style={{ color: "#7c2d12", fontSize: 13, marginBottom: 0 }}>
+          Load a bounded source page to review {ORANGE_COUNTY_CODE_ENFORCEMENT_SOURCE} candidates.
+        </p>
+      )}
+    </section>
+  );
+}

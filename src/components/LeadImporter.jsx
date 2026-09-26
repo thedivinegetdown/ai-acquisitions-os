@@ -6,6 +6,7 @@ import {
 } from "../services/leadIntake";
 import { formatNonNegativeUsd } from "../utils/currency";
 import OrangeCountyTaxSaleDiscovery from "./OrangeCountyTaxSaleDiscovery";
+import OrangeCountyCodeEnforcementDiscovery from "./OrangeCountyCodeEnforcementDiscovery";
 
 const fieldStyle = {
   border: "1px solid #d1d5db",
@@ -237,6 +238,7 @@ export default function LeadImporter({ deals = [], refresh }) {
       </div>
 
       <OrangeCountyTaxSaleDiscovery />
+      <OrangeCountyCodeEnforcementDiscovery />
 
       <div
         style={{
