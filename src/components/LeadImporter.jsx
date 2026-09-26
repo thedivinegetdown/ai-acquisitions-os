@@ -5,6 +5,7 @@ import {
   parseCsvLeadText,
 } from "../services/leadIntake";
 import { formatNonNegativeUsd } from "../utils/currency";
+import OrangeCountyTaxSaleDiscovery from "./OrangeCountyTaxSaleDiscovery";
 
 const fieldStyle = {
   border: "1px solid #d1d5db",
@@ -234,6 +235,8 @@ export default function LeadImporter({ deals = [], refresh }) {
           Preview is read-only
         </span>
       </div>
+
+      <OrangeCountyTaxSaleDiscovery />
 
       <div
         style={{
