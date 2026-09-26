@@ -16,6 +16,16 @@ function formatValue(value) {
   return value === null || value === undefined || value === "" ? "Not provided" : value;
 }
 
+function formatNumber(value) {
+  return value === null || value === undefined ? "Not provided" : Number(value).toLocaleString();
+}
+
+function formatMoney(value) {
+  return value === null || value === undefined
+    ? "Not provided"
+    : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
 export default function OrangeCountyTaxSaleDiscovery() {
   const [state, setState] = useState({
     status: "idle",
@@ -79,6 +89,33 @@ export default function OrangeCountyTaxSaleDiscovery() {
                 <strong>{candidate.externalTaxDeedNumber}</strong>
                 <div style={{ color: "#431407", fontSize: 13, marginTop: 4 }}>
                   Source: {candidate.source} | Parcel: {candidate.parcelNumber} | Sale date: {formatValue(candidate.saleDate)} | Status: {formatValue(candidate.deedStatus)}
+                </div>
+                <div style={{ borderTop: "1px solid #ffedd5", color: "#431407", fontSize: 13, marginTop: 8, paddingTop: 8 }}>
+                  <strong>OCPA: {formatValue(candidate.enrichment?.status)}</strong>
+                  {candidate.enrichment?.status === "matched" && (
+                    <>
+                      <div>Address: {formatValue(candidate.enrichment.address)}, {formatValue(candidate.enrichment.city)} {formatValue(candidate.enrichment.zip)}</div>
+                      <div>Owner: {formatValue(candidate.enrichment.owner)}</div>
+                      <div>
+                        Use: {formatValue(candidate.enrichment.propertyUse?.dorCode)} | Beds/Baths: {formatValue(candidate.enrichment.facts?.beds)}/{formatValue(candidate.enrichment.facts?.baths)} | Living area: {formatNumber(candidate.enrichment.facts?.livingArea)} sq ft | Year built: {formatValue(candidate.enrichment.facts?.yearBuilt)}
+                      </div>
+                      <div>
+                        Acreage: {formatValue(candidate.enrichment.facts?.acreage)} | Zoning: {formatValue(candidate.enrichment.facts?.zoning)} | OCPA market/assessment: {formatMoney(candidate.enrichment.assessment?.marketValue)} / {formatMoney(candidate.enrichment.assessment?.assessedValue)}
+                      </div>
+                      <div>
+                        Recent sale: {formatValue(candidate.enrichment.recentSale?.date)} · {formatMoney(candidate.enrichment.recentSale?.adjustedValue)}
+                      </div>
+                    </>
+                  )}
+                  {candidate.enrichment?.status === "ambiguous" && (
+                    <div>Multiple exact parcel records returned; property facts withheld.</div>
+                  )}
+                  {candidate.enrichment?.status === "unmatched" && (
+                    <div>No exact parcel record returned; property facts withheld.</div>
+                  )}
+                  <div>
+                    Enrichment source: {formatValue(candidate.enrichment?.source)} | Retrieved: {formatValue(candidate.enrichment?.retrievedAt)}
+                  </div>
                 </div>
               </article>
             ))}

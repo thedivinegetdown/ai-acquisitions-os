@@ -10,6 +10,9 @@ const TAX_SALE_FIELDS = [
   "USER_Deed_Status",
   "USER_PARCEL",
 ];
+const {
+  enrichTaxSaleCandidatesWithOcpa,
+} = require("./orange-county-property-appraiser.cjs");
 
 function clean(value, maxLength = 240) {
   if (value === null || value === undefined) return "";
@@ -86,6 +89,7 @@ async function fetchOrangeCountyTaxSalePage({
   cursor = 0,
   pageSize = 100,
   fetchImpl = fetch,
+  parcelFetchImpl = fetchImpl,
   retrievedAt = new Date().toISOString(),
   timeoutMs = TAX_SALE_TIMEOUT_MS,
 } = {}) {
@@ -119,6 +123,11 @@ async function fetchOrangeCountyTaxSalePage({
     }
 
     const { candidates, rejected } = normalizeTaxSalePage(body.features, retrievedAt);
+    const enrichedCandidates = await enrichTaxSaleCandidatesWithOcpa(candidates, {
+      fetchImpl: parcelFetchImpl,
+      retrievedAt,
+      timeoutMs,
+    });
     const lastSourceRecordId = body.features.reduce(
       (highest, feature) =>
         Math.max(highest, positiveInteger(feature?.attributes?.ObjectID, highest)),
@@ -130,7 +139,7 @@ async function fetchOrangeCountyTaxSalePage({
     return {
       status: "available",
       source: TAX_SALE_SOURCE,
-      candidates,
+      candidates: enrichedCandidates,
       rejected,
       retrievedAt,
       page: {

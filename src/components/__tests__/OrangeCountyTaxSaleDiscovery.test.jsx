@@ -9,6 +9,10 @@ const {
   fetchOrangeCountyTaxSalePage,
   normalizeTaxSalePage,
 } = require("../../../netlify/functions/_shared/orange-county-tax-sale.cjs");
+const {
+  enrichTaxSaleCandidatesWithOcpa,
+  normalizeParcelId,
+} = require("../../../netlify/functions/_shared/orange-county-property-appraiser.cjs");
 const { createHandler } = require("../../../netlify/functions/orange-county-tax-sale.js");
 
 const { fetchCandidates } = vi.hoisted(() => ({
@@ -40,6 +44,40 @@ function responseBody(response) {
   return JSON.parse(response.body);
 }
 
+function ocpaFeature(objectId, parcel, overrides = {}) {
+  return {
+    attributes: {
+      OBJECTID: objectId,
+      PARCEL: parcel,
+      NAME1: "OWNER ONE",
+      NAME2: "OWNER TWO",
+      PROP_NAME: "EXAMPLE PROPERTY",
+      DOR_CODE: "0100",
+      PARCEL_CATEGORY: "R",
+      BLDG_DOR_CODE: "0100",
+      SITUS: "123 EXAMPLE ST",
+      SITUS_CITY: "Orlando",
+      SITUS_ZIP: "32801",
+      STYS: 1,
+      BATH: 2,
+      BEDS: 3,
+      LIVING_AREA: 1450,
+      POOL: "N",
+      AYB: 1998,
+      ACREAGE: 0.21,
+      ZONING_CODE: "R-1",
+      TOTAL_MKT: 310000,
+      TOTAL_ASSD: 250000,
+      TAXABLE: 225000,
+      TAXES: 3200,
+      SALE_DATE: 1704067200000,
+      SALE_ADJ_VALUE: 275000,
+      QUAL_CODE: "Q",
+      ...overrides,
+    },
+  };
+}
+
 describe("Orange County Tax Sale lead discovery acceptance", () => {
   beforeEach(() => {
     fetchCandidates.mockReset();
@@ -47,6 +85,15 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
 
   it("fetches deterministic bounded pages and returns unique normalized candidates", async () => {
     const fetchImpl = vi.fn(async (url) => {
+      if (url.includes("DynamicForJs/PARCEL")) {
+        const where = new URL(url).searchParams.get("where");
+        const parcels = [...where.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ features: parcels.map((parcel, index) => ocpaFeature(index + 1, parcel)) }),
+        };
+      }
       const cursor = Number(new URL(url).searchParams.get("where").split(">")[1]);
       return {
         ok: true,
@@ -98,12 +145,67 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
     expect(second.page).toMatchObject({ cursor: 3, nextCursor: null, hasMore: false });
     expect(new Set([...first.candidates, ...second.candidates].map((row) => row.externalId)).size).toBe(2);
 
-    for (const call of fetchImpl.mock.calls) {
+    for (const call of fetchImpl.mock.calls.filter(([url]) => url.includes("Tax_Sale_Data"))) {
       const query = new URL(call[0]).searchParams;
       expect(query.get("orderByFields")).toBe("ObjectID ASC");
       expect(query.get("returnGeometry")).toBe("false");
       expect(Number(query.get("resultRecordCount"))).toBeLessThanOrEqual(200);
     }
+  });
+
+  it("enriches only one exact normalized parcel match and fails closed for zero or multiple matches", async () => {
+    const candidates = [
+      { externalId: "orange-county-tax-sale:tda-1", parcelNumber: "30-24-30-2665-07-203" },
+      { externalId: "orange-county-tax-sale:tda-2", parcelNumber: "32-22-30-9000-15-940" },
+      { externalId: "orange-county-tax-sale:tda-3", parcelNumber: "30-24-31-4860-02-032" },
+    ];
+    const fetchImpl = vi.fn(async (url) => {
+      const query = new URL(url).searchParams;
+      expect(query.get("where")).toBe(
+        "PARCEL IN ('302430266507203','322230900015940','302431486002032')"
+      );
+      expect(query.get("returnGeometry")).toBe("false");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          features: [
+            ocpaFeature(1, "302430266507203"),
+            ocpaFeature(2, "302431486002032", { NAME1: "FIRST POSSIBLE OWNER" }),
+            ocpaFeature(3, "302431486002032", { NAME1: "SECOND POSSIBLE OWNER" }),
+            ocpaFeature(4, "999999999999999", { NAME1: "UNRELATED OWNER" }),
+          ],
+        }),
+      };
+    });
+
+    const enriched = await enrichTaxSaleCandidatesWithOcpa(candidates, {
+      fetchImpl,
+      retrievedAt,
+    });
+
+    expect(normalizeParcelId(candidates[0].parcelNumber)).toBe("302430266507203");
+    expect(enriched.map((candidate) => candidate.enrichment.status)).toEqual([
+      "matched",
+      "unmatched",
+      "ambiguous",
+    ]);
+    expect(enriched[0].enrichment).toMatchObject({
+      source: "orange-county-property-appraiser",
+      retrievedAt,
+      parcelId: "302430266507203",
+      owner: "OWNER ONE / OWNER TWO",
+      address: "123 EXAMPLE ST",
+      city: "Orlando",
+      zip: "32801",
+      propertyUse: { dorCode: "0100", parcelCategory: "R", buildingDorCode: "0100" },
+      facts: { beds: 3, baths: 2, livingArea: 1450, yearBuilt: 1998, acreage: 0.21, zoning: "R-1" },
+      assessment: { marketValue: 310000, assessedValue: 250000 },
+      recentSale: { date: "2024-01-01T00:00:00.000Z", adjustedValue: 275000, qualificationCode: "Q" },
+    });
+    expect(enriched[1].enrichment).not.toHaveProperty("owner");
+    expect(enriched[2].enrichment).toMatchObject({ matchCount: 2 });
+    expect(enriched[2].enrichment).not.toHaveProperty("owner");
   });
 
   it("rejects every incomplete identity row instead of inventing identity", () => {
@@ -186,6 +288,20 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
             deedStatus: "Scheduled",
             retrievedAt,
             reviewState: "preview",
+            enrichment: {
+              status: "matched",
+              source: "orange-county-property-appraiser",
+              retrievedAt,
+              parcelId: "PARCEL100",
+              owner: "OWNER ONE",
+              address: "123 EXAMPLE ST",
+              city: "Orlando",
+              zip: "32801",
+              propertyUse: { dorCode: "0100" },
+              facts: { beds: 3, baths: 2, livingArea: 1450, yearBuilt: 1998, acreage: 0.21, zoning: "R-1" },
+              assessment: { marketValue: 310000, assessedValue: 250000 },
+              recentSale: { date: "2024-01-01T00:00:00.000Z", adjustedValue: 275000 },
+            },
           },
         ],
         rejected: [],
@@ -208,19 +324,25 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
       "Parcel: PARCEL-100 | Sale date: 10/15/2026 | Status: Scheduled"
     );
     expect(screen.getByText(/preview does not create deals/i)).toBeInTheDocument();
+    expect(screen.getByText("OCPA: matched")).toBeInTheDocument();
+    expect(screen.getByText(/Address: 123 EXAMPLE ST/)).toBeInTheDocument();
+    expect(screen.getByText(/Owner: OWNER ONE/)).toBeInTheDocument();
+    expect(screen.getByText(/OCPA market\/assessment: \$310,000 \/ \$250,000/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`Enrichment source: orange-county-property-appraiser \\| Retrieved: ${retrievedAt}`))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /create|import|pipeline|enrich/i })).not.toBeInTheDocument();
   });
 
-  it("contains no deal, RentCast, OCPA, messaging, or task side-effect path", () => {
+  it("contains no deal, RentCast, messaging, or task side-effect path", () => {
     const implementation = [
       readFileSync("src/components/OrangeCountyTaxSaleDiscovery.jsx", "utf8"),
       readFileSync("src/services/leadDiscovery/orangeCountyTaxSaleSource.js", "utf8"),
       readFileSync("netlify/functions/orange-county-tax-sale.js", "utf8"),
       readFileSync("netlify/functions/_shared/orange-county-tax-sale.cjs", "utf8"),
+      readFileSync("netlify/functions/_shared/orange-county-property-appraiser.cjs", "utf8"),
     ].join("\n").toLowerCase();
 
     expect(implementation).not.toMatch(
-      /persistimporteddeals|createdeal|rentcast|ocpa|send-sms|send-email|seller_tasks/
+      /persistimporteddeals|createdeal|rentcast|send-sms|send-email|seller_tasks/
     );
   });
 });
