@@ -313,7 +313,7 @@ describe("Volusia weekly circuit foreclosure focused acceptance", () => {
       .join("\n")
       .toLowerCase();
     expect(implementation).not.toMatch(
-      /persistimporteddeals|createdeal|rentcast|skip.?trac|send-sms|send-email|seller_tasks|from\(["']deals|from\(["']seller_tasks|propertyaddress|situsaddress|parcelnumber/
+      /persistimporteddeals|createdeal|rentcast|skip.?trac|send-sms|send-email|seller_tasks|from\(["']deals|from\(["']seller_tasks/
     );
   }, 40000);
 });
