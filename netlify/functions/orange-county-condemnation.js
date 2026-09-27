@@ -43,7 +43,7 @@ function createHandler({
       const page = await sourceRequest({ cursor, pageSize, retrievedAt: clock() });
       return json(200, { success: true, ...page });
     } catch (error) {
-      return json(error?.status === 504 ? 504 : 502, {
+      return json(error?.status === 503 ? 503 : error?.status === 504 ? 504 : 502, {
         success: false,
         status: "unavailable",
         source: "orange-county-condemnation",

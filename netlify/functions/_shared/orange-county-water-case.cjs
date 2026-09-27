@@ -1,8 +1,7 @@
 const WATER_CASE_SOURCE = "orange-county-water-case";
-const WATER_CASE_LAYER_URL =
-  "https://services.arcgis.com/apTfC6SUmnNfnxuF/ArcGIS/rest/services/CodeEnforcementCasesMapService/FeatureServer/2/query";
 const WATER_CASE_MAX_PAGE_SIZE = 200;
-const WATER_CASE_TIMEOUT_MS = 10000;
+const WATER_CASE_UNAVAILABLE_REASON =
+  "UNAVAILABLE: no authoritative Orange County structured water-case source has been proven.";
 const WATER_CASE_FIELDS = [
   "ObjectID",
   "Permits_Pl",
@@ -13,10 +12,6 @@ const WATER_CASE_FIELDS = [
   "DUE_DATE",
   "STATUS",
 ];
-const {
-  enrichCandidatesWithOcpa,
-} = require("./orange-county-property-appraiser.cjs");
-
 function clean(value, maxLength = 240) {
   if (value === null || value === undefined) return "";
   const normalized = String(value).trim().replace(/\s+/g, " ");
@@ -90,95 +85,17 @@ function normalizeWaterCasePage(features, retrievedAt) {
   return { candidates, rejected };
 }
 
-async function fetchOrangeCountyWaterCasePage({
-  cursor = 0,
-  pageSize = 100,
-  fetchImpl = fetch,
-  parcelFetchImpl = fetchImpl,
-  retrievedAt = new Date().toISOString(),
-  timeoutMs = WATER_CASE_TIMEOUT_MS,
-} = {}) {
-  const safeCursor = positiveInteger(cursor, 0);
-  const safePageSize = Math.min(
-    Math.max(1, positiveInteger(pageSize, 100)),
-    WATER_CASE_MAX_PAGE_SIZE
-  );
-  const params = new URLSearchParams({
-    f: "json",
-    where: `ObjectID > ${safeCursor}`,
-    outFields: WATER_CASE_FIELDS.join(","),
-    returnGeometry: "false",
-    orderByFields: "ObjectID ASC",
-    resultRecordCount: String(safePageSize),
-  });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetchImpl(`${WATER_CASE_LAYER_URL}?${params}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body || body.error || !Array.isArray(body.features)) {
-      const error = new Error("Orange County Active Water Cases are unavailable.");
-      error.status = response.status || 502;
-      throw error;
-    }
-
-    const { candidates, rejected } = normalizeWaterCasePage(body.features, retrievedAt);
-    const enrichedCandidates = await enrichCandidatesWithOcpa(candidates, {
-      fetchImpl: parcelFetchImpl,
-      retrievedAt,
-      timeoutMs,
-    });
-    const lastSourceCursor = body.features.reduce(
-      (highest, feature) =>
-        Math.max(highest, positiveInteger(feature?.attributes?.ObjectID, highest)),
-      safeCursor
-    );
-    const hasMore =
-      body.features.length > 0 &&
-      (body.exceededTransferLimit === true || body.features.length === safePageSize);
-
-    if (hasMore && lastSourceCursor <= safeCursor) {
-      const error = new Error("Orange County water-case pagination did not advance safely.");
-      error.status = 502;
-      throw error;
-    }
-
-    return {
-      status: "available",
-      source: WATER_CASE_SOURCE,
-      candidates: enrichedCandidates,
-      rejected,
-      retrievedAt,
-      page: {
-        cursor: safeCursor,
-        nextCursor: hasMore ? lastSourceCursor : null,
-        pageSize: safePageSize,
-        sourceRowCount: body.features.length,
-        hasMore,
-      },
-    };
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      const timeoutError = new Error("Orange County Active Water Cases request timed out.");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+async function fetchOrangeCountyWaterCasePage() {
+  const error = new Error(WATER_CASE_UNAVAILABLE_REASON);
+  error.status = 503;
+  throw error;
 }
 
 module.exports = {
   WATER_CASE_FIELDS,
-  WATER_CASE_LAYER_URL,
   WATER_CASE_MAX_PAGE_SIZE,
   WATER_CASE_SOURCE,
+  WATER_CASE_UNAVAILABLE_REASON,
   buildExternalIdentity,
   fetchOrangeCountyWaterCasePage,
   normalizeWaterCaseFeature,
