@@ -5,6 +5,7 @@ const FUNCTION_AUTHORIZATION_MATRIX = Object.freeze({
   "orange-county-tax-sale": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
   "orange-county-code-enforcement": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
   "orange-county-code-enforcement-lien": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
+  "orange-county-condemnation": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
   "send-sms": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
   "send-email": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
   "create-checkout-session": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
