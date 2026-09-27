@@ -11,6 +11,8 @@ import OrangeCountyCodeEnforcementLienDiscovery from "./OrangeCountyCodeEnforcem
 import OrangeCountyCondemnationDiscovery from "./OrangeCountyCondemnationDiscovery";
 import OrangeCountyWaterCaseDiscovery from "./OrangeCountyWaterCaseDiscovery";
 import VolusiaCircuitForeclosureDiscovery from "./VolusiaCircuitForeclosureDiscovery";
+import VolusiaTaxDeedSaleDiscovery from "./VolusiaTaxDeedSaleDiscovery";
+import VolusiaCodeComplianceDiscovery from "./VolusiaCodeComplianceDiscovery";
 
 const fieldStyle = {
   border: "1px solid #d1d5db",
@@ -247,6 +249,8 @@ export default function LeadImporter({ deals = [], refresh }) {
       <OrangeCountyCondemnationDiscovery />
       <OrangeCountyWaterCaseDiscovery />
       <VolusiaCircuitForeclosureDiscovery />
+      <VolusiaTaxDeedSaleDiscovery />
+      <VolusiaCodeComplianceDiscovery />
 
       <div
         style={{
