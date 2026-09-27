@@ -1,8 +1,7 @@
 const CODE_ENFORCEMENT_LIEN_SOURCE = "orange-county-code-enforcement-lien";
-const CODE_ENFORCEMENT_LIEN_LAYER_URL =
-  "https://services.arcgis.com/apTfC6SUmnNfnxuF/ArcGIS/rest/services/CodeEnforcementCasesMapService/FeatureServer/3/query";
 const CODE_ENFORCEMENT_LIEN_MAX_PAGE_SIZE = 200;
-const CODE_ENFORCEMENT_LIEN_TIMEOUT_MS = 10000;
+const CODE_ENFORCEMENT_LIEN_UNAVAILABLE_REASON =
+  "UNAVAILABLE: no authoritative Orange County structured Code Enforcement lien source has been proven.";
 const CODE_ENFORCEMENT_LIEN_FIELDS = [
   "ObjectID",
   "Permits_Pl",
@@ -11,10 +10,6 @@ const CODE_ENFORCEMENT_LIEN_FIELDS = [
   "PARCEL_NO",
   "BALANCE",
 ];
-const {
-  enrichCandidatesWithOcpa,
-} = require("./orange-county-property-appraiser.cjs");
-
 function clean(value, maxLength = 240) {
   if (value === null || value === undefined) return "";
   const normalized = String(value).trim().replace(/\s+/g, " ");
@@ -106,98 +101,17 @@ function normalizeCodeEnforcementLienPage(features, retrievedAt) {
   return { candidates, rejected };
 }
 
-async function fetchOrangeCountyCodeEnforcementLienPage({
-  cursor = 0,
-  pageSize = 100,
-  fetchImpl = fetch,
-  parcelFetchImpl = fetchImpl,
-  retrievedAt = new Date().toISOString(),
-  timeoutMs = CODE_ENFORCEMENT_LIEN_TIMEOUT_MS,
-} = {}) {
-  const safeCursor = positiveInteger(cursor, 0);
-  const safePageSize = Math.min(
-    Math.max(1, positiveInteger(pageSize, 100)),
-    CODE_ENFORCEMENT_LIEN_MAX_PAGE_SIZE
-  );
-  const params = new URLSearchParams({
-    f: "json",
-    where: `ObjectID > ${safeCursor}`,
-    outFields: CODE_ENFORCEMENT_LIEN_FIELDS.join(","),
-    returnGeometry: "false",
-    orderByFields: "ObjectID ASC",
-    resultRecordCount: String(safePageSize),
-  });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetchImpl(`${CODE_ENFORCEMENT_LIEN_LAYER_URL}?${params}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body || body.error || !Array.isArray(body.features)) {
-      const error = new Error("Orange County Active Code Enforcement Liens are unavailable.");
-      error.status = response.status || 502;
-      throw error;
-    }
-
-    const { candidates, rejected } = normalizeCodeEnforcementLienPage(
-      body.features,
-      retrievedAt
-    );
-    const enrichedCandidates = await enrichCandidatesWithOcpa(candidates, {
-      fetchImpl: parcelFetchImpl,
-      retrievedAt,
-      timeoutMs,
-    });
-    const lastSourceCursor = body.features.reduce(
-      (highest, feature) =>
-        Math.max(highest, positiveInteger(feature?.attributes?.ObjectID, highest)),
-      safeCursor
-    );
-    const hasMore =
-      body.features.length > 0 &&
-      (body.exceededTransferLimit === true || body.features.length === safePageSize);
-
-    if (hasMore && lastSourceCursor <= safeCursor) {
-      const error = new Error("Orange County lien pagination did not advance safely.");
-      error.status = 502;
-      throw error;
-    }
-
-    return {
-      status: "available",
-      source: CODE_ENFORCEMENT_LIEN_SOURCE,
-      candidates: enrichedCandidates,
-      rejected,
-      retrievedAt,
-      page: {
-        cursor: safeCursor,
-        nextCursor: hasMore ? lastSourceCursor : null,
-        pageSize: safePageSize,
-        sourceRowCount: body.features.length,
-        hasMore,
-      },
-    };
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      const timeoutError = new Error("Orange County Active Code Enforcement Liens request timed out.");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+async function fetchOrangeCountyCodeEnforcementLienPage() {
+  const error = new Error(CODE_ENFORCEMENT_LIEN_UNAVAILABLE_REASON);
+  error.status = 503;
+  throw error;
 }
 
 module.exports = {
   CODE_ENFORCEMENT_LIEN_FIELDS,
-  CODE_ENFORCEMENT_LIEN_LAYER_URL,
   CODE_ENFORCEMENT_LIEN_MAX_PAGE_SIZE,
   CODE_ENFORCEMENT_LIEN_SOURCE,
+  CODE_ENFORCEMENT_LIEN_UNAVAILABLE_REASON,
   buildExternalIdentity,
   fetchOrangeCountyCodeEnforcementLienPage,
   normalizeCodeEnforcementLienFeature,

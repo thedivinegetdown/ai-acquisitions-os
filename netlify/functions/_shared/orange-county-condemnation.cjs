@@ -1,8 +1,7 @@
 const CONDEMNATION_SOURCE = "orange-county-condemnation";
-const CONDEMNATION_LAYER_URL =
-  "https://services.arcgis.com/apTfC6SUmnNfnxuF/ArcGIS/rest/services/CodeEnforcementCasesMapService/FeatureServer/1/query";
 const CONDEMNATION_MAX_PAGE_SIZE = 200;
-const CONDEMNATION_TIMEOUT_MS = 10000;
+const CONDEMNATION_UNAVAILABLE_REASON =
+  "UNAVAILABLE: no authoritative Orange County structured condemnation source has been proven.";
 const CONDEMNATION_FIELDS = [
   "ObjectID",
   "CASE_",
@@ -10,10 +9,6 @@ const CONDEMNATION_FIELDS = [
   "FOLIO",
   "ADDRESS",
 ];
-const {
-  enrichCandidatesWithOcpa,
-} = require("./orange-county-property-appraiser.cjs");
-
 function clean(value, maxLength = 240) {
   if (value === null || value === undefined) return "";
   const normalized = String(value).trim().replace(/\s+/g, " ");
@@ -89,98 +84,17 @@ function normalizeCondemnationPage(features, retrievedAt) {
   return { candidates, rejected };
 }
 
-async function fetchOrangeCountyCondemnationPage({
-  cursor = 0,
-  pageSize = 100,
-  fetchImpl = fetch,
-  parcelFetchImpl = fetchImpl,
-  retrievedAt = new Date().toISOString(),
-  timeoutMs = CONDEMNATION_TIMEOUT_MS,
-} = {}) {
-  const safeCursor = positiveInteger(cursor, 0);
-  const safePageSize = Math.min(
-    Math.max(1, positiveInteger(pageSize, 100)),
-    CONDEMNATION_MAX_PAGE_SIZE
-  );
-  const params = new URLSearchParams({
-    f: "json",
-    where: `ObjectID > ${safeCursor}`,
-    outFields: CONDEMNATION_FIELDS.join(","),
-    returnGeometry: "false",
-    orderByFields: "ObjectID ASC",
-    resultRecordCount: String(safePageSize),
-  });
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetchImpl(`${CONDEMNATION_LAYER_URL}?${params}`, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body || body.error || !Array.isArray(body.features)) {
-      const error = new Error("Orange County Active Condemnations are unavailable.");
-      error.status = response.status || 502;
-      throw error;
-    }
-
-    const { candidates, rejected } = normalizeCondemnationPage(
-      body.features,
-      retrievedAt
-    );
-    const enrichedCandidates = await enrichCandidatesWithOcpa(candidates, {
-      fetchImpl: parcelFetchImpl,
-      retrievedAt,
-      timeoutMs,
-    });
-    const lastSourceCursor = body.features.reduce(
-      (highest, feature) =>
-        Math.max(highest, positiveInteger(feature?.attributes?.ObjectID, highest)),
-      safeCursor
-    );
-    const hasMore =
-      body.features.length > 0 &&
-      (body.exceededTransferLimit === true || body.features.length === safePageSize);
-
-    if (hasMore && lastSourceCursor <= safeCursor) {
-      const error = new Error("Orange County condemnation pagination did not advance safely.");
-      error.status = 502;
-      throw error;
-    }
-
-    return {
-      status: "available",
-      source: CONDEMNATION_SOURCE,
-      candidates: enrichedCandidates,
-      rejected,
-      retrievedAt,
-      page: {
-        cursor: safeCursor,
-        nextCursor: hasMore ? lastSourceCursor : null,
-        pageSize: safePageSize,
-        sourceRowCount: body.features.length,
-        hasMore,
-      },
-    };
-  } catch (error) {
-    if (error?.name === "AbortError") {
-      const timeoutError = new Error("Orange County Active Condemnations request timed out.");
-      timeoutError.status = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+async function fetchOrangeCountyCondemnationPage() {
+  const error = new Error(CONDEMNATION_UNAVAILABLE_REASON);
+  error.status = 503;
+  throw error;
 }
 
 module.exports = {
   CONDEMNATION_FIELDS,
-  CONDEMNATION_LAYER_URL,
   CONDEMNATION_MAX_PAGE_SIZE,
   CONDEMNATION_SOURCE,
+  CONDEMNATION_UNAVAILABLE_REASON,
   buildExternalIdentity,
   fetchOrangeCountyCondemnationPage,
   folioOrNull,
