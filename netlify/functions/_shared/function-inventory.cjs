@@ -10,6 +10,7 @@ const FUNCTION_AUTHORIZATION_MATRIX = Object.freeze({
   "volusia-circuit-foreclosure": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
   "volusia-parcel-ownership": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
   "volusia-tax-deed-sale": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: false }),
+  "volusia-code-compliance": Object.freeze({ classification: "internal-owner-api", tenant: true, mutation: false }),
   "send-sms": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
   "send-email": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
   "create-checkout-session": Object.freeze({ classification: "user-authenticated-api", tenant: true, mutation: true }),
