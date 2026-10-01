@@ -15,6 +15,7 @@ import {
   buildTodayBriefing,
   buildTodayReadModel,
   TODAY_CATEGORY_LABELS,
+  TODAY_RESULT_LIMIT,
 } from "../../services/today";
 
 const CATEGORY_STATUS = {
@@ -284,6 +285,7 @@ export default function TodayWorkspace({
   const [refreshError, setRefreshError] = useState("");
   const [commitmentBusyId, setCommitmentBusyId] = useState("");
   const [commitmentActionError, setCommitmentActionError] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(TODAY_RESULT_LIMIT);
 
   const readModel = useMemo(
     () =>
@@ -297,6 +299,7 @@ export default function TodayWorkspace({
           commitmentActionError,
           ...commitmentErrors,
         ].filter(Boolean),
+        limit: visibleLimit,
         sellerTasks,
         sequenceSteps,
       }),
@@ -310,6 +313,7 @@ export default function TodayWorkspace({
       refreshError,
       sellerTasks,
       sequenceSteps,
+      visibleLimit,
     ]
   );
   const briefing = useMemo(() => buildTodayBriefing(readModel), [readModel]);
@@ -434,6 +438,14 @@ export default function TodayWorkspace({
           {readModel.notices.map((notice) => (
             <Card key={notice} muted>{notice}</Card>
           ))}
+          {readModel.continuation?.available ? (
+            <Button
+              onClick={() => setVisibleLimit(readModel.continuation.nextLimit)}
+              variant="secondary"
+            >
+              Show more Today work ({readModel.continuation.remaining} remaining)
+            </Button>
+          ) : null}
           <BriefingCard briefing={briefing} />
           {readModel.items.length === 0 ? (
             <EmptyState
