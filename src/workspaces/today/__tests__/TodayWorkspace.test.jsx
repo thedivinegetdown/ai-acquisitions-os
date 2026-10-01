@@ -147,6 +147,73 @@ describe("TodayWorkspace", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("makes the deterministic 51st deal action reachable without weakening commitment dedupe", () => {
+    vi.setSystemTime(new Date("2026-10-01T12:00:00.000Z"));
+    const exactAction = "Run one RentCast property research lookup and compare it with OCPA/tax-sale facts";
+    const conversations = Array.from({ length: 45 }, (_, index) => ({
+      compatibilityKey: `conversation-${index}`,
+      phone: `+1555000${String(index).padStart(4, "0")}`,
+      lastMessageDirection: "inbound",
+      lastMessagePreview: `Seller reply ${index}`,
+      lastMessageTimestamp: new Date(Date.UTC(2026, 6, 30, 11, index)).toISOString(),
+    }));
+    const exactDeal = {
+      id: "312a97dd-769c-4b93-bc1c-8c40c8c01bd6",
+      property_address: "1306 WINTER GREEN WAY",
+      next_action: exactAction,
+      due_date: "2026-10-02",
+      source: "orange-county-tax-sale",
+      stage: "New Lead",
+    };
+    const duplicateDeal = {
+      id: "dedupe-deal",
+      property_address: "456 Dedupe Street",
+      next_action: "Review duplicate obligation",
+      due_date: "2026-10-01",
+      stage: "New Lead",
+    };
+
+    render(
+      <TodayWorkspace
+        conversations={conversations}
+        deals={[exactDeal, duplicateDeal]}
+        sellerTasks={[{
+          id: "seller-task-1",
+          deal_id: "dedupe-deal",
+          title: "Review duplicate obligation",
+          due_at: "2026-10-01",
+          status: "open",
+        }]}
+        sequenceSteps={[{
+          id: "sequence-step-1",
+          deal_id: "dedupe-deal",
+          action_type: "Review duplicate obligation",
+          due_date: "2026-10-01",
+          status: "open",
+        }]}
+      />
+    );
+
+    expect(screen.getByText(/50 highest-priority items from 51 relevant Today items/i)).toBeInTheDocument();
+    expect(screen.queryByText(exactAction)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more Today work (1 remaining)" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting (1)" }));
+
+    const waitingList = screen.getByLabelText("Waiting work list");
+    expect(within(waitingList).getByText(exactAction)).toBeInTheDocument();
+    const waitingItems = within(waitingList).getAllByRole("article");
+    expect(waitingItems).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("tab", { name: /Act Now/ }));
+    const actNowList = screen.getByLabelText("Act Now work list");
+    expect(within(actNowList).getByText("Seller Tasks")).toBeInTheDocument();
+    expect(within(actNowList).getAllByRole("article").filter((item) =>
+      item.textContent.includes("Review duplicate obligation")
+    )).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /Show more Today work/ })).not.toBeInTheDocument();
+  });
+
   it("completes and reschedules durable commitments through Today controls", async () => {
     const refresh = vi.fn().mockResolvedValue();
     const refreshCommitments = vi.fn().mockResolvedValue();

@@ -585,7 +585,12 @@ export function buildTodayReadModel({
     totalRelevant: rankedItems.length,
     hasMore,
     continuation: hasMore
-      ? { available: true, targetWorkspaces: ["pipeline", "inbox", "approvals"] }
+      ? {
+          available: true,
+          nextLimit: Math.min(rankedItems.length, resultLimit + TODAY_RESULT_LIMIT),
+          remaining: rankedItems.length - items.length,
+          targetWorkspaces: ["pipeline", "inbox", "approvals"],
+        }
       : null,
     notices: hasMore
       ? [`Showing the ${items.length} highest-priority items from ${rankedItems.length} relevant Today items.`]
