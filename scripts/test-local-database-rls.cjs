@@ -105,7 +105,7 @@ function activationMustFail(target, label) {
   psql(target, { expectFailure: true, file: activationFile, label });
   psql(target, {
     label: `${label} rollback verification`,
-    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage','operational_failure_diagnostics')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
+    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage','operational_failure_diagnostics','property_provider_evidence')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
   });
 }
 
