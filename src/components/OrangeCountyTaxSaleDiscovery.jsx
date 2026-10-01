@@ -26,7 +26,7 @@ function formatMoney(value) {
     : Number(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-export default function OrangeCountyTaxSaleDiscovery() {
+export default function OrangeCountyTaxSaleDiscovery({ onReviewCandidate }) {
   const [state, setState] = useState({
     status: "idle",
     candidates: [],
@@ -117,6 +117,11 @@ export default function OrangeCountyTaxSaleDiscovery() {
                     Enrichment source: {formatValue(candidate.enrichment?.source)} | Retrieved: {formatValue(candidate.enrichment?.retrievedAt)}
                   </div>
                 </div>
+                {candidate.enrichment?.status === "matched" && candidate.enrichment.address && onReviewCandidate && (
+                  <button type="button" onClick={() => onReviewCandidate(candidate)} style={{ marginTop: 10 }}>
+                    Review Candidate
+                  </button>
+                )}
               </article>
             ))}
           </div>

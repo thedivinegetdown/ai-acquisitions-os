@@ -6,6 +6,12 @@ import {
 
 export function validateLead(lead = {}) {
   const warnings = [];
+  if (lead.countyResearch === true) {
+    if (lead.leadSource !== "orange-county-tax-sale" || !hasText(lead.tdaNumber) || !hasText(lead.parcelNumber) || !hasText(lead.propertyAddress) || !Array.isArray(lead.researchEvidence) || lead.researchEvidence.length < 2) {
+      warnings.push("incomplete exact-matched county research candidate");
+    }
+    return { valid: warnings.length === 0, warnings };
+  }
 
   if (!hasText(lead.sellerName)) warnings.push("missing seller name");
   if (!hasText(lead.phone) && !hasText(lead.email)) warnings.push("missing phone/email");

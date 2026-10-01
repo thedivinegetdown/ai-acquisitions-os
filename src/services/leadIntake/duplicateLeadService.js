@@ -1,13 +1,16 @@
 import { getDealAliasText } from "../../utils/dealFields";
 import { normalizePhone, phonesMatch } from "../../utils/phone";
 import { normalizeText } from "../../utils/text";
-import { normalizeEmail, normalizePropertyAddress } from "./leadNormalizationService";
+import { getLeadImportId, normalizeEmail, normalizePropertyAddress } from "./leadNormalizationService";
 
 function addressKey(value = "") {
   return normalizeText(normalizePropertyAddress(value)).replace(/[^\w\s]/g, "");
 }
 
 function leadMatchesDeal(lead = {}, deal = {}) {
+  if (lead.countyResearch === true) {
+    return Boolean(deal.import_id && deal.import_id === getLeadImportId(lead));
+  }
   const dealPhone = getDealAliasText(deal, "phone") || deal.phone;
   const dealAddress = getDealAliasText(deal, "address") || deal.property_address;
   const dealEmail = normalizeEmail(deal.email || deal.seller_email);
@@ -22,6 +25,7 @@ function leadMatchesDeal(lead = {}, deal = {}) {
 }
 
 function getLeadDuplicateKeys(lead = {}) {
+  if (lead.countyResearch === true) return [getLeadImportId(lead)].filter(Boolean);
   return [
     lead.phone ? `phone:${normalizePhone(lead.phone)}` : "",
     lead.email ? `email:${lead.email}` : "",

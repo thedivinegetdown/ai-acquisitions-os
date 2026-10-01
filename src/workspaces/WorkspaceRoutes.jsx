@@ -45,7 +45,7 @@ function LazyCompatibility({ children, label }) {
   return <Suspense fallback={<LazyPanelFallback label={label} />}>{children}</Suspense>;
 }
 
-function DealsWorkspace({ deals, openDeal, refresh, setFilteredDeals, setSelectedPhone }) {
+function DealsWorkspace({ deals, openDeal, refresh, navigateToDeal, setFilteredDeals, setSelectedPhone }) {
   return (
     <WorkspaceContainer
       description="Existing deal and data tools grouped for compatibility during workspace migration."
@@ -54,7 +54,7 @@ function DealsWorkspace({ deals, openDeal, refresh, setFilteredDeals, setSelecte
       <CompatibilityGroup title="Deal compatibility panels">
         <LazyCompatibility label="Loading deal panels...">
           <SearchCommandCenter deals={deals} openDeal={openDeal} setSelectedPhone={setSelectedPhone} />
-          <LeadImporter deals={deals} refresh={refresh} />
+          <LeadImporter deals={deals} refresh={refresh} navigateToDeal={navigateToDeal} />
           <DuplicateDetector applyDuplicates={setFilteredDeals} deals={deals} />
           <DataHealthCenter applyView={setFilteredDeals} deals={deals} />
           <AutoLeadScoring applyView={setFilteredDeals} deals={deals} />
