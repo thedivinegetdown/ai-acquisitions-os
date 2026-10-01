@@ -1,7 +1,7 @@
 import { buildActionInbox } from "../notifications";
 import { getPriorityWeight } from "../notifications/notificationPriorityService";
 import { buildApprovalReadModel, isApprovalNotification } from "../approvals";
-import { formatSafeDate } from "../../utils/dates";
+import { formatDateOnly, formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 import {
   conversationNeedsReply,
@@ -261,7 +261,7 @@ function buildWaitingItems(deals = [], { now = Date.now() } = {}) {
       tenantId: deal.organization_id || deal.tenant_id || null,
       type: "follow-up",
       category: "waiting",
-      title: `Waiting until ${formatSafeDate(getDealCommitmentDueDate(deal), "scheduled follow-up")}`,
+      title: `Waiting until ${formatDateOnly(getDealCommitmentDueDate(deal), "scheduled follow-up")}`,
       summary: deal.next_action || "Follow-up is scheduled for a future date.",
       relatedSeller: getSeller(deal),
       relatedDeal: getAddress(deal),
@@ -271,13 +271,13 @@ function buildWaitingItems(deals = [], { now = Date.now() } = {}) {
       recommendedNextAction: "No action needed until the scheduled follow-up.",
       dueDate: getDealCommitmentDueDate(deal),
       sourceDueTimestamp: getDealCommitmentDueDate(deal) || null,
-      actionWindow: formatSafeDate(getDealCommitmentDueDate(deal), ""),
+      actionWindow: formatDateOnly(getDealCommitmentDueDate(deal), ""),
       source: getDealSource(deal),
       createdAt: deal.created_at || nowIso(now),
       updatedAt: deal.updated_at || deal.created_at || nowIso(now),
       status: getDealStatus(deal),
       availableActions: [{ id: "open-deal", label: "Open deal", targetWorkspace: "deals", dealId: getDealId(deal) }],
-      evidence: [{ label: "Scheduled follow-up", value: formatSafeDate(getDealCommitmentDueDate(deal), "") }],
+      evidence: [{ label: "Scheduled follow-up", value: formatDateOnly(getDealCommitmentDueDate(deal), "") }],
       targetWorkspace: "deals",
       target: { dealId: getDealId(deal), phone: deal.phone || "" },
       commitment: { sourceType: "deal", sourceId: getDealId(deal), dealId: getDealId(deal) },

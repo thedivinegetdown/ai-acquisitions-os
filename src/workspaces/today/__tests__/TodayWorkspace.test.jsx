@@ -202,6 +202,9 @@ describe("TodayWorkspace", () => {
 
     const waitingList = screen.getByLabelText("Waiting work list");
     expect(within(waitingList).getByText(exactAction)).toBeInTheDocument();
+    expect(within(waitingList).getByRole("heading", { name: "Waiting until 10/2/2026" })).toBeInTheDocument();
+    expect(waitingList).not.toHaveTextContent("10/1/2026");
+    expect(waitingList).not.toHaveTextContent("8:00:00 PM");
     const waitingItems = within(waitingList).getAllByRole("article");
     expect(waitingItems).toHaveLength(1);
 

@@ -14,6 +14,20 @@ export function formatSafeDate(value, fallback = "No date") {
   return date.toLocaleString();
 }
 
+export function formatDateOnly(value, fallback = "No date") {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return fallback;
+
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  const isExactDate =
+    date.getFullYear() === Number(year) &&
+    date.getMonth() === Number(month) - 1 &&
+    date.getDate() === Number(day);
+
+  return isExactDate ? date.toLocaleDateString() : fallback;
+}
+
 export function hoursSince(value, now = Date.now()) {
   const date = toSafeDate(value);
 
