@@ -332,7 +332,7 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
     expect(screen.queryByRole("button", { name: /create|import|pipeline|enrich/i })).not.toBeInTheDocument();
   });
 
-  it("contains no deal, RentCast, messaging, or task side-effect path", () => {
+  it("cannot write a county candidate without explicit confirmation", () => {
     const implementation = [
       readFileSync("src/components/OrangeCountyTaxSaleDiscovery.jsx", "utf8"),
       readFileSync("src/services/leadDiscovery/orangeCountyTaxSaleSource.js", "utf8"),
@@ -341,8 +341,6 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
       readFileSync("netlify/functions/_shared/orange-county-property-appraiser.cjs", "utf8"),
     ].join("\n").toLowerCase();
 
-    expect(implementation).not.toMatch(
-      /persistimporteddeals|createdeal|rentcast|send-sms|send-email|seller_tasks/
-    );
+    expect(implementation).not.toMatch(/persistimporteddeals|createdeal|rentcast|send-sms|send-email|seller_tasks/);
   });
 });

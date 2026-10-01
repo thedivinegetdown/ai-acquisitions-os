@@ -146,6 +146,9 @@ export async function persistImportedDeals(records = []) {
         ...stripOrganizationOwnership(record.payload || {}),
         organization_id: organizationId,
       };
+      if (ownedPayload.source === "orange-county-tax-sale" && Array.isArray(ownedPayload.research_evidence)) {
+        ownedPayload.research_evidence = ownedPayload.research_evidence.map((entry) => ({ ...entry, organizationId }));
+      }
       const { data, error } = await supabase
         .from("deals")
         .insert(ownedPayload)

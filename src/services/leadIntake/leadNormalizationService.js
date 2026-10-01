@@ -117,10 +117,20 @@ export function toDealPreviewPayload(lead = {}) {
     asking_price: lead.askingPrice,
     notes: lead.notes || null,
     stage: lead.stage || "New Lead",
+    ...(lead.countyResearch === true ? {
+      status: "Unqualified property research",
+      county: "Orange County",
+      parcel_number: lead.parcelNumber,
+      research_evidence: lead.researchEvidence,
+    } : {}),
   };
 }
 
 export function getLeadImportId(lead = {}) {
+  if (lead.countyResearch === true && lead.leadSource === "orange-county-tax-sale") {
+    const tda = String(lead.tdaNumber || "").trim().toLowerCase().replace(/\s+/g, " ");
+    return tda ? `orange-county-tax-sale:${tda}` : "";
+  }
   const identity = [
     lead.phone ? `phone:${normalizePhone(lead.phone)}` : "",
     lead.email ? `email:${normalizeEmail(lead.email)}` : "",

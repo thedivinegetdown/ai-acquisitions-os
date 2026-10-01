@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import {
   analyzeManualLead,
+  analyzeOrangeCountyTaxSaleCandidate,
   confirmLeadImport,
   parseCsvLeadText,
 } from "../services/leadIntake";
@@ -89,7 +90,7 @@ function WarningList({ title, items, emptyText }) {
   );
 }
 
-export default function LeadImporter({ deals = [], refresh }) {
+export default function LeadImporter({ deals = [], refresh, navigateToDeal }) {
   const [manualLead, setManualLead] = useState({
     sellerName: "",
     phone: "",
@@ -107,6 +108,42 @@ export default function LeadImporter({ deals = [], refresh }) {
   const [confirmation, setConfirmation] = useState("");
   const [confirming, setConfirming] = useState(false);
   const [confirmationError, setConfirmationError] = useState("");
+  const [countyReview, setCountyReview] = useState(null);
+  const [countyAnalysis, setCountyAnalysis] = useState(null);
+  const [countyError, setCountyError] = useState("");
+  const [countyConfirming, setCountyConfirming] = useState(false);
+  const [savedCountyDealId, setSavedCountyDealId] = useState(null);
+
+  function reviewCountyCandidate(candidate) {
+    if (countyConfirming) return;
+    const next = analyzeOrangeCountyTaxSaleCandidate({ candidate, existingDeals: deals });
+    setCountyReview(next ? candidate : null);
+    setCountyAnalysis(next);
+    setSavedCountyDealId(null);
+    setCountyError(next ? "" : "This candidate does not have one exact OCPA parcel and situs match.");
+  }
+
+  async function confirmCountyCandidate() {
+    if (countyConfirming || savedCountyDealId || !countyAnalysis?.validLeads.length) return;
+    setCountyConfirming(true);
+    setCountyError("");
+    try {
+      const result = await confirmLeadImport(countyAnalysis);
+      const saved = result.success && result.data?.results?.find((item) => item.status === "imported")?.deal;
+      if (!saved?.id) {
+        setCountyError(result.error?.message || (result.data?.duplicateCount ? "This county case is already saved; no new lead was created." : "The research lead was not confirmed as saved. Retry or reload to check."));
+        return;
+      }
+      setSavedCountyDealId(saved.id);
+      if (typeof refresh === "function") {
+        try { await refresh(); } catch { setCountyError("Saved, but the deal list could not refresh. Reload before opening the lead."); }
+      }
+    } catch (error) {
+      setCountyError(error?.message || "The research lead could not be saved.");
+    } finally {
+      setCountyConfirming(false);
+    }
+  }
 
   const preview = useMemo(
     () =>
@@ -243,7 +280,34 @@ export default function LeadImporter({ deals = [], refresh }) {
         </span>
       </div>
 
-      <OrangeCountyTaxSaleDiscovery />
+      <OrangeCountyTaxSaleDiscovery onReviewCandidate={reviewCountyCandidate} />
+      {countyReview && (
+        <section aria-label="County candidate review" style={cardStyle}>
+          <h3>Review unqualified property-research lead</h3>
+          <p>Tax deed {countyReview.externalTaxDeedNumber} · Parcel {countyReview.parcelNumber} · {countyReview.enrichment.address}, {countyReview.enrichment.city} FL {countyReview.enrichment.zip}</p>
+          <p>County status: {countyReview.deedStatus || "Not provided"} · Tax source retrieved: {countyReview.retrievedAt || "Not provided"} · OCPA retrieved: {countyReview.enrichment.retrievedAt || "Not provided"}</p>
+          <p>OCPA record owner: {countyReview.enrichment.owner || "Not provided"} · Use code: {countyReview.enrichment.propertyUse?.dorCode || "Not provided"} · Beds/Baths: {countyReview.enrichment.facts?.beds ?? "Not provided"}/{countyReview.enrichment.facts?.baths ?? "Not provided"} · Living area: {countyReview.enrichment.facts?.livingArea ?? "Not provided"} sq ft</p>
+          <p>OCPA market/assessment: {formatNonNegativeUsd(countyReview.enrichment.assessment?.marketValue)} / {formatNonNegativeUsd(countyReview.enrichment.assessment?.assessedValue)}. These are property-record values, not an asking price.</p>
+          <p>Seller, contact, motivation, asking price, ARV, and qualification are unknown. OCPA owner is a property-record fact, not a confirmed seller.</p>
+          <p>{countyAnalysis?.duplicateLeads.length ? "Possible duplicate: this case is already in the current deal list." : "No matching county case in the current deal list."}</p>
+          {savedCountyDealId ? (
+            <>
+              <p role="status">Research lead saved.</p>
+              <button type="button" onClick={() => navigateToDeal?.(savedCountyDealId)}>Open Saved Lead</button>
+            </>
+          ) : (
+            <>
+              <button type="button" disabled={countyConfirming || !countyAnalysis?.validLeads.length} onClick={confirmCountyCandidate}>
+                {countyConfirming ? "Saving..." : "Confirm Save Research Lead"}
+              </button>
+              <button type="button" disabled={countyConfirming} onClick={() => { setCountyReview(null); setCountyAnalysis(null); setCountyError(""); }}>
+                Cancel Review
+              </button>
+            </>
+          )}
+        </section>
+      )}
+      {countyError && <p role="alert">{countyError}</p>}
       <OrangeCountyCodeEnforcementDiscovery />
       <OrangeCountyCodeEnforcementLienDiscovery />
       <OrangeCountyCondemnationDiscovery />
