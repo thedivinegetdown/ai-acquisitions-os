@@ -264,6 +264,7 @@ function TodayLoadingState() {
 }
 
 export default function TodayWorkspace({
+  businessTimeZone,
   commitmentErrors = [],
   commitmentLoading = false,
   conversationLoadError = null,
@@ -290,6 +291,7 @@ export default function TodayWorkspace({
   const readModel = useMemo(
     () =>
       buildTodayReadModel({
+        businessTimeZone,
         conversations,
         deals,
         errors: [
@@ -304,6 +306,7 @@ export default function TodayWorkspace({
         sequenceSteps,
       }),
     [
+      businessTimeZone,
       commitmentActionError,
       commitmentErrors,
       conversationLoadError,
@@ -412,6 +415,21 @@ export default function TodayWorkspace({
     if (item.targetWorkspace) {
       onNavigateWorkspace?.(item.targetWorkspace);
     }
+  }
+
+  if (!commitmentLoading && businessTimeZone === "") {
+    return (
+      <section className="workspace today-workspace">
+        <PageHeader
+          description="Your decision-first acquisition queue."
+          title="Today"
+        />
+        <ErrorState
+          description="The active organization's business timezone could not be loaded, so date-only commitments cannot be categorized safely."
+          title="Business date unavailable"
+        />
+      </section>
+    );
   }
 
   return (

@@ -28,6 +28,24 @@ export function formatDateOnly(value, fallback = "No date") {
   return isExactDate ? date.toLocaleDateString() : fallback;
 }
 
+export function getBusinessDate(value, timeZone) {
+  const date = toSafeDate(value);
+  const zone = String(timeZone || "").trim();
+
+  if (!date) throw new Error("A valid evaluation time is required.");
+  if (!zone) throw new Error("An authoritative business timezone is required.");
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: zone,
+    year: "numeric",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 export function hoursSince(value, now = Date.now()) {
   const date = toSafeDate(value);
 
