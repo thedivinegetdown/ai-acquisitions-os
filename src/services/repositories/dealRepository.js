@@ -10,9 +10,44 @@ import {
   stripOrganizationOwnership,
 } from "../organizations";
 import { recordOperationalFailure } from "./operationalDiagnosticRepository";
+import { ASSET_CLASSIFICATION_STATES, ASSET_TYPES } from "../asset-strategy/assetStrategyContracts";
+import { classifyOpportunityAsset } from "../asset-strategy/assetClassificationService";
 
 const DEAL_SELECT = "*";
 export const DEAL_PAGE_SIZE = 200;
+export const SAVED_LEAD_CLASSIFICATION_OPTIONS = Object.freeze([
+  Object.freeze({ value: "residential", label: "Residential", assetType: ASSET_TYPES.RESIDENTIAL_HOME }),
+  Object.freeze({ value: "vacant_land", label: "Vacant land", assetType: ASSET_TYPES.VACANT_RESIDENTIAL_LAND }),
+  Object.freeze({ value: "small_multifamily", label: "Small multifamily", assetType: ASSET_TYPES.SMALL_MULTIFAMILY }),
+]);
+
+export async function saveDealAssetClassification(deal, selectedValue) {
+  const option = SAVED_LEAD_CLASSIFICATION_OPTIONS.find((entry) => entry.value === selectedValue);
+  if (!deal?.id || !deal?.organization_id || !option) {
+    return repositoryFailure("Select a supported asset classification for a saved deal.", "Could not save classification.");
+  }
+  const proposed = classifyOpportunityAsset({ ...deal, asset_type: option.assetType });
+  if (proposed.state !== ASSET_CLASSIFICATION_STATES.CLASSIFIED || proposed.assetType !== option.assetType) {
+    return repositoryFailure("Existing asset fields conflict with this selection. Review the stored classification before saving.", "Could not save classification.");
+  }
+
+  return runRepositoryOperation(async () => {
+    const { organizationId } = await requireActiveOrganizationContext();
+    if (deal.organization_id !== organizationId) throw new Error("The deal is outside the active organization.");
+    let query = supabase.from("deals")
+      .update({ asset_type: option.assetType })
+      .eq("id", deal.id)
+      .eq("organization_id", organizationId);
+    query = deal.asset_type == null
+      ? query.is("asset_type", null)
+      : query.eq("asset_type", deal.asset_type);
+    if (deal.updated_at) query = query.eq("updated_at", deal.updated_at);
+    const { data, error } = await query.select().limit(1);
+    if (error) throw error;
+    if (!data?.[0]) throw new Error("The deal changed before this save. Reload and review its classification.");
+    return repositorySuccess(data[0]);
+  }, "Could not save classification. Reload the deal and try again.");
+}
 
 export async function listDeals() {
   return runRepositoryOperation(async () => {

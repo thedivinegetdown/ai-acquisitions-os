@@ -10,8 +10,10 @@ const {
   normalizeTaxSalePage,
 } = require("../../../netlify/functions/_shared/orange-county-tax-sale.cjs");
 const {
+  enrichCandidatesWithOcpa,
   enrichTaxSaleCandidatesWithOcpa,
   normalizeParcelId,
+  taxSaleParcelToOcpaId,
 } = require("../../../netlify/functions/_shared/orange-county-property-appraiser.cjs");
 const { createHandler } = require("../../../netlify/functions/orange-county-tax-sale.js");
 
@@ -153,16 +155,22 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
     }
   });
 
-  it("enriches only one exact normalized parcel match and fails closed for zero or multiple matches", async () => {
-    const candidates = [
-      { externalId: "orange-county-tax-sale:tda-1", parcelNumber: "30-24-30-2665-07-203" },
-      { externalId: "orange-county-tax-sale:tda-2", parcelNumber: "32-22-30-9000-15-940" },
-      { externalId: "orange-county-tax-sale:tda-3", parcelNumber: "30-24-31-4860-02-032" },
+  it("translates Tax Sale identity for exact OCPA lookup and leaves Code Enforcement lookup unchanged", async () => {
+    const parcels = [
+      "30-24-31-4860-02-032",
+      "27-22-27-8894-01-140",
+      "32-22-30-9000-15-940",
+      "30-24-30-2665-07-203",
+      "28-22-30-9000-15-940",
     ];
+    const { candidates } = normalizeTaxSalePage(
+      parcels.map((parcel, index) => feature(index + 1, `TDA-${index + 1}`, parcel)),
+      retrievedAt
+    );
     const fetchImpl = vi.fn(async (url) => {
       const query = new URL(url).searchParams;
       expect(query.get("where")).toBe(
-        "PARCEL IN ('302430266507203','322230900015940','302431486002032')"
+        "PARCEL IN ('312430486002032','272227889401140','302232900015940','302430266507203','302228900015940')"
       );
       expect(query.get("returnGeometry")).toBe("false");
       return {
@@ -170,10 +178,12 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
         status: 200,
         json: async () => ({
           features: [
-            ocpaFeature(1, "302430266507203"),
-            ocpaFeature(2, "302431486002032", { NAME1: "FIRST POSSIBLE OWNER" }),
-            ocpaFeature(3, "302431486002032", { NAME1: "SECOND POSSIBLE OWNER" }),
-            ocpaFeature(4, "999999999999999", { NAME1: "UNRELATED OWNER" }),
+            ocpaFeature(1, "312430486002032"),
+            ocpaFeature(2, "272227889401140"),
+            ocpaFeature(3, "302232900015940"),
+            ocpaFeature(4, "302228900015940", { NAME1: "FIRST POSSIBLE OWNER" }),
+            ocpaFeature(5, "302228900015940", { NAME1: "SECOND POSSIBLE OWNER" }),
+            ocpaFeature(6, "302431486002032", { NAME1: "NAIVE ID MUST NOT MATCH" }),
           ],
         }),
       };
@@ -184,8 +194,15 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
       retrievedAt,
     });
 
-    expect(normalizeParcelId(candidates[0].parcelNumber)).toBe("302430266507203");
+    expect(normalizeParcelId(candidates[0].parcelNumber)).toBe("302431486002032");
+    expect(taxSaleParcelToOcpaId(candidates[0].parcelNumber)).toBe("312430486002032");
+    expect(enriched.map((candidate) => candidate.parcelNumber)).toEqual(parcels);
+    expect(enriched.map((candidate) => candidate.supportingIdentity)).toEqual(
+      parcels.map((parcel) => `orange-county-tax-sale:parcel:${parcel}`)
+    );
     expect(enriched.map((candidate) => candidate.enrichment.status)).toEqual([
+      "matched",
+      "matched",
       "matched",
       "unmatched",
       "ambiguous",
@@ -193,7 +210,7 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
     expect(enriched[0].enrichment).toMatchObject({
       source: "orange-county-property-appraiser",
       retrievedAt,
-      parcelId: "302430266507203",
+      parcelId: "312430486002032",
       owner: "OWNER ONE / OWNER TWO",
       address: "123 EXAMPLE ST",
       city: "Orlando",
@@ -203,9 +220,25 @@ describe("Orange County Tax Sale lead discovery acceptance", () => {
       assessment: { marketValue: 310000, assessedValue: 250000 },
       recentSale: { date: "2024-01-01T00:00:00.000Z", adjustedValue: 275000, qualificationCode: "Q" },
     });
-    expect(enriched[1].enrichment).not.toHaveProperty("owner");
-    expect(enriched[2].enrichment).toMatchObject({ matchCount: 2 });
-    expect(enriched[2].enrichment).not.toHaveProperty("owner");
+    expect(enriched[1].enrichment.parcelId).toBe("272227889401140");
+    expect(enriched[2].enrichment.parcelId).toBe("302232900015940");
+    expect(enriched[3].enrichment).toMatchObject({ matchCount: 0 });
+    expect(enriched[3].enrichment).not.toHaveProperty("owner");
+    expect(enriched[4].enrichment).toMatchObject({ matchCount: 2 });
+    expect(enriched[4].enrichment).not.toHaveProperty("owner");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls.every(([url]) => url.includes("DynamicForJs/PARCEL"))).toBe(true);
+
+    const codeEnforcementFetch = vi.fn(async (url) => {
+      expect(new URL(url).searchParams.get("where")).toBe("PARCEL IN ('302431486002032')");
+      return { ok: true, status: 200, json: async () => ({ features: [ocpaFeature(7, "302431486002032")] }) };
+    });
+    const [codeEnforcement] = await enrichCandidatesWithOcpa(
+      [{ source: "orange-county-code-enforcement", parcelNumber: parcels[0] }],
+      { fetchImpl: codeEnforcementFetch, retrievedAt }
+    );
+    expect(codeEnforcement.enrichment).toMatchObject({ status: "matched", parcelId: "302431486002032" });
+    expect(codeEnforcementFetch).toHaveBeenCalledTimes(1);
   });
 
   it("rejects every incomplete identity row instead of inventing identity", () => {

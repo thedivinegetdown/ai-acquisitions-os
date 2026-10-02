@@ -12,9 +12,11 @@ const {
   VOLUSIA_CONNECTLIVE_PUBLIC_TOKEN_URL,
   VOLUSIA_CONNECTLIVE_TRANSACTION_URL,
   buildExternalIdentity,
+  enrichCandidatesByExactPid,
   fetchVolusiaCodeCompliancePreview,
   requireBoundedResultCount,
 } = require("../../../netlify/functions/_shared/volusia-code-compliance.cjs");
+const { enrichExactParcels } = require("../../../netlify/functions/_shared/volusia-tax-deed-sale.cjs");
 const {
   createHandler,
 } = require("../../../netlify/functions/volusia-code-compliance.js");
@@ -103,6 +105,45 @@ function parcelAttributes({ pid, parid, address }) {
 }
 
 describe("Volusia Code Compliance focused acceptance", () => {
+  it("bounds exact Compliance PID queries while leaving Tax Deed lookup unchanged", async () => {
+    const pids = Array.from({ length: 11 }, (_, index) => String(420326000710 + index));
+    const queries = [];
+    const parcelFetch = vi.fn(async (url) => {
+      const where = new URL(url).searchParams.get("where");
+      const batch = [...where.matchAll(/'(\d{12})'/g)].map((match) => match[1]);
+      queries.push({ where, batch, urlLength: String(url).length });
+      expect(batch.length).toBeLessThanOrEqual(10);
+      return response({ features: batch.includes(pids[0])
+        ? [{ attributes: parcelAttributes({ pid: pids[0], parid: "3032098", address: "100 TEST RD" }) }]
+        : [] });
+    });
+    const candidates = pids.map((propertyPid) => ({ propertyPid }));
+    const enriched = await enrichCandidatesByExactPid({
+      candidates, fetchImpl: parcelFetch, retrievedAt, signal: new AbortController().signal,
+    });
+    expect(queries).toHaveLength(2);
+    expect(queries.map((query) => query.batch.length)).toEqual([10, 1]);
+    expect(queries[0].where).toBe(`PID IN (${pids.slice(0, 10).map((pid) => `'${pid}'`).join(",")})`);
+    expect(queries.every((query) => query.urlLength < 1000)).toBe(true);
+    expect(enriched[0]).toMatchObject({
+      propertyPid: "420326000710",
+      propertyVerificationState: "PARCEL_VERIFIED",
+      parcelEnrichment: { status: "matched", verifiedParcelId: "3032098" },
+    });
+    expect(enriched[10]).toMatchObject({ propertyPid: pids[10], parcelEnrichment: { status: "unmatched" } });
+
+    const taxFetch = vi.fn(async (url) => {
+      expect(new URL(url).searchParams.get("where")).toBe("PID IN ('721201040044')");
+      return response({ features: [{ attributes: parcelAttributes({ pid: "721201040044", parid: "3328540", address: "100 TEST RD" }) }] });
+    });
+    const [taxDeed] = await enrichExactParcels(
+      [{ parcelNumber: "721201040044" }],
+      { fetchImpl: taxFetch, retrievedAt, signal: new AbortController().signal }
+    );
+    expect(taxDeed).toMatchObject({ parcelNumber: "721201040044", parcelEnrichment: { status: "matched", verifiedParcelId: "3328540" } });
+    expect(taxFetch).toHaveBeenCalledTimes(1);
+  });
+
   it("proves the internal-only bounded ConnectLive flow, identity, privacy, parcel reuse, tenant denial, and zero side effects", async () => {
     if (process.env.VOLUSIA_CODE_COMPLIANCE_LIVE_SMOKE === "1") {
       const live = await fetchVolusiaCodeCompliancePreview({ windowDays: 1 });

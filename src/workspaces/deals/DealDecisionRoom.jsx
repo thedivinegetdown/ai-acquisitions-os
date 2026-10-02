@@ -10,6 +10,7 @@ import {
   EmptyState,
   ErrorState,
   PageHeader,
+  Select,
   SectionHeader,
   StatusBadge,
   Tabs,
@@ -27,6 +28,7 @@ import {
 import { getDealIdFromRoute } from "../../navigation/workspaces";
 import { formatSafeDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
+import { SAVED_LEAD_CLASSIFICATION_OPTIONS, saveDealAssetClassification } from "../../services/repositories/dealRepository";
 import MissingInformationAutopilot from "./MissingInformationAutopilot";
 import DecisionMemoryPanel from "./DecisionMemoryPanel";
 
@@ -981,6 +983,49 @@ function ClosingSection({
 
 // New component reason: the existing DealModal has the right business panels,
 // but cannot provide route-level navigation, breadcrumbs, or section ownership.
+function AssetClassificationControl({ deal, assetStrategyContext, onSaved }) {
+  const [selection, setSelection] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState("");
+
+  async function save() {
+    if (!selection || saving) return;
+    setSaving(true);
+    setStatus("");
+    try {
+      const result = await saveDealAssetClassification(deal, selection);
+      if (!result.success) {
+        setStatus(result.error?.message || "Classification could not be saved.");
+        return;
+      }
+      setSelection("");
+      onSaved(result.data);
+      setStatus("Asset classification saved. Decision and strategy context refreshed.");
+    } catch {
+      setStatus("Classification could not be saved. Reload and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="workspace__stack">
+      <SectionHeader title="Classify the asset" description="Choose the asset type from your review of this saved lead. Property evidence does not select it for you." />
+      <p>Current classification: {assetStrategyContext?.classificationState === "classified"
+        ? assetStrategyContext.assetTypeLabel
+        : assetStrategyContext?.classificationState === "unclassified"
+          ? "Not classified"
+          : assetStrategyContext?.classificationLabel || "Not classified"}</p>
+      <Select label="Asset classification" disabled={saving} value={selection} onChange={(event) => { setSelection(event.target.value); setStatus(""); }}>
+        <option value="">Select asset type</option>
+        {SAVED_LEAD_CLASSIFICATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </Select>
+      <Button disabled={saving || !selection || !deal.organization_id} onClick={save}>Save classification</Button>
+      {status && <p role="status">{status}</p>}
+    </Card>
+  );
+}
+
 export default function DealDecisionRoom({
   currentPath = "",
   decisionContext = EMPTY_DECISION_CONTEXT,
@@ -1117,6 +1162,7 @@ export default function DealDecisionRoom({
       return (
         <>
         <RentCastPropertyEvidencePanel deal={deal} onSaved={handleResearchSaved} />
+        <AssetClassificationControl key={`classification-${deal.id}`} deal={deal} assetStrategyContext={assetStrategyContext} onSaved={handleResearchSaved} />
         <ResearchResolutionPanel key={deal.id} deal={deal} readModel={decisionReadModel} onSaved={handleResearchSaved} />
         <p role="status">{decisionReadModel?.recalculation
           ? `${decisionReadModel.recalculation.state}: ${decisionReadModel.recalculation.explanation}`

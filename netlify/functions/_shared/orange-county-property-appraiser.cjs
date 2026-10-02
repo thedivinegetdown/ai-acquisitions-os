@@ -59,6 +59,11 @@ function normalizeParcelId(value) {
   return /^\d{15}$/.test(normalized) ? normalized : "";
 }
 
+function taxSaleParcelToOcpaId(value) {
+  const match = clean(value, 80).match(/^(\d{2})-(\d{2})-(\d{2})-(\d{4})-(\d{2})-(\d{3})$/);
+  return match ? `${match[3]}${match[2]}${match[1]}${match[4]}${match[5]}${match[6]}` : "";
+}
+
 function normalizeOcpaFeature(feature, retrievedAt) {
   const attributes = feature?.attributes || {};
   const owners = [textOrNull(attributes.NAME1, 100), textOrNull(attributes.NAME2, 100)].filter(
@@ -148,16 +153,17 @@ async function fetchOcpaBatch(parcelIds, { fetchImpl, timeoutMs }) {
   }
 }
 
-async function enrichTaxSaleCandidatesWithOcpa(
+async function enrichCandidatesWithOcpa(
   candidates,
   {
     fetchImpl = fetch,
     retrievedAt = new Date().toISOString(),
     timeoutMs = OCPA_TIMEOUT_MS,
-  } = {}
+  } = {},
+  lookupParcelId = normalizeParcelId
 ) {
   const parcelIds = [
-    ...new Set((candidates || []).map((candidate) => normalizeParcelId(candidate.parcelNumber)).filter(Boolean)),
+    ...new Set((candidates || []).map((candidate) => lookupParcelId(candidate.parcelNumber)).filter(Boolean)),
   ];
   const featureBatches = await Promise.all(
     splitIntoBatches(parcelIds).map((batch) => fetchOcpaBatch(batch, { fetchImpl, timeoutMs }))
@@ -170,7 +176,7 @@ async function enrichTaxSaleCandidatesWithOcpa(
   }
 
   return (candidates || []).map((candidate) => {
-    const parcelId = normalizeParcelId(candidate.parcelNumber);
+    const parcelId = lookupParcelId(candidate.parcelNumber);
     const matches = matchesByParcel.get(parcelId) || [];
     const matchState = {
       status: matches.length === 1 ? "matched" : matches.length > 1 ? "ambiguous" : "unmatched",
@@ -190,12 +196,17 @@ async function enrichTaxSaleCandidatesWithOcpa(
   });
 }
 
+function enrichTaxSaleCandidatesWithOcpa(candidates, options) {
+  return enrichCandidatesWithOcpa(candidates, options, taxSaleParcelToOcpaId);
+}
+
 module.exports = {
   OCPA_FIELDS,
   OCPA_LAYER_URL,
   OCPA_SOURCE,
-  enrichCandidatesWithOcpa: enrichTaxSaleCandidatesWithOcpa,
+  enrichCandidatesWithOcpa,
   enrichTaxSaleCandidatesWithOcpa,
   normalizeOcpaFeature,
   normalizeParcelId,
+  taxSaleParcelToOcpaId,
 };

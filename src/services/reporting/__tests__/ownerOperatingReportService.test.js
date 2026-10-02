@@ -33,6 +33,51 @@ function report(sourceOverrides = {}, options = {}) {
 }
 
 describe("buildOwnerOperatingReport", () => {
+  it("counts only active tenant-owned deal actions as waiting or overdue by calendar date", () => {
+    const action = "Run one RentCast property research lookup and compare it with OCPA/tax-sale facts";
+    const result = report({
+      deals: [
+        owned({ id: "312a97dd-769c-4b93-bc1c-8c40c8c01bd6", stage: "New Lead", next_action: action, next_action_due_date: "2026-10-02" }),
+        owned({ id: "late", stage: "Contacted", next_action: "Review title", next_action_due_date: "2026-09-30" }),
+        owned({ id: "cleared", stage: "New Lead", next_action: null, next_action_due_date: "2026-10-02" }),
+        owned({ id: "completed", stage: "New Lead", status: "Completed", next_action: "Finished", next_action_due_date: "2026-10-02" }),
+        owned({ id: "closed", stage: "Closed", next_action: "Old action", next_action_due_date: "2026-10-02" }),
+        owned({ id: "foreign", organization_id: "org-b", stage: "New Lead", next_action: "Foreign action", next_action_due_date: "2026-10-02" }),
+      ],
+    }, { evaluatedAt: "2026-10-01T12:00:00.000Z" });
+
+    expect(result.work).toMatchObject({
+      due: { status: "available", value: 0 },
+      overdue: { status: "available", value: 1 },
+      waiting: { status: "available", value: 1 },
+    });
+    expect(result.funnel.qualifiedOpportunities.status).toBe("unavailable");
+    expect(result.financial.expectedProceeds.value).toBe(0);
+  });
+
+  it("dedupes the same open obligation across deals, seller tasks, and sequences", () => {
+    const action = "Run one RentCast property research lookup and compare it with OCPA/tax-sale facts";
+    const dealId = "312a97dd-769c-4b93-bc1c-8c40c8c01bd6";
+    const result = report({
+      deals: [owned({ id: dealId, stage: "New Lead", next_action: action, next_action_due_date: "2026-10-02" })],
+      sellerTasks: [
+        owned({ id: "same-task", deal_id: dealId, title: action, status: "open", due_at: "2026-10-02T12:00:00.000Z" }),
+        owned({ id: "other-task", deal_id: dealId, title: "Call seller", status: "open", due_at: "2026-10-02T12:00:00.000Z" }),
+        owned({ id: "done-task", deal_id: dealId, title: "Finished task", status: "completed", due_at: "2026-09-30T12:00:00.000Z" }),
+      ],
+      sequenceSteps: [
+        owned({ id: "same-step", deal_id: dealId, action_type: action, status: "Pending", due_date: "2026-10-02" }),
+        owned({ id: "late-step", deal_id: dealId, action_type: "Review documents", status: "Pending", due_date: "2026-09-30" }),
+      ],
+    }, { evaluatedAt: "2026-10-01T12:00:00.000Z" });
+
+    expect(result.work).toMatchObject({
+      waiting: { status: "available", value: 2 },
+      overdue: { status: "available", value: 1 },
+      completed: { status: "available", value: 1 },
+    });
+  });
+
   it("classifies due, overdue, completed, and waiting work at the supplied time", () => {
     const result = report({
       sellerTasks: [

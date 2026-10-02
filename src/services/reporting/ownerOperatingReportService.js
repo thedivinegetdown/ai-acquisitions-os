@@ -50,9 +50,18 @@ function dateKey(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : "";
 }
 
-function buildWorkMetrics({ sellerTasks, sequenceSteps }, evaluationDate) {
-  if (!sellerTasks || !sequenceSteps) {
-    const reason = "Seller task and sequence sources are both required for complete workload counts.";
+function workObligationKey(record, index) {
+  const action = String(record.action || "").trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ");
+  const due = dateKey(record.due);
+  return record.dealId && action && due
+    ? `${record.dealId}:${action}:${due}`
+    : `${record.sourceType}:${record.sourceId || index}`;
+}
+
+function buildWorkMetrics({ deals, sellerTasks, sequenceSteps }, evaluationDate) {
+  if (!deals || !sellerTasks || !sequenceSteps) {
+    const reason = "Deal, seller task, and sequence sources are required for complete workload counts.";
     return {
       due: unavailable(reason),
       overdue: unavailable(reason),
@@ -62,10 +71,24 @@ function buildWorkMetrics({ sellerTasks, sequenceSteps }, evaluationDate) {
   }
 
   const work = [
-    ...sellerTasks.map((record) => ({ ...record, due: record.due_at })),
-    ...sequenceSteps.map((record) => ({ ...record, due: record.due_date })),
+    ...sellerTasks.map((record) => ({ ...record, sourceType: "seller-task", sourceId: record.id, dealId: record.deal_id, action: record.title, due: record.due_at })),
+    ...sequenceSteps.map((record) => ({ ...record, sourceType: "sequence-step", sourceId: record.id, dealId: record.deal_id, action: record.action_type, due: record.due_date })),
+    ...deals.filter((deal) =>
+      deal.id && String(deal.next_action || "").trim() &&
+      normalizeStatus(deal.stage) !== "closed" &&
+      !COMPLETED_WORK_STATUSES.has(normalizeStatus(deal.status))
+    ).map((deal) => ({ ...deal, sourceType: "deal", sourceId: deal.id, dealId: deal.id,
+      action: deal.next_action, due: deal.next_action_due_date || deal.due_date || deal.follow_up_date,
+      status: "open" })),
   ];
-  const open = work.filter((record) => OPEN_WORK_STATUSES.has(normalizeStatus(record.status)));
+  const seen = new Set();
+  const open = work.filter((record, index) => {
+    if (!OPEN_WORK_STATUSES.has(normalizeStatus(record.status))) return false;
+    const key = workObligationKey(record, index);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
   const completed = work.filter((record) =>
     COMPLETED_WORK_STATUSES.has(normalizeStatus(record.status))
   );

@@ -4,9 +4,16 @@ import { describe, expect, it, vi } from "vitest";
 import DealDecisionRoom from "../DealDecisionRoom";
 import { buildResearchMutation } from "../../../services/research-intelligence/researchResolutionService";
 import { saveResearchCommand } from "../../../services/repositories/researchRepository";
+import { saveDealAssetClassification } from "../../../services/repositories/dealRepository";
+
+const { from } = vi.hoisted(() => ({ from: vi.fn() }));
 
 vi.mock("../../../services/repositories/researchRepository", () => ({ saveResearchCommand: vi.fn() }));
-vi.mock("../../../supabaseClient", () => ({ supabase: {} }));
+vi.mock("../../../supabaseClient", () => ({ supabase: { from } }));
+vi.mock("../../../services/organizations", async (importOriginal) => ({
+  ...(await importOriginal()),
+  requireActiveOrganizationContext: vi.fn().mockResolvedValue({ organizationId: "org-1", userId: "operator-1" }),
+}));
 vi.mock("../DecisionMemoryPanel", () => ({ default: () => <div>Decision Memory</div> }));
 vi.mock("../RentCastPropertyEvidencePanel", () => ({ default: () => <div>RentCast Property Evidence</div> }));
 
@@ -148,6 +155,71 @@ function renderRoom(overrides = {}) {
 }
 
 describe("DealDecisionRoom", () => {
+  it("classifies a saved lead explicitly, persists supported choices, and unlocks the matching strategy", async () => {
+    const sourceEvidence = [{ evidenceId: "county-1", sourceSystem: "orange-county-tax-sale", valueSummary: "County parcel" }];
+    let persisted = { ...deal, asset_type: null, organization_id: "org-1", research_evidence: sourceEvidence };
+    const updates = [];
+    from.mockImplementation((table) => {
+      expect(table).toBe("deals");
+      const predicates = [];
+      let payload;
+      const query = {
+        update: vi.fn((value) => { payload = value; updates.push(value); return query; }),
+        eq: vi.fn((column, value) => { predicates.push([column, value]); return query; }),
+        is: vi.fn((column, value) => { predicates.push([column, value]); return query; }),
+        select: vi.fn(() => query),
+        limit: vi.fn(async () => {
+          const matches = predicates.every(([column, value]) => persisted[column] === value);
+          if (!matches) return { data: [], error: null };
+          persisted = JSON.parse(JSON.stringify({ ...persisted, ...payload }));
+          return { data: [persisted], error: null };
+        }),
+      };
+      return query;
+    });
+
+    const room = renderRoom({ deals: [persisted] });
+    expect(screen.getByText("Current classification: Not classified")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save classification" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Asset classification" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Asset classification" }).querySelectorAll("option")).toHaveLength(4);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Asset classification" }), { target: { value: "residential" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save classification" }));
+    await waitFor(() => expect(persisted.asset_type).toBe("residential-home"));
+    expect(screen.getByText(/Asset classification saved/)).toBeInTheDocument();
+    expect(screen.getByText("Current classification: Residential home")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Numbers" }));
+    expect(await screen.findByText("Residential Strategy Summary")).toBeInTheDocument();
+
+    room.unmount();
+    renderRoom({ deals: [JSON.parse(JSON.stringify(persisted))] });
+    expect(screen.getByText("Current classification: Residential home")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Asset classification" }), { target: { value: "vacant_land" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save classification" }));
+    await waitFor(() => expect(persisted.asset_type).toBe("vacant-residential-land"));
+    expect(screen.getByText("Current classification: Vacant residential land")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Land Analysis" }));
+    expect(await screen.findByText("Vacant Land Strategy Summary")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Decision" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Asset classification" }), { target: { value: "small_multifamily" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save classification" }));
+    await waitFor(() => expect(persisted.asset_type).toBe("small-multifamily"));
+    expect(screen.getAllByText("Small multifamily - Strategy Not Yet Implemented").length).toBeGreaterThan(0);
+    expect(persisted.research_evidence).toEqual(sourceEvidence);
+    expect(updates).toEqual([
+      { asset_type: "residential-home" },
+      { asset_type: "vacant-residential-land" },
+      { asset_type: "small-multifamily" },
+    ]);
+
+    const callsBeforeReject = from.mock.calls.length;
+    expect((await saveDealAssetClassification(persisted, "commercial")).success).toBe(false);
+    expect((await saveDealAssetClassification({ ...persisted, organization_id: "other-org" }, "residential")).success).toBe(false);
+    expect(from.mock.calls.length).toBe(callsBeforeReject);
+  });
+
   it("saves research, resolves a source-linked conflict, refreshes the decision and reproduces it after reload", async () => {
     const now = "2026-09-23T16:00:00.000Z";
     let persisted = { ...deal, organization_id: "org-1", arv: 200000, research_revision: 0 };

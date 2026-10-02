@@ -46,7 +46,7 @@ export default function RentCastPropertyEvidencePanel({ deal, onSaved }) {
     finding("Assessor / parcel ID", data.property?.assessorId, deal.parcel_number ?? deal.parcel_id),
     finding("Zoning", data.property?.zoning, deal.zoning),
     finding("County", data.property?.county, deal.county),
-    finding("Estimated value (AVM)", data.valuation?.estimatedValue, isLand ? deal.comparable_land_value : deal.arv),
+    { label: "Estimated value (AVM)", value: data.valuation?.estimatedValue, comparison: "Provider estimate only; ARV is a separate researched fact" },
   ].filter((entry) => entry.value !== null && entry.value !== undefined && entry.value !== "") : [], [data, deal, isLand]);
 
   async function refresh() {
@@ -86,12 +86,11 @@ export default function RentCastPropertyEvidencePanel({ deal, onSaved }) {
     }
   }
 
-  const estimatedValue = data?.valuation?.estimatedValue;
   const zoning = data?.property?.zoning;
   const providerStatus = !state.provider?.enabled ? "Disabled" : !state.provider?.configured ? "Missing server key" : "Available";
 
   return <Card className="workspace__stack">
-    <SectionHeader title="RentCast property evidence" description="Optional provider evidence only. Refreshing never overwrites deal facts; accepting a finding uses the existing research and conflict-resolution path." />
+    <SectionHeader title="RentCast property evidence" description="Optional provider evidence only. AVM is a provider estimate, not canonical ARV. Research ARV separately in Resolve research." />
     {state.loading ? <p>Loading provider status…</p> : <>
       <p><strong>Provider status:</strong> {providerStatus}</p>
       {state.evidence && <p><strong>Last retrieved:</strong> {state.evidence.retrievedAt} — {state.evidence.cacheState} cache</p>}
@@ -100,17 +99,10 @@ export default function RentCastPropertyEvidencePanel({ deal, onSaved }) {
         <ul aria-label="RentCast normalized findings">{findings.map((entry) => <li key={entry.label}>
           <strong>{entry.label}:</strong> {entry.label.includes("value") && typeof entry.value === "number" ? formatNonNegativeUsd(entry.value) : display(entry.value)} — {entry.comparison}
         </li>)}</ul>
+        {data.valuation && <p>RentCast AVM range: {data.valuation.lowValue == null ? "Unknown" : formatNonNegativeUsd(data.valuation.lowValue)} to {data.valuation.highValue == null ? "Unknown" : formatNonNegativeUsd(data.valuation.highValue)}. Provider evidence: {state.evidence.id}.</p>}
         {data.tax && <p>Tax/assessment context: {display(data.tax.taxYear)} assessed {data.tax.assessedValue == null ? "Unknown" : formatNonNegativeUsd(data.tax.assessedValue)}, annual tax {data.tax.annualTaxes == null ? "Unknown" : formatNonNegativeUsd(data.tax.annualTaxes)}.</p>}
         <p>Sale history records: {data.saleHistory?.length || 0}. Comparable listing observations: {data.comps?.length || 0}.</p>
         {isLand && zoning && <Button disabled={state.busy} onClick={() => accept({ field: "property.zoning", value: zoning, sourceType: "property-record", providerField: "property.zoning", limitation: "County-record zoning may lag or require local verification." })}>Record zoning evidence</Button>}
-        {estimatedValue != null && <Button disabled={state.busy} onClick={() => accept({
-          field: isLand ? "property.comparableLandValue" : "property.afterRepairValue",
-          value: estimatedValue,
-          sourceType: "provider-valuation",
-          providerField: "valuation.estimatedValue",
-          limitation: isLand ? "Provider AVM is indicated land-value evidence, not manual underwriting." : "Provider AVM is current-value evidence and is not automatically ARV.",
-          sourceTimestamp: state.evidence.retrievedAt,
-        })}>{isLand ? "Record AVM as land-value evidence" : "Record AVM as ARV evidence"}</Button>}
         <ul aria-label="RentCast limitations">{(data.limitations || []).map((entry) => <li key={entry}>{entry}</li>)}</ul>
       </>}
       {state.message && <p role="status">{state.message}</p>}

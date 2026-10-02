@@ -19,6 +19,7 @@ const VOLUSIA_CODE_COMPLIANCE_DEFAULT_WINDOW_DAYS = 30;
 const VOLUSIA_CODE_COMPLIANCE_MAX_WINDOW_DAYS = 30;
 const VOLUSIA_CODE_COMPLIANCE_MAX_RESULTS = 250;
 const VOLUSIA_CODE_COMPLIANCE_TIMEOUT_MS = 20000;
+const VOLUSIA_CODE_COMPLIANCE_PID_BATCH_SIZE = 10;
 
 const REQUIRED_COLUMNS = Object.freeze([
   "File Number",
@@ -323,13 +324,14 @@ async function enrichCandidatesByExactPid({
   const pids = [...new Set(candidates.map((candidate) => candidate.propertyPid).filter(Boolean))];
   const matches = new Map();
 
-  if (pids.length > 0) {
+  for (let index = 0; index < pids.length; index += VOLUSIA_CODE_COMPLIANCE_PID_BATCH_SIZE) {
+    const batch = pids.slice(index, index + VOLUSIA_CODE_COMPLIANCE_PID_BATCH_SIZE);
     const params = new URLSearchParams({
       f: "json",
-      where: `PID IN (${pids.map((pid) => `'${pid}'`).join(",")})`,
+      where: `PID IN (${batch.map((pid) => `'${pid}'`).join(",")})`,
       outFields: VOLUSIA_PARCEL_OWNERSHIP_FIELDS.join(","),
       returnGeometry: "false",
-      resultRecordCount: String(Math.max(2, pids.length * 2)),
+      resultRecordCount: String(Math.max(2, batch.length * 2)),
     });
     const response = await fetchImpl(
       `${VOLUSIA_PARCEL_OWNERSHIP_LAYER_URL}?${params}`,
@@ -348,7 +350,7 @@ async function enrichCandidatesByExactPid({
     }
     for (const feature of body.features) {
       const pid = normalizePropertyPid(feature?.attributes?.PID);
-      if (!pid || !pids.includes(pid)) {
+      if (!pid || !batch.includes(pid)) {
         throw new Error("Volusia Parcel Ownership returned an unrequested PID.");
       }
       const grouped = matches.get(pid) || [];

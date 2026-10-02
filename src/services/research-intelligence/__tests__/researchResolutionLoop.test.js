@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import React from "react";
+import { render, screen } from "@testing-library/react";
 import { buildResearchMutation, assembleResearchContext } from "../researchResolutionService";
 import { assembleDecisionRoomInputs } from "../../decision-intelligence/decisionRoomInputService";
 import { buildCompatibilityDecisionReadModel } from "../../decision-intelligence/compatibilityDecisionService";
 import { saveResearchCommand } from "../../repositories/researchRepository";
 import { refreshCanonicalRecommendation } from "../../decision-intelligence/recalculationService";
+import RentCastPropertyEvidencePanel from "../../../workspaces/deals/RentCastPropertyEvidencePanel";
+
+const { getRentCastPropertyDataStatus, refreshRentCastPropertyData } = vi.hoisted(() => ({
+  getRentCastPropertyDataStatus: vi.fn(),
+  refreshRentCastPropertyData: vi.fn(),
+}));
+vi.mock("../../propertyData", () => ({ getRentCastPropertyDataStatus, refreshRentCastPropertyData }));
 
 const db = vi.hoisted(() => ({ row: null, writes: [], reads: [], filters: [] }));
 vi.mock("../../../supabaseClient", () => ({ supabase: { from: (table) => {
@@ -120,37 +129,62 @@ describe("durable RDI research loop", () => {
     expect(after.vacantLandStrategyResult.factReadModel.factsById["legal-access"].value).toBeTruthy();
   });
 
-  it("keeps RentCast disagreement explicit, links provenance, and only changes canonical Residential facts after resolution", () => {
-    const original = { ...residential, arv: 200000 };
-    const recorded = mutate(original, providerRecord);
-    expect(recorded.arv).toBe(200000);
-    expect(recorded.research_evidence).toHaveLength(2);
-    expect(recorded.research_evidence.find((entry) => entry.sourceSystem === providerRecord.source)).toMatchObject({
-      extractionMethod: "provider-import",
-      verificationState: "unverified",
-      provenanceDetails: {
-        provider: "rentcast", providerEvidenceId: "evidence-1",
-        providerRecordId: "rentcast-property-1", providerField: "valuation.estimatedValue",
-      },
-    });
-    const before = evaluate(recorded);
-    const conflict = before.conflictReadModel.activeConflicts.find((entry) => entry.canonicalField === providerRecord.field);
-    expect(conflict).toBeTruthy();
-    const candidate = conflict.candidateValues.find((entry) => entry.sourceRecordId === providerRecord.source);
-    const resolved = mutate(recorded, { type: "resolve", field: providerRecord.field, candidateId: candidate.candidateId, reason: "Owner reviewed the provider AVM and comparable context." });
-    expect(resolved.arv).toBe(255000);
-    const after = evaluate(resolved, before);
-    expect(after.recalculation.state).toBe("recalculated");
-    expect(after.recalculation.changedCategories).toEqual(expect.arrayContaining(["facts", "conflicts"]));
+  it("keeps RentCast AVM visible as provider evidence without an AVM-to-ARV action", async () => {
+    const evidence = {
+      id: "evidence-1", providerRecordId: "rentcast-property-1", retrievedAt: now, cacheState: "fresh",
+      data: { valuation: { estimatedValue: 255000, lowValue: 230000, highValue: 280000 }, comps: [{ listPrice: 260000 }], limitations: [] },
+    };
+    const original = structuredClone(evidence);
+    getRentCastPropertyDataStatus.mockResolvedValue({ success: true, data: { provider: { enabled: true, configured: true }, evidence } });
+    render(React.createElement(RentCastPropertyEvidencePanel, { deal: residential, onSaved: vi.fn() }));
+    expect(await screen.findByText(/RentCast AVM range:/)).toHaveTextContent("$230,000 to $280,000");
+    expect(screen.getByText(/Estimated value \(AVM\):/).closest("li")).toHaveTextContent("$255,000 — Provider estimate only; ARV is a separate researched fact");
+    expect(screen.getByText(/Last retrieved:/).closest("p")).toHaveTextContent(now);
+    expect(screen.getByText(/Provider evidence: evidence-1/)).toBeInTheDocument();
+    expect(screen.getByText(/Comparable listing observations: 1/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Record AVM/i })).not.toBeInTheDocument();
+    expect(evidence).toEqual(original);
+    expect(refreshRentCastPropertyData).not.toHaveBeenCalled();
+    expect(db.writes).toHaveLength(0);
   });
 
-  it("keeps identical accepted provider facts deterministic without duplicate evidence or DI-06 noise", () => {
-    const accepted = mutate(residential, providerRecord);
-    const initial = evaluate(accepted);
-    const repeated = mutate(accepted, providerRecord);
-    expect(repeated.research_revision).toBe(accepted.research_revision);
-    expect(repeated.research_evidence).toEqual(accepted.research_evidence);
-    expect(evaluate(repeated, initial).recalculation.state).toBe("unchanged");
+  it("rejects provider AVM and listing promotion for empty or existing ARV, including legacy resolution", async () => {
+    for (const [deal, expectedArv] of [[residential, undefined], [{ ...residential, arv: 200000 }, 200000]]) {
+      expect(() => mutate(deal, providerRecord)).toThrow(/evidence only/);
+      const result = await saveResearchCommand(deal, providerRecord);
+      expect(result.success).toBe(false);
+      expect(deal.arv).toBe(expectedArv);
+    }
+    const listing = {
+      ...providerRecord, source: "rentcast:evidence-1:comps.0.listPrice", sourceType: "comparable-sale", value: "260000",
+      providerEvidence: { ...providerRecord.providerEvidence, providerField: "comps.0.listPrice" },
+    };
+    expect(() => mutate(residential, listing)).toThrow(/evidence only/);
+    expect((await saveResearchCommand(db.row, listing)).success).toBe(false);
+
+    const legacyEvidence = {
+      evidenceId: "legacy-avm", relatedCanonicalField: providerRecord.field,
+      sourceType: "provider-valuation", sourceSystem: providerRecord.source, sourceRecordId: providerRecord.source,
+      valueSummary: "255000", organizationId: "org-1", verificationState: "unverified",
+      provenanceDetails: { storedValue: 255000, provider: "rentcast", providerField: "valuation.estimatedValue" },
+    };
+    const legacy = { ...residential, arv: 200000, research_evidence: [legacyEvidence] };
+    const conflict = assembleResearchContext(legacy, now).conflictReadModel.activeConflicts.find((entry) => entry.canonicalField === providerRecord.field);
+    const candidate = conflict.candidateValues.find((entry) => entry.evidenceId === legacyEvidence.evidenceId);
+    expect(candidate).toBeTruthy();
+    expect(() => mutate(legacy, { type: "resolve", field: providerRecord.field, candidateId: candidate.candidateId, reason: "Use AVM" })).toThrow(/cannot be resolved/);
+    const legacyListing = {
+      ...legacyEvidence, evidenceId: "legacy-listing", sourceType: "comparable-sale",
+      sourceSystem: listing.source, sourceRecordId: listing.source, valueSummary: "260000",
+      provenanceDetails: { storedValue: 260000, provider: "rentcast", providerField: "comps.0.listPrice" },
+    };
+    const listed = { ...legacy, research_evidence: [legacyListing] };
+    const listingConflict = assembleResearchContext(listed, now).conflictReadModel.activeConflicts.find((entry) => entry.canonicalField === providerRecord.field);
+    const listingCandidate = listingConflict.candidateValues.find((entry) => entry.evidenceId === legacyListing.evidenceId);
+    expect(() => mutate(listed, { type: "resolve", field: providerRecord.field, candidateId: listingCandidate.candidateId, reason: "Use listing" })).toThrow(/cannot be resolved/);
+    expect(legacy.arv).toBe(200000);
+    expect(legacy.research_evidence).toEqual([legacyEvidence]);
+    expect(db.writes).toHaveLength(0);
   });
 
   it("uses the same provider-backed research path for Vacant Land without residential fallback", () => {

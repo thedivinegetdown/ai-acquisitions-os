@@ -36,20 +36,17 @@ beforeEach(() => {
 });
 
 describe("RentCastPropertyEvidencePanel", () => {
-  it("loads status without refreshing, shows explicit disagreement, and records through research", async () => {
+  it("shows AVM as provider evidence without offering ARV promotion", async () => {
     const onSaved = vi.fn();
     render(<RentCastPropertyEvidencePanel deal={residential} onSaved={onSaved} />);
     expect(await screen.findByText("Available")).toBeInTheDocument();
     expect(refreshRentCastPropertyData).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Refresh Property Data" }));
-    expect(await screen.findByRole("list", { name: "RentCast normalized findings" })).toHaveTextContent("Differs from current fact (200000)");
+    expect(await screen.findByRole("list", { name: "RentCast normalized findings" })).toHaveTextContent("Provider estimate only; ARV is a separate researched fact");
     expect(screen.getByText(/Tax\/assessment context:/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Record AVM as ARV evidence" }));
-    await waitFor(() => expect(saveResearchCommand).toHaveBeenCalledWith(residential, expect.objectContaining({
-      type: "record", field: "property.afterRepairValue", value: "255000",
-      providerEvidence: expect.objectContaining({ provider: "rentcast", evidenceId: "evidence-1", providerField: "valuation.estimatedValue" }),
-    })));
-    expect(onSaved).toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Record AVM as ARV evidence" })).not.toBeInTheDocument();
+    expect(saveResearchCommand).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
   it("keeps the manual workflow usable when disabled and offers land-specific acceptance", async () => {
