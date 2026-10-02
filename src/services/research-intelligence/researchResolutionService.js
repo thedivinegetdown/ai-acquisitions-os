@@ -59,6 +59,16 @@ function timestamp(value, label) {
   return date.toISOString();
 }
 
+function isProviderValuation(source, field) {
+  const provider = source?.provenanceDetails || source?.providerEvidence || {};
+  const rentCastSource = /^rentcast:/i.test(source?.sourceSystem || source?.source || "");
+  return source?.sourceType === "provider-valuation" ||
+    provider.providerField?.startsWith("valuation.") ||
+    (rentCastSource && /^rentcast:[^:]+:valuation\./i.test(source?.sourceSystem || source?.source || "")) ||
+    (["property.afterRepairValue", "property.comparableLandValue"].includes(field) &&
+      (provider.provider === "rentcast" || rentCastSource));
+}
+
 export function buildResearchMutation({ deal, command, actorReference, now }) {
   if (!deal?.id || !deal.organization_id) throw new Error("An owned deal is required.");
   const observedTimestamp = timestamp(now, "Observation time");
@@ -73,6 +83,7 @@ export function buildResearchMutation({ deal, command, actorReference, now }) {
     const source = requiredText(command.source, "Source");
     const sourceType = command.sourceType || "manual-research";
     if (!["manual-research", "seller-statement", "document", "property-record", "provider-valuation", "comparable-sale", "land-comparable-sale"].includes(sourceType)) throw new Error("Unsupported research source type.");
+    if (isProviderValuation({ ...command, sourceType }, command.field)) throw new Error("Provider valuation and listing observations are evidence only and cannot become a canonical research fact.");
     if (!["verified", "unverified", "unknown"].includes(command.verificationState)) throw new Error("Choose a verification state.");
     const raw = requiredText(String(command.value ?? ""), "Fact value");
     const numberText = raw.replace(/[$,]/g, "").trim();
@@ -134,6 +145,7 @@ export function buildResearchMutation({ deal, command, actorReference, now }) {
     const selected = conflict?.candidateValues.find((entry) => entry.candidateId === command.candidateId);
     const source = evidence.find((entry) => entry.evidenceId === selected?.evidenceId);
     if (!selected || !source) throw new Error("Select a persisted source-linked candidate. Record its source first if needed.");
+    if (isProviderValuation(source, command.field)) throw new Error("Provider valuation and listing observations cannot be resolved into a canonical research fact.");
     const value = source.provenanceDetails?.storedValue;
     if (value == null) throw new Error("The selected source has no explicit value.");
     setValue(value);
