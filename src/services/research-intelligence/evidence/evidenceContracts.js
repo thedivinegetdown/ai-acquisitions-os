@@ -1,5 +1,6 @@
 import { toSafeDate } from "../../../utils/dates";
 import { compactText, uniqueStrings } from "../../../utils/text";
+import { normalizeSupportingEvidenceMetadata } from "../supportingEvidenceContracts";
 
 export const EVIDENCE_CONTRACT_VERSION = "evidence-provenance-contract-v1";
 export const EVIDENCE_RULESET_VERSION = "evidence-provenance-ruleset-v1";
@@ -359,6 +360,7 @@ export function normalizeCanonicalEvidence(value) {
       trustLevel: text(input.legacyTrustLevel ?? input.trustLevel, 80),
       reliabilityLabel: text(input.legacyReliabilityLabel ?? input.reliabilityLabel, 120),
     },
+    supportingEvidence: normalizeSupportingEvidenceMetadata(input.supportingEvidence),
   };
   const quality = qualityDimensions(normalized);
   const limitations = limitationCodes(normalized, quality);

@@ -14,6 +14,8 @@ export const RESEARCH_FIELDS = Object.freeze([
   { field: "property.comparableLandValue", label: "Comparable land value", columns: ["comparable_land_value"], numeric: true, asset: "vacant-residential-land" },
 ]);
 
+export const RESEARCH_EVIDENCE_LIMIT = 48;
+
 function conflictModel(deal, evidence, resolutions = [], now) {
   return evaluateConflictingData({ deal, assetStrategyContext: buildAssetStrategyContext(deal),
     evidenceReferences: evidence, explicitResolutionReferences: resolutions, evaluatedTimestamp: now });
@@ -159,6 +161,6 @@ export function buildResearchMutation({ deal, command, actorReference, now }) {
     resolutions = resolutions.filter((entry) => entry.conflictId !== conflict.conflictId).concat(resolution);
   } else throw new Error("Unsupported research command.");
   // Refuse overflow rather than let bounded canonical contracts hide candidates.
-  if (evidence.length > 48 || evidence.filter((entry) => entry.relatedCanonicalField === command.field).length > 9) throw new Error("This deal has reached the bounded research evidence limit; no evidence was removed.");
+  if (evidence.length > RESEARCH_EVIDENCE_LIMIT || evidence.filter((entry) => entry.relatedCanonicalField === command.field).length > 9) throw new Error("This deal has reached the bounded research evidence limit; no evidence was removed.");
   return { ...changes, research_evidence: evidence, research_resolutions: resolutions, research_revision: (deal.research_revision || 0) + 1 };
 }
