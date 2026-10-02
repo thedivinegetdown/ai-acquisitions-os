@@ -8,7 +8,11 @@ function label(value) {
 
 function groupRecords(records, mode) {
   return records.reduce((groups, record) => {
-    const key = mode === "source" ? record.sourceKind : record.relatedCanonicalField;
+    const key = mode === "source"
+      ? record.sourceKind
+      : record.supportingEvidence?.category
+        ? `Supporting: ${label(record.supportingEvidence.category.replaceAll("_", "-"))}`
+        : record.relatedCanonicalField;
     const group = key || "Unknown";
     if (!groups[group]) groups[group] = [];
     groups[group].push(record);
@@ -18,6 +22,7 @@ function groupRecords(records, mode) {
 
 function EvidenceItem({ item, onCopy, onNavigateSection }) {
   const lineageIds = [...(item.parentEvidenceIds || []), ...(item.derivedFromEvidenceIds || [])];
+  const supporting = item.supportingEvidence;
   return (
     <li className="evidence-panel__item">
       <header>
@@ -28,7 +33,7 @@ function EvidenceItem({ item, onCopy, onNavigateSection }) {
         <StatusBadge status={item.evidenceStatus === "usable" ? "success" : "warning"}>{label(item.evidenceStatus)}</StatusBadge>
       </header>
       <dl>
-        <div><dt>Canonical field</dt><dd>{item.relatedCanonicalField || "Not supplied"}</dd></div>
+        <div><dt>{supporting ? "Evidence category" : "Canonical field"}</dt><dd>{supporting ? label(supporting.category.replaceAll("_", "-")) : item.relatedCanonicalField || "Not supplied"}</dd></div>
         <div><dt>Source kind</dt><dd>{label(item.sourceKind)}</dd></div>
         <div><dt>Source</dt><dd>{[item.sourceSystem, item.sourceType].filter(Boolean).join(" / ")}</dd></div>
         {item.sourceRecordId ? <div><dt>Source record</dt><dd>{item.sourceRecordId}</dd></div> : null}
@@ -38,6 +43,17 @@ function EvidenceItem({ item, onCopy, onNavigateSection }) {
         {item.sourceTimestamp ? <div><dt>Source timestamp</dt><dd>{formatSafeDate(item.sourceTimestamp, "Not available")}</dd></div> : null}
         {item.observedTimestamp ? <div><dt>Observed</dt><dd>{formatSafeDate(item.observedTimestamp, "Not available")}</dd></div> : null}
         <div><dt>Extraction</dt><dd>{label(item.extractionMethod)}</dd></div>
+        {supporting ? <>
+          <div><dt>Evidence status</dt><dd>{supporting.status}</dd></div>
+          <div><dt>Resolution state</dt><dd>{supporting.resolutionState}</dd></div>
+          {supporting.source.url ? <div><dt>Source URL</dt><dd><a href={supporting.source.url} target="_blank" rel="noreferrer">{supporting.source.url}</a></dd></div> : null}
+          {supporting.source.reference ? <div><dt>Source reference</dt><dd>{supporting.source.reference}</dd></div> : null}
+          {supporting.source.sourceDate ? <div><dt>Source date</dt><dd>{formatSafeDate(supporting.source.sourceDate, "Not available")}</dd></div> : null}
+          <div><dt>Retrieved at</dt><dd>{formatSafeDate(supporting.source.retrievedAt, "Not available")}</dd></div>
+          {supporting.linkage.parcelIdentifier ? <div><dt>Parcel identifier</dt><dd>{supporting.linkage.parcelIdentifier}</dd></div> : null}
+          {supporting.linkage.ownerPartyName ? <div><dt>Owner / party</dt><dd>{supporting.linkage.ownerPartyName}</dd></div> : null}
+          {supporting.notes ? <div><dt>Notes / limitations</dt><dd>{supporting.notes}</dd></div> : null}
+        </> : null}
       </dl>
       {item.limitationCodes?.length ? <p className="evidence-panel__limitations">Limitations: {item.limitationCodes.map(label).join(", ")}</p> : null}
       {item.compatibility ? <p className="evidence-panel__warning">Compatibility Evidence; persisted does not mean independently verified.</p> : null}
