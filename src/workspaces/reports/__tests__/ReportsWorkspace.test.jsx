@@ -10,6 +10,7 @@ vi.mock("../../../hooks/useOwnerOperatingReport", () => ({
 import ReportsWorkspace from "../ReportsWorkspace";
 
 const ORG = "org-report";
+const BUSINESS_TIME_ZONE = "America/Chicago";
 
 function owned(record) {
   return {
@@ -22,6 +23,7 @@ function owned(record) {
 describe("ReportsWorkspace", () => {
   it("renders canonical durable results and explicit unavailable states", () => {
     const report = buildOwnerOperatingReport({
+      businessTimeZone: BUSINESS_TIME_ZONE,
       organizationId: ORG,
       evaluatedAt: "2026-09-23T16:00:00.000Z",
       sources: {
