@@ -5,6 +5,7 @@ const NOW = Date.now();
 const TODAY = new Date(NOW).toISOString().slice(0, 10);
 const YESTERDAY = new Date(NOW - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const TOMORROW = new Date(NOW + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const BUSINESS_TIME_ZONE = "America/Chicago";
 
 function deal(overrides = {}) {
   return {
@@ -21,6 +22,50 @@ function deal(overrides = {}) {
 }
 
 describe("buildTodayReadModel", () => {
+  it.each([
+    ["2026-10-01T17:00:00.000Z", "waiting"],
+    ["2026-10-02T17:00:00.000Z", "act-now"],
+    ["2026-10-03T17:00:00.000Z", "at-risk"],
+    ["2026-10-02T03:30:00.000Z", "waiting"],
+  ])("classifies a date-only deal commitment by the organization business date at %s", (now, category) => {
+    const dealId = "312a97dd-769c-4b93-bc1c-8c40c8c01bd6";
+    const model = buildTodayReadModel({
+      businessTimeZone: BUSINESS_TIME_ZONE,
+      deals: [deal({
+        id: dealId,
+        next_action: "Run property research",
+        next_action_due_date: "2026-10-02",
+      })],
+      now,
+    });
+    const matching = model.items.filter((item) => item.target?.dealId === dealId && item.commitment);
+
+    expect(matching).toHaveLength(1);
+    expect(matching[0]).toMatchObject({
+      actionWindow: "10/2/2026",
+      category,
+      dueDate: "2026-10-02",
+    });
+  });
+
+  it("does not apply date-only business-zone conversion to timestamp commitments", () => {
+    const model = buildTodayReadModel({
+      businessTimeZone: BUSINESS_TIME_ZONE,
+      deals: [deal()],
+      now: "2026-10-02T03:30:00.000Z",
+      sellerTasks: [{
+        id: "timestamp-task",
+        deal_id: "deal-1",
+        due_at: "2026-10-02T12:00:00.000Z",
+        status: "open",
+        title: "Timestamped task",
+      }],
+    });
+
+    expect(model.items.find((item) => item.id === "commitment:seller-task:timestamp-task"))
+      .toMatchObject({ category: "act-now", dueDate: "2026-10-02T12:00:00.000Z" });
+  });
+
   it("normalizes action items from existing notification rules", () => {
     const model = buildTodayReadModel({
       deals: [deal({ due_date: TODAY })],

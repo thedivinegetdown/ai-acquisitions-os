@@ -3,6 +3,7 @@ import { buildOwnerOperatingReport } from "../ownerOperatingReportService";
 
 const ORG = "org-a";
 const NOW = "2026-09-23T16:00:00.000Z";
+const BUSINESS_TIME_ZONE = "America/Chicago";
 
 function owned(record = {}) {
   return {
@@ -26,6 +27,7 @@ function sources(overrides = {}) {
 
 function report(sourceOverrides = {}, options = {}) {
   return buildOwnerOperatingReport({
+    businessTimeZone: options.businessTimeZone || BUSINESS_TIME_ZONE,
     organizationId: ORG,
     evaluatedAt: options.evaluatedAt || NOW,
     sources: sources(sourceOverrides),
@@ -33,6 +35,42 @@ function report(sourceOverrides = {}, options = {}) {
 }
 
 describe("buildOwnerOperatingReport", () => {
+  it.each([
+    ["2026-10-01T17:00:00.000Z", { due: 0, overdue: 0, waiting: 1 }],
+    ["2026-10-02T17:00:00.000Z", { due: 1, overdue: 0, waiting: 0 }],
+    ["2026-10-03T17:00:00.000Z", { due: 0, overdue: 1, waiting: 0 }],
+    ["2026-10-02T03:30:00.000Z", { due: 0, overdue: 0, waiting: 1 }],
+  ])("classifies a date-only deal commitment by the organization business date at %s", (evaluatedAt, expected) => {
+    const result = report({
+      deals: [owned({
+        id: "312a97dd-769c-4b93-bc1c-8c40c8c01bd6",
+        stage: "New Lead",
+        next_action: "Run property research",
+        next_action_due_date: "2026-10-02",
+      })],
+    }, { evaluatedAt });
+
+    expect(result.work.due.value).toBe(expected.due);
+    expect(result.work.overdue.value).toBe(expected.overdue);
+    expect(result.work.waiting.value).toBe(expected.waiting);
+  });
+
+  it("does not apply date-only business-zone conversion to timestamp commitments", () => {
+    const result = report({
+      sellerTasks: [owned({
+        id: "timestamp-task",
+        due_at: "2026-10-02T12:00:00.000Z",
+        status: "open",
+      })],
+    }, { evaluatedAt: "2026-10-02T03:30:00.000Z" });
+
+    expect(result.work).toMatchObject({
+      due: { value: 1 },
+      overdue: { value: 0 },
+      waiting: { value: 0 },
+    });
+  });
+
   it("counts only active tenant-owned deal actions as waiting or overdue by calendar date", () => {
     const action = "Run one RentCast property research lookup and compare it with OCPA/tax-sale facts";
     const result = report({

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { buildOwnerOperatingReport } from "../services/reporting";
-import { loadOwnerOperatingReportSources } from "../services/repositories";
+import {
+  loadOrganizationSettings,
+  loadOwnerOperatingReportSources,
+} from "../services/repositories";
 
 export function useOwnerOperatingReport({ enabled = true } = {}) {
   const [report, setReport] = useState(null);
@@ -11,14 +14,18 @@ export function useOwnerOperatingReport({ enabled = true } = {}) {
     if (!enabled) return;
     setLoading(true);
     const evaluatedAt = new Date().toISOString();
-    const result = await loadOwnerOperatingReportSources();
-    if (!result.success) {
+    const [result, settingsResult] = await Promise.all([
+      loadOwnerOperatingReportSources(),
+      loadOrganizationSettings(),
+    ]);
+    if (!result.success || !settingsResult.success) {
       setReport(null);
-      setError(result.error?.message || "Could not load the owner operating report.");
+      setError(result.error?.message || settingsResult.error?.message || "Could not load the owner operating report.");
     } else {
       const data = result.data;
       setReport(
         buildOwnerOperatingReport({
+          businessTimeZone: settingsResult.data.default_timezone,
           organizationId: data.organizationId,
           evaluatedAt,
           sources: data.sources,
@@ -35,15 +42,19 @@ export function useOwnerOperatingReport({ enabled = true } = {}) {
     let cancelled = false;
     async function load() {
       const evaluatedAt = new Date().toISOString();
-      const result = await loadOwnerOperatingReportSources();
+      const [result, settingsResult] = await Promise.all([
+        loadOwnerOperatingReportSources(),
+        loadOrganizationSettings(),
+      ]);
       if (cancelled) return;
-      if (!result.success) {
+      if (!result.success || !settingsResult.success) {
         setReport(null);
-        setError(result.error?.message || "Could not load the owner operating report.");
+        setError(result.error?.message || settingsResult.error?.message || "Could not load the owner operating report.");
       } else {
         const data = result.data;
         setReport(
           buildOwnerOperatingReport({
+            businessTimeZone: settingsResult.data.default_timezone,
             organizationId: data.organizationId,
             evaluatedAt,
             sources: data.sources,

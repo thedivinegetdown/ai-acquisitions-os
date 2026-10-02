@@ -66,6 +66,7 @@ return (
    />
 
   <WorkspaceRoutes
+    businessTimeZone={commitmentData.businessTimeZone}
     clearSelection={clearSelection}
     conversationLoadError={conversationData.error}
     conversationLoading={conversationData.loading}

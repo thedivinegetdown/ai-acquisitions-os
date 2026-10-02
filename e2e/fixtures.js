@@ -337,6 +337,20 @@ async function handleRest(route, state) {
   let rows = [];
   if (table === "deals") rows = visibleDeals(profile, state);
   if (table === "message_logs") rows = visibleMessages(profile, state, url);
+  if (table === "organization_settings") {
+    rows = [{
+      organization_id: profile.organizationId,
+      default_market: "Synthetic Market",
+      default_lead_source: "CSV Import",
+      default_pipeline_stage: "New Lead",
+      default_follow_up_cadence: "Every 2 days",
+      default_offer_formula: "70% ARV minus repairs",
+      default_assignment_fee_target: 15000,
+      default_repair_estimate_buffer: 10,
+      default_timezone: "America/Chicago",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    }];
+  }
   if (table === "organization_memberships") {
     state.membershipReads += 1;
     rows = [{

@@ -1,3 +1,5 @@
+import { getBusinessDate } from "../../utils/dates";
+
 const AVAILABLE = "available";
 const UNAVAILABLE = "unavailable";
 const OPEN_WORK_STATUSES = new Set(["open", "pending"]);
@@ -59,7 +61,7 @@ function workObligationKey(record, index) {
     : `${record.sourceType}:${record.sourceId || index}`;
 }
 
-function buildWorkMetrics({ deals, sellerTasks, sequenceSteps }, evaluationDate) {
+function buildWorkMetrics({ deals, sellerTasks, sequenceSteps }, evaluationDate, evaluationUtcDate) {
   if (!deals || !sellerTasks || !sequenceSteps) {
     const reason = "Deal, seller task, and sequence sources are required for complete workload counts.";
     return {
@@ -95,19 +97,27 @@ function buildWorkMetrics({ deals, sellerTasks, sequenceSteps }, evaluationDate)
 
   return {
     due: available(
-      open.filter((record) => dateKey(record.due) === evaluationDate).length
+      open.filter((record) => dateKey(record.due) === (
+        record.sourceType === "seller-task" ? evaluationUtcDate : evaluationDate
+      )).length
     ),
     overdue: available(
       open.filter((record) => {
         const due = dateKey(record.due);
-        return due && due < evaluationDate;
+        const comparisonDate = record.sourceType === "seller-task"
+          ? evaluationUtcDate
+          : evaluationDate;
+        return due && due < comparisonDate;
       }).length
     ),
     completed: available(completed.length),
     waiting: available(
       open.filter((record) => {
         const due = dateKey(record.due);
-        return due && due > evaluationDate;
+        const comparisonDate = record.sourceType === "seller-task"
+          ? evaluationUtcDate
+          : evaluationDate;
+        return due && due > comparisonDate;
       }).length
     ),
   };
@@ -367,6 +377,7 @@ function validEvaluationTime(value) {
 }
 
 export function buildOwnerOperatingReport({
+  businessTimeZone,
   organizationId,
   evaluatedAt,
   sources = {},
@@ -374,7 +385,8 @@ export function buildOwnerOperatingReport({
 } = {}) {
   if (!organizationId) throw new Error("An organization ID is required for the owner report.");
   const evaluationTime = validEvaluationTime(evaluatedAt);
-  const evaluationDate = evaluationTime.toISOString().slice(0, 10);
+  const evaluationDate = getBusinessDate(evaluationTime, businessTimeZone);
+  const evaluationUtcDate = evaluationTime.toISOString().slice(0, 10);
   const scoped = {
     deals: ownedRecords(sources.deals, organizationId, evaluationTime),
     sellerTasks: ownedRecords(sources.sellerTasks, organizationId, evaluationTime),
@@ -392,7 +404,7 @@ export function buildOwnerOperatingReport({
     evaluatedAt: evaluationTime.toISOString(),
     sourceStatus: warnings.length ? "partial" : "complete",
     sourceWarnings: warnings,
-    work: buildWorkMetrics(scoped, evaluationDate),
+    work: buildWorkMetrics(scoped, evaluationDate, evaluationUtcDate),
     funnel: buildFunnelMetrics(scoped),
     responsiveness: buildResponsivenessMetrics(scoped.messages, evaluationTime),
     financial: buildFinancialMetrics(scoped.closingRevisions),

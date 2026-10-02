@@ -1,7 +1,7 @@
 import { buildActionInbox } from "../notifications";
 import { getPriorityWeight } from "../notifications/notificationPriorityService";
 import { buildApprovalReadModel, isApprovalNotification } from "../approvals";
-import { formatDateOnly, formatSafeDate } from "../../utils/dates";
+import { formatDateOnly, formatSafeDate, getBusinessDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 import {
   conversationNeedsReply,
@@ -247,69 +247,89 @@ function normalizeApprovalTodayItem(approval = {}) {
   };
 }
 
-function buildWaitingItems(deals = [], { now = Date.now() } = {}) {
-  const today = todayIso(now);
-
+function buildDealCommitmentItems(deals = [], { evaluationDate, now = Date.now() } = {}) {
   return deals
     .filter(isActiveDeal)
     .filter((deal) => {
       const dueDate = normalizeDate(getDealCommitmentDueDate(deal));
-      return dueDate && dueDate > today;
+      return dueDate && String(deal.next_action || "").trim();
     })
-    .map((deal) => ({
-      id: `waiting:${getDealId(deal)}`,
-      tenantId: deal.organization_id || deal.tenant_id || null,
-      type: "follow-up",
-      category: "waiting",
-      title: `Waiting until ${formatDateOnly(getDealCommitmentDueDate(deal), "scheduled follow-up")}`,
-      summary: deal.next_action || "Follow-up is scheduled for a future date.",
-      relatedSeller: getSeller(deal),
-      relatedDeal: getAddress(deal),
-      priority: "Low",
-      urgency: "Can wait",
-      reason: "The next follow-up date is in the future.",
-      recommendedNextAction: "No action needed until the scheduled follow-up.",
-      dueDate: getDealCommitmentDueDate(deal),
-      sourceDueTimestamp: getDealCommitmentDueDate(deal) || null,
-      actionWindow: formatDateOnly(getDealCommitmentDueDate(deal), ""),
-      source: getDealSource(deal),
-      createdAt: deal.created_at || nowIso(now),
-      updatedAt: deal.updated_at || deal.created_at || nowIso(now),
-      status: getDealStatus(deal),
-      availableActions: [{ id: "open-deal", label: "Open deal", targetWorkspace: "deals", dealId: getDealId(deal) }],
-      evidence: [{ label: "Scheduled follow-up", value: formatDateOnly(getDealCommitmentDueDate(deal), "") }],
-      targetWorkspace: "deals",
-      target: { dealId: getDealId(deal), phone: deal.phone || "" },
-      commitment: { sourceType: "deal", sourceId: getDealId(deal), dealId: getDealId(deal) },
-      obligationKey: buildObligationKey(
-        getDealId(deal),
-        deal.next_action,
-        getDealCommitmentDueDate(deal)
-      ),
-      ownershipPriority: 1,
-      dataConfidence: "Derived from loaded CRM data",
-      sortSignals: { priorityWeight: 1, dueDate: getDealCommitmentDueDate(deal) },
-    }));
+    .map((deal) => {
+      const dueDate = normalizeDate(getDealCommitmentDueDate(deal));
+      const category = dueDate < evaluationDate
+        ? "at-risk"
+        : dueDate > evaluationDate
+          ? "waiting"
+          : "act-now";
+      const address = getAddress(deal);
+      const title = category === "waiting"
+        ? `Waiting until ${formatDateOnly(dueDate, "scheduled follow-up")}`
+        : category === "at-risk"
+          ? `Overdue task: ${address}`
+          : `Follow-up due: ${address}`;
+      const reason = category === "waiting"
+        ? "The next follow-up date is in the future."
+        : category === "at-risk"
+          ? `This commitment was due ${formatDateOnly(dueDate, "earlier")}.`
+          : "This commitment is due today.";
+
+      return {
+        id: `${category === "waiting" ? "waiting" : "commitment:deal"}:${getDealId(deal)}`,
+        tenantId: deal.organization_id || deal.tenant_id || null,
+        type: "follow-up",
+        category,
+        title,
+        summary: deal.next_action || "Follow-up is scheduled for a future date.",
+        relatedSeller: getSeller(deal),
+        relatedDeal: address,
+        priority: category === "at-risk" ? "Critical" : category === "act-now" ? "High" : "Low",
+        urgency: category === "at-risk" ? "Overdue" : category === "act-now" ? "Due" : "Can wait",
+        reason,
+        recommendedNextAction: category === "waiting"
+          ? "No action needed until the scheduled follow-up."
+          : deal.next_action || "Review the commitment.",
+        dueDate,
+        sourceDueTimestamp: dueDate,
+        actionWindow: formatDateOnly(dueDate, ""),
+        source: getDealSource(deal),
+        createdAt: deal.created_at || nowIso(now),
+        updatedAt: deal.updated_at || deal.created_at || nowIso(now),
+        status: getDealStatus(deal),
+        availableActions: [{ id: "open-deal", label: "Open deal", targetWorkspace: "deals", dealId: getDealId(deal) }],
+        evidence: [{ label: "Scheduled follow-up", value: formatDateOnly(dueDate, "") }],
+        targetWorkspace: "deals",
+        target: { dealId: getDealId(deal), phone: deal.phone || "" },
+        commitment: { sourceType: "deal", sourceId: getDealId(deal), dealId: getDealId(deal) },
+        obligationKey: buildObligationKey(getDealId(deal), deal.next_action, dueDate),
+        ownershipPriority: 1,
+        dataConfidence: "Derived from loaded CRM data",
+        sortSignals: {
+          priorityWeight: category === "at-risk" ? 4 : category === "act-now" ? 3 : 1,
+          dueDate,
+        },
+      };
+    });
 }
 
-function commitmentCategory(status, dueDate, updatedAt, now) {
+function commitmentCategory(status, dueDate, updatedAt, evaluationDate) {
   const normalizedStatus = String(status || "").trim().toLowerCase();
   if (["completed", "complete", "done"].includes(normalizedStatus)) {
-    return normalizeDate(updatedAt) === todayIso(now) ? "completed" : "";
+    return normalizeDate(updatedAt) === evaluationDate ? "completed" : "";
   }
   if (["cancelled", "canceled", "skipped"].includes(normalizedStatus)) return "";
 
   const date = normalizeDate(dueDate);
   if (!date) return "";
-  if (date < todayIso(now)) return "at-risk";
-  if (date > todayIso(now)) return "waiting";
+  if (date < evaluationDate) return "at-risk";
+  if (date > evaluationDate) return "waiting";
   return "act-now";
 }
 
-function buildSourceCommitmentItems({ records, sourceType, dealsById, now }) {
+function buildSourceCommitmentItems({ records, sourceType, dealsById, evaluationDate, now }) {
   return (Array.isArray(records) ? records : []).flatMap((record) => {
     const dueDate = sourceType === "seller-task" ? record.due_at : record.due_date;
-    const category = commitmentCategory(record.status, dueDate, record.updated_at, now);
+    const categoryDate = sourceType === "seller-task" ? todayIso(now) : evaluationDate;
+    const category = commitmentCategory(record.status, dueDate, record.updated_at, categoryDate);
     if (!category) return [];
 
     const deal = dealsById.get(String(record.deal_id || "")) || {};
@@ -517,6 +537,7 @@ function buildCounts(items = []) {
 }
 
 export function buildTodayReadModel({
+  businessTimeZone = "",
   conversations = [],
   deals = [],
   errors = [],
@@ -527,6 +548,9 @@ export function buildTodayReadModel({
   sellerTasks = [],
   sequenceSteps = [],
 } = {}) {
+  const evaluationDate = businessTimeZone
+    ? getBusinessDate(now, businessTimeZone)
+    : todayIso(now);
   const safeDeals = Array.isArray(deals)
     ? deals.filter((deal) => deal && typeof deal === "object")
     : [];
@@ -545,6 +569,10 @@ export function buildTodayReadModel({
   });
   const notificationItems = operatorNotifications
     .filter((notification) => !isApprovalNotification(notification))
+    .filter((notification) => !(
+      notification.deal?.next_action &&
+      ["Follow-ups due", "Overdue tasks"].includes(notification.category)
+    ))
     .map((notification) => normalizeNotificationItem(notification, { now }));
   const approvalItems = approvalReadModel.items.map(normalizeApprovalTodayItem);
   const dealsById = new Map(safeDeals.map((deal) => [String(getDealId(deal)), deal]));
@@ -552,12 +580,14 @@ export function buildTodayReadModel({
     records: sellerTasks,
     sourceType: "seller-task",
     dealsById,
+    evaluationDate,
     now,
   });
   const sequenceItems = buildSourceCommitmentItems({
     records: sequenceSteps,
     sourceType: "sequence-step",
     dealsById,
+    evaluationDate,
     now,
   });
 
@@ -567,7 +597,7 @@ export function buildTodayReadModel({
     ...notificationItems,
     ...approvalItems,
     ...buildSellerReplyItems(safeConversations, { now }),
-    ...buildWaitingItems(safeDeals, { now }),
+    ...buildDealCommitmentItems(safeDeals, { evaluationDate, now }),
     ...buildCompletedItems(safeDeals, { now }),
   ])
     .map((item) => applyTodayPrioritization(item, { evaluatedTimestamp: nowIso(now) }))
