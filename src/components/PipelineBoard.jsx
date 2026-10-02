@@ -2,11 +2,13 @@ import { memo, useState } from "react";
 import { Badge, Button, StatusBadge } from "../design-system";
 import { formatUsd } from "../utils/currency";
 import { getAllowedPipelineStageTransitions } from "../services/pipeline";
+import { formatDateOnly } from "../utils/dates";
 
 const COLUMN_BATCH_SIZE = 12;
 
 function formatDate(value, fallback = "Not available") {
   if (!value) return fallback;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatDateOnly(value, fallback);
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString();
 }

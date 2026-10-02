@@ -23,6 +23,7 @@ import {
 } from "../../services/pipeline";
 import { formatUsd } from "../../utils/currency";
 import { getDealAliasText } from "../../utils/dealFields";
+import { formatDateOnly } from "../../utils/dates";
 import "./pipeline-workspace.css";
 
 const FILTER_STORAGE_KEY = "ai-pipeline-filters";
@@ -32,6 +33,7 @@ const LIST_BATCH_SIZE = 50;
 
 function formatDate(value, fallback = "Not available") {
   if (!value) return fallback;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return formatDateOnly(value, fallback);
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date.toLocaleDateString();
 }

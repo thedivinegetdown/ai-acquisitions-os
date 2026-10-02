@@ -8,6 +8,8 @@ vi.mock("../../../services/pipeline/stageTransitionService", () => ({
 }));
 
 import PipelineWorkspace from "../PipelineWorkspace";
+import { buildTodayReadModel } from "../../../services/today/todayService";
+import { formatDateOnly } from "../../../utils/dates";
 
 const NOW = new Date("2026-08-04T12:00:00.000Z").getTime();
 
@@ -62,6 +64,26 @@ afterEach(() => {
 });
 
 describe("PipelineWorkspace", () => {
+  it("renders a date-only deal commitment as October 2 in both views and agrees with Today", () => {
+    const commitment = deal({
+      id: "312a97dd-769c-4b93-bc1c-8c40c8c01bd6",
+      next_action: "Run one RentCast property research lookup and compare it with OCPA/tax-sale facts",
+      next_action_due_date: "2026-10-02",
+      due_date: "2026-10-02",
+    });
+    const now = new Date("2026-10-01T12:00:00.000Z").getTime();
+    render(<PipelineWorkspace deals={[commitment]} now={now} />);
+    expect(screen.getByText("Due 10/2/2026")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Compact List" }));
+    expect(screen.getByText("Due 10/2/2026")).toBeInTheDocument();
+
+    expect(formatDateOnly(commitment.next_action_due_date)).toBe("10/2/2026");
+    const today = buildTodayReadModel({ deals: [commitment], now });
+    expect(today.items.find((item) => item.id === `waiting:${commitment.id}`)).toMatchObject({
+      category: "waiting", dueDate: "2026-10-02", actionWindow: "10/2/2026",
+    });
+  });
+
   it("renders a bounded loading state", () => {
     render(<PipelineWorkspace loading now={NOW} />);
 
