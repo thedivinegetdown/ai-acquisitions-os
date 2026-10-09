@@ -35,6 +35,7 @@ import {
   getConversationMessageTimestamp,
 } from "../conversations/conversationSignals";
 import { toSafeDate } from "../../utils/dates";
+import { ACTION_AUTHORIZATION, getOperatingScopePolicy, isOperatingActionEligible, researchCommitmentReview } from "../deals/operatingScopePolicy";
 import {
   DEAL_FIELD_ALIASES,
   getDealAliasText,
@@ -252,6 +253,7 @@ function buildCurrentDealEvidence(deal, context, dealId) {
     { canonicalField: "seller.email", keys: ["email", "seller_email", "owner_email"] },
     { canonicalField: "deal.followUpDueAt", keys: ["due_date", "follow_up_date"] },
     { canonicalField: "deal.status", keys: ["status", "negotiation_status"] },
+    { canonicalField: "deal.operatingScope", keys: ["operating_scope"] },
   ];
 
   return dedupeEvidence(
@@ -585,6 +587,7 @@ function getLifecycle({
 }
 
 function getRecommendation({
+  operatingPolicy,
   approvalSummary,
   assetStrategyContext,
   dealId,
@@ -638,7 +641,39 @@ function getRecommendation({
   let supportingEvidence = [];
   let recommendationBasis = {};
 
-  if (sellerReply) {
+  if (operatingPolicy.restricted) {
+    const informationAction = missingInformationReadModel?.highestPriorityAction;
+    const informationItem = missingInformationReadModel?.openItems.find((item) => item.requirementId === informationAction?.requirementId);
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = !operatingPolicy.supported
+      ? "Review the unsupported operating scope before taking action."
+      : dueContext.isDue || taskDue
+        ? researchCommitmentReview({ overdue: dueContext.isOverdue, due: true })
+        : informationAction?.enabled
+          ? informationAction.label
+          : researchCommitmentReview();
+    explanation = operatingPolicy.explanation;
+    const useInformation = operatingPolicy.supported && !dueContext.isDue && !taskDue && informationAction?.enabled;
+    supportingEvidence = uniqueStrings([
+      evidenceForCanonicalField(evidence, "deal.operatingScope")?.evidenceId,
+      ...(useInformation ? informationItem?.evidenceReferenceIds || [] : []),
+      ...(dueContext.isDue ? [evidenceForCanonicalField(evidence, "deal.followUpDueAt")?.evidenceId] : []),
+    ].filter(Boolean));
+    recommendationBasis = {
+      basisType: dueContext.isOverdue ? RECOMMENDATION_BASIS_TYPES.OVERDUE_ACTION
+        : dueContext.isDue || taskDue ? RECOMMENDATION_BASIS_TYPES.DUE_ACTION
+          : useInformation ? informationItem.state === "conflicting" ? RECOMMENDATION_BASIS_TYPES.CONFLICT_REVIEW : RECOMMENDATION_BASIS_TYPES.MISSING_INFORMATION
+            : RECOMMENDATION_BASIS_TYPES.COMPATIBILITY_FALLBACK,
+      triggerId: useInformation ? informationItem.itemId : `operating-scope:deal:${idSegment(dealId)}`,
+      triggerLabel: "Operating scope review",
+      relatedCanonicalFields: ["deal.operatingScope", ...(dueContext.isDue || taskDue ? ["deal.followUpDueAt"] : []), ...(useInformation ? [informationItem.canonicalField] : [])],
+      evidenceIds: supportingEvidence,
+      missingInformationIds: useInformation ? [informationItem.itemId] : [],
+      conflictIds: useInformation ? informationItem.conflictIds : [],
+      directTrigger: true,
+      explanation: operatingPolicy.explanation,
+    };
+  } else if (sellerReply) {
     actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
     label = "Respond to the seller reply.";
     explanation = "The latest valid linked seller message is inbound and needs a response.";
@@ -852,7 +887,7 @@ function getRecommendation({
 
   const hasSafeResult = Boolean(
     label &&
-      (actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
+      (operatingPolicy.restricted || actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
         dueContext.isDue || taskDue ||
         missingInformationReadModel?.highestPriorityAction?.enabled ||
         approvalSummary.pendingCount > 0 ||
@@ -974,6 +1009,8 @@ function buildRuleset(evaluatedTimestamp) {
 
 function buildAvailableActions(deal, dealId, assetStrategyContext) {
   const phone = safeDealAliasText(deal, "phone");
+  const acquisitionEligible = isOperatingActionEligible(deal, ACTION_AUTHORIZATION.ACQUISITION);
+  const operatingPolicy = getOperatingScopePolicy(deal);
   const offerCapability = canRunAssetCapability(
     assetStrategyContext,
     ASSET_CAPABILITY_IDS.RESIDENTIAL_OFFER_GENERATION
@@ -984,8 +1021,8 @@ function buildAvailableActions(deal, dealId, assetStrategyContext) {
       label: "Prepare Offer",
       targetSection: "numbers",
       targetWorkspace: "deal-decision-room",
-      enabled: Boolean(dealId) && offerCapability.allowed,
-      disabledReason: offerCapability.allowed
+      enabled: acquisitionEligible && Boolean(dealId) && offerCapability.allowed,
+      disabledReason: !acquisitionEligible ? operatingPolicy.explanation : offerCapability.allowed
         ? null
         : offerCapability.explanation,
       mode: "navigation",
@@ -995,7 +1032,8 @@ function buildAvailableActions(deal, dealId, assetStrategyContext) {
       label: "Follow Up",
       targetSection: "communication",
       targetWorkspace: "deal-decision-room",
-      enabled: Boolean(dealId),
+      enabled: acquisitionEligible && Boolean(dealId),
+      disabledReason: acquisitionEligible ? null : operatingPolicy.explanation,
       mode: "navigation",
     },
     {
@@ -1010,7 +1048,8 @@ function buildAvailableActions(deal, dealId, assetStrategyContext) {
       id: "view-conversation",
       label: "View Conversation",
       targetWorkspace: "inbox",
-      enabled: Boolean(phone),
+      enabled: acquisitionEligible && Boolean(phone),
+      disabledReason: acquisitionEligible ? null : operatingPolicy.explanation,
       mode: "navigation",
     },
   ];
@@ -1280,6 +1319,7 @@ function buildReadModel({
   const recalculation = refreshCanonicalRecommendation({
     available: Boolean(dealId && evaluatedTimestamp), previous: previousRecalculation,
     categories: {
+      operatingScope: getOperatingScopePolicy(safeDeal),
       classification: { dealId, context, assetType: assetStrategyContext.assetType,
         state: assetStrategyContext.classificationState, strategy: assetStrategyContext.selectedStrategyId,
         evidence: assetStrategyContext.classificationEvidence.map((entry) => recommendationEvidenceInput(entry, freshnessReadModel)) },
@@ -1300,6 +1340,7 @@ function buildReadModel({
         readiness: pickDecisionFields(readinessResult, ["readinessState", "recommendedNextAction", "evidenceIds", "conflictIds", "missingInformationIds", "failedGateResults", "pendingGates", "manualReviewGates"]) },
     },
     compute: () => getRecommendation({
+      operatingPolicy: getOperatingScopePolicy(safeDeal),
       approvalSummary,
       assetStrategyContext,
       conflicts: normalizedConflicts,
@@ -1526,6 +1567,7 @@ function buildReadModel({
     missingInformationReferences: decisionRecord.missingInformationReferences,
     missingInformationReadModel,
     conflictReadModel,
+    operatingScopePolicy: getOperatingScopePolicy(safeDeal),
     residentialStrategyResult,
     vacantLandStrategyResult,
     readinessResult,

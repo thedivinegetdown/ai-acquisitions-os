@@ -260,6 +260,7 @@ export function normalizeMissingInformationAction(value) {
     sellerQuestion: nullableText(source.sellerQuestion, 480),
     researchGuidance: nullableText(source.researchGuidance, 640),
     enabled: source.enabled !== false,
+    authorizationCategory: nullableText(source.authorizationCategory, 80),
     disabledReason: nullableText(source.disabledReason, 320),
   };
 }

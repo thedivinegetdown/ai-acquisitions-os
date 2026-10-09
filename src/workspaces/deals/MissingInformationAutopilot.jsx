@@ -55,7 +55,13 @@ function copyActionLabel(kind) {
   return kind === "question" ? "Copy Seller Question" : "Copy Research Guidance";
 }
 
-function InformationItem({ item, onCopy, onNavigateSection }) {
+function InformationItem({ item, onCopy, onNavigateSection, operatingPolicy }) {
+  const eligibleActions = item.availableActions.filter((action) => action.enabled);
+  const questionAllowed = !operatingPolicy?.restricted || eligibleActions.some((action) => action.sellerQuestion);
+  const guidanceAllowed = !operatingPolicy?.restricted || eligibleActions.some((action) => action.researchGuidance);
+  const contextAction = !operatingPolicy?.restricted
+    ? { targetSection: item.relatedSection }
+    : eligibleActions.find((action) => action.targetSection);
   const evidenceCount = item.evidenceReferenceIds.length;
   const conflictCount = item.conflictIds.length;
   return (
@@ -111,13 +117,13 @@ function InformationItem({ item, onCopy, onNavigateSection }) {
         </div>
       ) : null}
 
-      {item.sellerQuestion ? (
+      {item.sellerQuestion && questionAllowed ? (
         <div className="missing-autopilot__guidance">
           <strong>Seller question</strong>
           <p>{item.sellerQuestion}</p>
         </div>
       ) : null}
-      {item.researchGuidance ? (
+      {item.researchGuidance && guidanceAllowed ? (
         <div className="missing-autopilot__guidance">
           <strong>Manual research guidance</strong>
           <p>{item.researchGuidance}</p>
@@ -126,13 +132,14 @@ function InformationItem({ item, onCopy, onNavigateSection }) {
 
       <div className="missing-autopilot__actions">
         <Button
-          onClick={() => onNavigateSection?.(item.relatedSection)}
+          disabled={!contextAction}
+          onClick={() => onNavigateSection?.(contextAction?.targetSection)}
           size="sm"
           variant="secondary"
         >
-          Open {displayLabel(item.relatedSection)}
+          Open {displayLabel(contextAction?.targetSection || item.relatedSection)}
         </Button>
-        {item.sellerQuestion ? (
+        {item.sellerQuestion && questionAllowed ? (
           <Button
             onClick={() => onCopy(item.sellerQuestion, "question", item.itemId)}
             size="sm"
@@ -141,7 +148,7 @@ function InformationItem({ item, onCopy, onNavigateSection }) {
             {copyActionLabel("question")}
           </Button>
         ) : null}
-        {item.researchGuidance ? (
+        {item.researchGuidance && guidanceAllowed ? (
           <Button
             onClick={() =>
               onCopy(item.researchGuidance, "guidance", item.itemId)
@@ -328,6 +335,7 @@ export default function MissingInformationAutopilot({
                 {items.map((item) => (
                   <InformationItem
                     item={item}
+                    operatingPolicy={readModel.operatingScopePolicy}
                     key={item.itemId}
                     onCopy={handleCopy}
                     onNavigateSection={onNavigateSection}

@@ -29,13 +29,16 @@ function groupGates(gates) {
 
 // New component reason: existing metric summaries are numeric and cannot
 // present strategy-specific, non-numeric gates and approval triggers safely.
-export default function OfferReadinessSummary({ onNavigateSection, onNavigateWorkspace, result }) {
+export default function OfferReadinessSummary({ onNavigateSection, onNavigateWorkspace, result, operatingPolicy }) {
   if (!result) return null;
   const groups = groupGates(result.gateResults || []);
   const unresolvedBlocking = result.blockingGateResults?.length || 0;
   const manualReview = result.manualReviewGates?.length || 0;
   const advisory = result.advisoryGateResults?.length || 0;
-  const action = result.recommendedNextAction;
+  // Readiness facts remain visible; readiness is not owner authorization.
+  const action = operatingPolicy?.restricted
+    ? { label: operatingPolicy.supported ? "Continue research-only readiness review." : "Review the unsupported operating scope before taking action.", explanation: operatingPolicy.explanation, enabled: false }
+    : result.recommendedNextAction;
 
   return (
     <Card className="offer-readiness-summary">

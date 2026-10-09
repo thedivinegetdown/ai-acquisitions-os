@@ -26,6 +26,7 @@ import {
   validateMissingInformationProfile,
 } from "./missingInformationContracts";
 import { selectMissingInformationProfiles } from "./missingInformationProfiles";
+import { ACTION_AUTHORIZATION, getOperatingScopePolicy, isOperatingActionEligible } from "../deals/operatingScopePolicy";
 
 // Distinct responsibility: evaluate bounded stored facts against selected
 // requirement profiles without providers, mutations, scoring, or React state.
@@ -333,7 +334,7 @@ function itemReason(requirement, state) {
   return `${requirement.label} is represented in the current stored record.`;
 }
 
-function createAvailableActions(requirement, state, itemId) {
+function createAvailableActions(requirement, state, itemId, deal) {
   if (!OPEN_STATES.has(state)) return [];
   const actions = [];
   const base = {
@@ -416,7 +417,28 @@ function createAvailableActions(requirement, state, itemId) {
       })
     );
   }
-  return actions.filter(Boolean).slice(0, MISSING_INFORMATION_LIMITS.ACTIONS);
+  // Existing manual guidance may require paid services. In restricted scope,
+  // offer only review of already-stored evidence, never an instruction to procure it.
+  const policy = getOperatingScopePolicy(deal);
+  if (policy.restricted && requirement.researchRequired) {
+    actions.push(normalizeMissingInformationAction({
+      ...base,
+      actionId: `${itemId}:review-stored-evidence`,
+      actionType: MISSING_INFORMATION_ACTION_TYPES.OPEN_EXISTING_CONTEXT,
+      targetSection: "property",
+      label: `Review stored evidence: ${requirement.label}`,
+      explanation: "Review existing property evidence only. This does not authorize additional services or transaction activity.",
+    }));
+  }
+  return actions.filter(Boolean).map((action) => {
+    const researchReview = action.actionType === MISSING_INFORMATION_ACTION_TYPES.CLASSIFY_ASSET ||
+      action.actionType === MISSING_INFORMATION_ACTION_TYPES.REVIEW_CONFLICT ||
+      (action.actionType === MISSING_INFORMATION_ACTION_TYPES.OPEN_EXISTING_CONTEXT &&
+        ["decision", "property", "numbers"].includes(action.targetSection));
+    const authorizationCategory = researchReview ? ACTION_AUTHORIZATION.RESEARCH_REVIEW : ACTION_AUTHORIZATION.ACQUISITION;
+    const enabled = isOperatingActionEligible(deal, authorizationCategory);
+    return { ...action, authorizationCategory, enabled, disabledReason: enabled ? null : policy.explanation };
+  }).slice(0, MISSING_INFORMATION_LIMITS.ACTIONS);
 }
 
 function evaluateRequirement({
@@ -504,7 +526,7 @@ function evaluateRequirement({
     sellerQuestion: requirement.sellerQuestion,
     researchGuidance: requirement.researchGuidance,
     relatedSection: requirement.relatedSection,
-    availableActions: createAvailableActions(requirement, presence.state, itemId),
+    availableActions: createAvailableActions(requirement, presence.state, itemId, deal),
     rulesetVersion: requirement.rulesetVersion,
     evaluatedTimestamp,
     sourceTimestamp,
@@ -575,13 +597,13 @@ function dedupeRequirements(profiles) {
 }
 
 function highestPriorityAction(openItems) {
-  const item = openItems.find((entry) => entry.availableActions.length);
+  const item = openItems.find((entry) => entry.availableActions.some((action) => action.enabled));
   if (!item) return null;
   return normalizeMissingInformationAction({
-    ...item.availableActions[0],
+    ...item.availableActions.find((action) => action.enabled),
     actionId: `next-information-action:${identitySegment(item.itemId)}`,
     explanation:
-      item.availableActions[0].explanation || item.reason,
+      item.availableActions.find((action) => action.enabled).explanation || item.reason,
   });
 }
 
@@ -675,10 +697,10 @@ export function evaluateMissingInformation({
   const byCriticality = (criticality) =>
     openItems.filter((item) => item.criticality === criticality);
   const sellerQuestions = uniqueStrings(
-    openItems.map((item) => item.sellerQuestion).filter(Boolean)
+    openItems.flatMap((item) => item.availableActions.filter((action) => action.enabled).map((action) => action.sellerQuestion)).filter(Boolean)
   ).slice(0, MISSING_INFORMATION_LIMITS.ITEMS);
   const researchActions = uniqueStrings(
-    openItems.map((item) => item.researchGuidance).filter(Boolean)
+    openItems.flatMap((item) => item.availableActions.filter((action) => action.enabled).map((action) => action.researchGuidance)).filter(Boolean)
   ).slice(0, MISSING_INFORMATION_LIMITS.ITEMS);
   const warnings = uniqueStrings([
     ...partialDataWarnings,
@@ -718,6 +740,7 @@ export function evaluateMissingInformation({
     sellerQuestions,
     researchActions,
     highestPriorityAction: highestPriorityAction(openItems),
+    operatingScopePolicy: getOperatingScopePolicy(safeDeal),
     sourceWarnings: safeSourceWarnings(sourceErrors),
     partialDataWarnings: warnings,
     evaluatedTimestamp: normalizedEvaluatedTimestamp,
