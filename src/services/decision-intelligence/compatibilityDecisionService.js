@@ -348,6 +348,14 @@ function dateKey(value) {
   return toSafeDate(value)?.toISOString().slice(0, 10) || "";
 }
 
+function storedObligationText(value) {
+  if (typeof value !== "string") return "";
+  const text = safeText(value);
+  return ["unknown", "none", "n/a", "not provided", "not available"].includes(normalizedKey(text))
+    ? ""
+    : text;
+}
+
 function getDueContext(deal, now) {
   const source = getFieldEntry(deal, ["due_date", "follow_up_date"]);
   const dueKey = dateKey(source?.value);
@@ -356,6 +364,7 @@ function getDueContext(deal, now) {
     dueAt: source ? normalizeDecisionTimestamp(source.value) : null,
     dueKey,
     field: source?.key || null,
+    obligationText: storedObligationText(readRecordField(deal, "next_action")),
     isDue: Boolean(dueKey && todayKey && dueKey <= todayKey),
     isOverdue: Boolean(dueKey && todayKey && dueKey < todayKey),
   };
@@ -418,7 +427,7 @@ function buildApprovalSummary(approvalItems, context, dealId) {
 }
 
 function getDueTaskContext(tasks, context, dealId, now) {
-  const dueTimestamps = (Array.isArray(tasks) ? tasks : []).flatMap((task) => {
+  const dueTasks = (Array.isArray(tasks) ? tasks : []).flatMap((task) => {
     if (!matchesTenantContext(task, context)) return [];
     const relatedDealId = safeText(task.dealId || task.deal_id);
     if (relatedDealId && dealId && relatedDealId !== dealId) return [];
@@ -426,10 +435,20 @@ function getDueTaskContext(tasks, context, dealId, now) {
     const due = toSafeDate(task.dueAt || task.due_at || task.due_date);
     const evaluated = toSafeDate(now);
     return due && evaluated && due.getTime() <= evaluated.getTime()
-      ? [due.toISOString()]
+      ? [{
+          dueAt: due.toISOString(),
+          obligationText: storedObligationText(task.title || task.label),
+          isDealAction: safeText(task.id || task.task_id) === `deal-action:${dealId}`,
+        }]
       : [];
-  }).filter(Boolean).sort();
-  return { isDue: dueTimestamps.length > 0, dueAt: dueTimestamps[0] || null };
+  }).sort((left, right) => left.dueAt.localeCompare(right.dueAt));
+  // Retain earliest-due ordering; stable ties keep the caller's source order.
+  return {
+    isDue: dueTasks.length > 0,
+    dueAt: dueTasks[0]?.dueAt || null,
+    obligationText: dueTasks[0]?.obligationText || "",
+    isDealAction: dueTasks[0]?.isDealAction || false,
+  };
 }
 
 function getSellerReplyContext(signals, context, dealId) {
@@ -580,6 +599,7 @@ function getRecommendation({
   vacantLandStrategyResult,
   sellerReply,
   taskDue,
+  taskDueContext,
 }) {
   const missingIds = missingInformation.map((issue) => issue.issueId);
   const conflictIds = conflicts.map((conflict) => conflict.conflictId);
@@ -635,24 +655,28 @@ function getRecommendation({
       explanation: "A valid linked inbound seller message directly triggers the response recommendation.",
     };
   } else if (dueContext.isOverdue) {
-    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
-    label = "Follow up with the seller today and update the next action.";
-    explanation = "The current deal follow-up date is overdue.";
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    label = dueContext.obligationText
+      ? `Complete the overdue next action: ${dueContext.obligationText}`
+      : "Review and update the overdue commitment.";
+    explanation = "The stored deal commitment is overdue; review the saved next action.";
     const dueEvidence = evidenceForCanonicalField(evidence, "deal.followUpDueAt");
     supportingEvidence = dueEvidence ? [dueEvidence.evidenceId] : [];
     recommendationBasis = {
       basisType: RECOMMENDATION_BASIS_TYPES.OVERDUE_ACTION,
       triggerId: `overdue-action:deal:${idSegment(dealId)}`,
-      triggerLabel: "Overdue follow-up",
+      triggerLabel: "Overdue commitment",
       relatedCanonicalFields: ["deal.followUpDueAt"],
       evidenceIds: supportingEvidence,
       directTrigger: true,
       explanation: "The supplied follow-up date is explicitly overdue.",
     };
   } else if (taskDue || dueContext.isDue) {
-    actionCode = DECISION_ACTION_TAXONOMY.FOLLOW_UP_SELLER;
-    label = "Complete the due follow-up action.";
-    explanation = "A linked task or the current deal follow-up is due.";
+    actionCode = DECISION_ACTION_TAXONOMY.NEEDS_REVIEW;
+    const obligation = taskDue ? taskDueContext.obligationText : dueContext.obligationText;
+    const kind = !taskDue || taskDueContext.isDealAction ? "next action" : "action";
+    label = obligation ? `Complete the due ${kind}: ${obligation}` : "Review and update the due commitment.";
+    explanation = "A stored task or deal commitment is due; review the selected obligation.";
     supportingEvidence = evidence
       .filter((entry) => entry.sourceType === "task-record")
       .map((entry) => entry.evidenceId);
@@ -829,6 +853,7 @@ function getRecommendation({
   const hasSafeResult = Boolean(
     label &&
       (actionCode !== DECISION_ACTION_TAXONOMY.NEEDS_REVIEW ||
+        dueContext.isDue || taskDue ||
         missingInformationReadModel?.highestPriorityAction?.enabled ||
         approvalSummary.pendingCount > 0 ||
         residentialStrategyResult?.eligible ||
@@ -1289,6 +1314,7 @@ function buildReadModel({
       vacantLandStrategyResult,
       sellerReply,
       taskDue,
+      taskDueContext,
     }),
   });
   const recommendationSelection = recalculation.selection;

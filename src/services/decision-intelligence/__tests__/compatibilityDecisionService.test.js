@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   COMPATIBILITY_DECISION_RULESET_VERSION,
   DECISION_EVALUATION_STATES,
@@ -12,6 +12,7 @@ import {
   createResidentialScoringProfile,
   createScoringInput,
 } from "../pursuit-scoring/__tests__/fixtures/pursuitScoringFixtures";
+import { assembleDecisionRoomInputs } from "../decisionRoomInputService";
 
 const NOW = Date.parse("2026-08-05T15:00:00Z");
 
@@ -40,6 +41,176 @@ function completeDeal(overrides = {}) {
 function build(options = {}) {
   return buildCompatibilityDecisionReadModel({ now: NOW, ...options });
 }
+
+describe("stored obligation recommendation safety", () => {
+  const obligation = "Obtain professional title update, Winter Garden municipal lien search, and HOA estoppel before setting maximum bid";
+  const dealId = "312a97dd-769c-4b93-bc1c-8c40c8c01bd6";
+  let providerFetch;
+
+  function fixture(overrides = {}) {
+    return completeDeal({
+      id: dealId,
+      owner_name: null,
+      phone: null,
+      stage: "New Lead",
+      arv: null,
+      asking_price: null,
+      next_action: obligation,
+      due_date: "2026-10-02",
+      next_action_due_date: "2026-10-02",
+      research_evidence: [{ evidenceId: "retained-evidence", valueSummary: "Title remains unresolved" }],
+      latest_offer: null,
+      offer_ready: false,
+      closing_date: null,
+      ...overrides,
+    });
+  }
+
+  function evaluate(deal, now = "2026-10-09T15:00:00Z", sources = {}) {
+    return buildCompatibilityDecisionReadModel(assembleDecisionRoomInputs({ deal, now, ...sources }));
+  }
+
+  beforeEach(() => {
+    providerFetch = vi.fn(() => { throw new Error("Provider calls are forbidden in recommendation evaluation."); });
+    vi.stubGlobal("fetch", providerFetch);
+  });
+
+  afterEach(() => {
+    expect(providerFetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["2026-10-09T15:00:00Z", "overdue", "critical", "overdue-action"],
+    ["2026-10-02T15:00:00Z", "due", "high", "due-action"],
+  ])("uses the stored diligence action and retains urgency at %s", (now, urgency, delay, basis) => {
+    const deal = fixture();
+    const before = structuredClone(deal);
+    const result = evaluate(deal, now);
+
+    expect(result.success).toBe(true);
+    expect(result.data.recommendation).toMatchObject({
+      actionCode: "needs-review",
+      label: `Complete the ${urgency} next action: ${obligation}`,
+    });
+    expect(result.data.recommendation.explanation).not.toMatch(/seller|outreach|call|text|email/i);
+    expect(result.data.recommendationBasis.basisType).toBe(basis);
+    expect(result.data.costOfDelayResult.level).toBe(delay);
+    expect(result.data.recommendedActionWindowResult.windowType).toBe(urgency === "due" ? "today" : "overdue");
+    expect(deal).toEqual(before);
+  });
+
+  it("does not infer seller outreach for a future deal obligation", () => {
+    const deal = fixture();
+    const before = structuredClone(deal);
+    const result = evaluate(deal, "2026-10-01T15:00:00Z");
+
+    expect(result.success).toBe(true);
+    expect(result.data.recommendation.actionCode).not.toBe("follow-up-seller");
+    expect(result.data.recommendation.label).not.toMatch(/follow up with|call|text|email/i);
+    expect(result.data.recommendationBasis.basisType).not.toMatch(/due-action/);
+    expect(deal).toEqual(before);
+  });
+
+  it.each([null, "", "   ", "Unknown", 42])("uses neutral review for an overdue date with unusable action %j", (next_action) => {
+    const deal = fixture({ next_action });
+    const before = structuredClone(deal);
+    const result = evaluate(deal);
+
+    expect(result.success).toBe(true);
+    expect(result.data.recommendation).toMatchObject({
+      actionCode: "needs-review",
+      label: "Review and update the overdue commitment.",
+    });
+    expect(result.data.recommendationConfidenceResult.level).toBe("high");
+    expect(deal).toEqual(before);
+  });
+
+  it("uses neutral review for a due-today commitment without action text", () => {
+    const result = evaluate(fixture({ next_action: null }), "2026-10-02T15:00:00Z");
+
+    expect(result.data.recommendation).toMatchObject({
+      actionCode: "needs-review", label: "Review and update the due commitment.",
+    });
+    expect(result.data.recommendedActionWindowResult.windowType).toBe("today");
+  });
+
+  it("preserves existing deal due-date precedence over the next-action date", () => {
+    const result = evaluate(fixture({ due_date: "2026-10-09", next_action_due_date: "2026-10-10" }));
+
+    expect(result.data.recommendation.label).toBe(`Complete the due next action: ${obligation}`);
+    expect(result.data.recommendedActionWindowResult.sourceDueTimestamp).toBe("2026-10-09T00:00:00.000Z");
+  });
+
+  it.each(["sellerTasks", "sequenceSteps"])("retains explicit stored seller follow-up from %s", (source) => {
+    const deal = fixture({ due_date: null, next_action_due_date: null });
+    const action = "Follow up with the seller about the signed disclosure";
+    const record = { id: "follow-up-1", deal_id: dealId, organization_id: "org-1", status: "pending",
+      ...(source === "sellerTasks" ? { title: action, due_at: "2026-10-02T12:00:00Z" }
+        : { action_type: action, due_date: "2026-10-02" }) };
+    const sources = { [source]: [record] };
+    const before = structuredClone({ deal, sources });
+    const result = evaluate(deal, undefined, sources);
+
+    expect(result.success).toBe(true);
+    expect(result.data.recommendation.label).toBe(`Complete the due action: ${action}`);
+    expect(result.data.recommendationBasis.basisType).toBe("due-action");
+    expect({ deal, sources }).toEqual(before);
+  });
+
+  it("does not turn a non-contact seller task into seller outreach", () => {
+    const result = evaluate(fixture({ due_date: null, next_action_due_date: null }), undefined, {
+      sellerTasks: [{ id: "title-review", deal_id: dealId, title: "Review the saved title report", due_at: "2026-10-02", status: "open" }],
+    });
+
+    expect(result.data.recommendation).toMatchObject({
+      actionCode: "needs-review", label: "Complete the due action: Review the saved title report",
+    });
+  });
+
+  it("keeps neutral due-work review evaluated when asset strategy is unavailable", () => {
+    const result = evaluate(fixture({ asset_type: "unknown", next_action: null }));
+
+    expect(result.data.recommendation).toMatchObject({
+      actionCode: "needs-review", label: "Review and update the overdue commitment.",
+      status: DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT,
+    });
+  });
+
+  it("preserves overdue deal precedence over an earlier seller task", () => {
+    const result = evaluate(fixture(), undefined, { sellerTasks: [{
+      id: "seller-follow-up", deal_id: dealId, title: "Call the seller", due_at: "2026-10-01", status: "open",
+    }] });
+
+    expect(result.data.recommendation.label).toBe(`Complete the overdue next action: ${obligation}`);
+    expect(result.data.recommendationBasis.basisType).toBe("overdue-action");
+  });
+
+  it("preserves earliest due work and seller-task/sequence/deal input order for ties", () => {
+    const deal = fixture({ due_date: "2026-10-09", next_action_due_date: "2026-10-09" });
+    const sellerTask = { id: "seller-task", deal_id: dealId, title: "Call the seller", due_at: "2026-10-09", status: "open" };
+    const sequence = { id: "sequence-step", deal_id: dealId, action_type: "Email the seller", due_date: "2026-10-09", status: "pending" };
+    const tied = evaluate(deal, undefined, { sellerTasks: [sellerTask], sequenceSteps: [sequence] });
+    const earlier = evaluate(deal, undefined, { sellerTasks: [sellerTask], sequenceSteps: [{ ...sequence, due_date: "2026-10-08" }] });
+    const withoutTask = evaluate(deal, undefined, { sequenceSteps: [sequence] });
+    const completedTask = evaluate(deal, undefined, { sellerTasks: [{ ...sellerTask, status: "completed" }], sequenceSteps: [sequence] });
+
+    expect(tied.data.recommendation.label).toBe("Complete the due action: Call the seller");
+    expect(earlier.data.recommendation.label).toBe("Complete the due action: Email the seller");
+    expect(withoutTask.data.recommendation.label).toBe("Complete the due action: Email the seller");
+    expect(completedTask.data.recommendation.label).toBe("Complete the due action: Email the seller");
+  });
+
+  it("refreshes action semantics when only the saved next action changes", () => {
+    const deal = fixture();
+    const first = build({ deal, now: "2026-10-09T15:00:00Z" });
+    const result = build({ deal: { ...deal, next_action: "Review the saved title report" }, now: "2026-10-09T15:00:00Z",
+      previousRecalculation: first.data.recalculation });
+
+    expect(result.data.recalculation.state).toBe("recalculated");
+    expect(result.data.recommendation.label).toBe("Complete the overdue next action: Review the saved title report");
+  });
+});
 
 describe("compatibility decision read model", () => {
   it("classifies Identify only when stable opportunity identity is incomplete", () => {
@@ -136,7 +307,7 @@ describe("compatibility decision read model", () => {
     const recommendation = result.data.recommendation;
 
     expect(recommendation.label).toBe(
-      "Follow up with the seller today and update the next action."
+      "Review and update the overdue commitment."
     );
     expect(recommendation.status).toBe(DECISION_EVALUATION_STATES.COMPATIBILITY_RESULT);
     expect(recommendation.sourceMode).toBe(
@@ -313,7 +484,7 @@ describe("compatibility decision read model", () => {
     const due = build({ deal: completeDeal({ due_date: "2026-08-05" }) });
 
     expect(sellerReply.data.recommendation.label).toBe("Respond to the seller reply.");
-    expect(due.data.recommendation.label).toBe("Complete the due follow-up action.");
+    expect(due.data.recommendation.label).toBe("Review and update the due commitment.");
   });
 
   it("keeps a seller reply ahead of an overdue follow-up on the same deal", () => {
