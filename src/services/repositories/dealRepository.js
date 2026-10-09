@@ -12,8 +12,29 @@ import {
 import { recordOperationalFailure } from "./operationalDiagnosticRepository";
 import { ASSET_CLASSIFICATION_STATES, ASSET_TYPES } from "../asset-strategy/assetStrategyContracts";
 import { classifyOpportunityAsset } from "../asset-strategy/assetClassificationService";
+import { OPERATING_SCOPES } from "../deals/operatingScopePolicy";
 
 const DEAL_SELECT = "*";
+export async function saveDealOperatingScope(deal, scope) {
+  if (!deal?.id || !deal?.organization_id || !deal?.updated_at || !Object.values(OPERATING_SCOPES).includes(scope)) {
+    return repositoryFailure("Reload a saved deal and select a supported operating scope.", "Could not save operating scope.");
+  }
+  return runRepositoryOperation(async () => {
+    const context = await requireActiveOrganizationContext();
+    if (deal.organization_id !== context.organizationId) throw new Error("The deal is outside the active organization.");
+    if (context.role !== "owner") throw new Error("Only an organization owner may change operating scope.");
+    const { data, error } = await supabase.from("deals")
+      .update({ operating_scope: scope, updated_at: new Date().toISOString() })
+      .eq("id", deal.id).eq("organization_id", context.organizationId)
+      .eq("updated_at", deal.updated_at)
+      .eq("operating_scope", deal.operating_scope ?? OPERATING_SCOPES.ACTIVE_ACQUISITION)
+      .select().limit(1);
+    if (error) throw error;
+    if (!data?.[0]) throw new Error("The deal changed before this save. Reload and review its operating scope.");
+    return repositorySuccess(data[0]);
+  }, "Could not save operating scope. Reload the deal and try again.");
+}
+
 export const DEAL_PAGE_SIZE = 200;
 export const SAVED_LEAD_CLASSIFICATION_OPTIONS = Object.freeze([
   Object.freeze({ value: "residential", label: "Residential", assetType: ASSET_TYPES.RESIDENTIAL_HOME }),

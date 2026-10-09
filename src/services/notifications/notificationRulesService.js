@@ -1,5 +1,6 @@
 import { getDealAliasPositiveNumber, getDealAliasText } from "../../utils/dealFields";
 import { formatSafeDate } from "../../utils/dates";
+import { ACTION_AUTHORIZATION, isOperatingActionEligible } from "../deals/operatingScopePolicy";
 
 function evaluationIso(now) {
   const evaluatedAt = now instanceof Date ? now : new Date(now);
@@ -62,8 +63,9 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
     const leadScore = getDealAliasPositiveNumber(deal, "leadScore") || 0;
     const motivation = getDealAliasPositiveNumber(deal, "motivation") || 0;
     const address = getAddress(deal);
+    const acquisitionEligible = isOperatingActionEligible(deal, ACTION_AUTHORIZATION.ACQUISITION);
 
-    if (dueDate === date) {
+    if (acquisitionEligible && dueDate === date) {
       notifications.push(
         buildNotification({
           id: `${id}-follow-up-due`,
@@ -78,7 +80,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (dueDate && dueDate < date) {
+    if (acquisitionEligible && dueDate && dueDate < date) {
       notifications.push(
         buildNotification({
           id: `${id}-overdue-task`,
@@ -93,7 +95,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (leadScore >= 8 && motivation >= 8) {
+    if (acquisitionEligible && leadScore >= 8 && motivation >= 8) {
       notifications.push(
         buildNotification({
           id: `${id}-critical-lead`,
@@ -108,7 +110,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (!getDealAliasText(deal, "phone") && !deal.email) {
+    if (acquisitionEligible && !getDealAliasText(deal, "phone") && !deal.email) {
       notifications.push(
         buildNotification({
           id: `${id}-missing-contact`,
@@ -123,7 +125,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (!getDealAliasText(deal, "address") || !getDealAliasText(deal, "ownerName")) {
+    if (acquisitionEligible && (!getDealAliasText(deal, "address") || !getDealAliasText(deal, "ownerName"))) {
       notifications.push(
         buildNotification({
           id: `${id}-missing-data`,
@@ -138,7 +140,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (stage === "Offer Sent" || deal.offer_ready || deal.offerReadinessScore >= 80) {
+    if (acquisitionEligible && (stage === "Offer Sent" || deal.offer_ready || deal.offerReadinessScore >= 80)) {
       notifications.push(
         buildNotification({
           id: `${id}-offer-review`,
@@ -153,7 +155,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (stage === "Under Contract") {
+    if (acquisitionEligible && stage === "Under Contract") {
       notifications.push(
         buildNotification({
           id: `${id}-transaction-attention`,
@@ -168,7 +170,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (stage && stage !== "Closed" && !deal.next_action) {
+    if (acquisitionEligible && stage && stage !== "Closed" && !deal.next_action) {
       notifications.push(
         buildNotification({
           id: `${id}-workflow-approval`,
@@ -184,7 +186,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (!deal.exit_strategy && stage === "Under Contract") {
+    if (acquisitionEligible && !deal.exit_strategy && stage === "Under Contract") {
       notifications.push(
         buildNotification({
           id: `${id}-buyer-review`,
@@ -199,7 +201,7 @@ export function buildDealNotifications(deals = [], { now = Date.now() } = {}) {
       );
     }
 
-    if (stage === "Under Contract" && !deal.title_company) {
+    if (acquisitionEligible && stage === "Under Contract" && !deal.title_company) {
       notifications.push(
         buildNotification({
           id: `${id}-documents-missing`,

@@ -31,6 +31,7 @@ import { getDealAliasText } from "../../utils/dealFields";
 import { SAVED_LEAD_CLASSIFICATION_OPTIONS, saveDealAssetClassification } from "../../services/repositories/dealRepository";
 import MissingInformationAutopilot from "./MissingInformationAutopilot";
 import DecisionMemoryPanel from "./DecisionMemoryPanel";
+import OperatingScopeControl from "./OperatingScopeControl";
 
 const ActivityTimeline = lazy(() => import("../../components/ActivityTimeline"));
 const BuyerBlast = lazy(() => import("../../components/BuyerBlast"));
@@ -428,6 +429,7 @@ function DecisionOverview({ deal, decisionResult, onAction, onNavigateWorkspace 
           onNavigateSection={onAction}
           onNavigateWorkspace={onNavigateWorkspace}
           result={readModel.readinessResult}
+          operatingPolicy={readModel.operatingScopePolicy}
         />
       </LazySection>
       <LazySection label="Loading Decision Quality...">
@@ -1163,6 +1165,7 @@ export default function DealDecisionRoom({
         <>
         <RentCastPropertyEvidencePanel deal={deal} onSaved={handleResearchSaved} />
         <AssetClassificationControl key={`classification-${deal.id}`} deal={deal} assetStrategyContext={assetStrategyContext} onSaved={handleResearchSaved} />
+        <OperatingScopeControl key={`scope-${deal.id}-${deal.operating_scope}-${deal.updated_at}`} deal={deal} onSaved={handleResearchSaved} />
         <ResearchResolutionPanel key={deal.id} deal={deal} readModel={decisionReadModel} onSaved={handleResearchSaved} />
         <p role="status">{decisionReadModel?.recalculation
           ? `${decisionReadModel.recalculation.state}: ${decisionReadModel.recalculation.explanation}`

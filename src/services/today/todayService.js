@@ -1,6 +1,7 @@
 import { buildActionInbox } from "../notifications";
 import { getPriorityWeight } from "../notifications/notificationPriorityService";
 import { buildApprovalReadModel, isApprovalNotification } from "../approvals";
+import { getOperatingScopePolicy, researchCommitmentReview } from "../deals/operatingScopePolicy";
 import { formatDateOnly, formatSafeDate, getBusinessDate } from "../../utils/dates";
 import { getDealAliasText } from "../../utils/dealFields";
 import {
@@ -576,6 +577,9 @@ export function buildTodayReadModel({
     .map((notification) => normalizeNotificationItem(notification, { now }));
   const approvalItems = approvalReadModel.items.map(normalizeApprovalTodayItem);
   const dealsById = new Map(safeDeals.map((deal) => [String(getDealId(deal)), deal]));
+  const restrictedDealsByPhone = new Map(safeDeals
+    .filter((deal) => getOperatingScopePolicy(deal).restricted && getDealAliasText(deal, "phone"))
+    .map((deal) => [getDealAliasText(deal, "phone"), deal]));
   const sellerTaskItems = buildSourceCommitmentItems({
     records: sellerTasks,
     sourceType: "seller-task",
@@ -600,6 +604,24 @@ export function buildTodayReadModel({
     ...buildDealCommitmentItems(safeDeals, { evaluationDate, now }),
     ...buildCompletedItems(safeDeals, { now }),
   ])
+    .flatMap((item) => {
+      const linkedDeal = dealsById.get(String(item.target?.dealId || "")) ||
+        (item.type === "seller-reply" ? restrictedDealsByPhone.get(item.target?.phone) : null);
+      if (!linkedDeal) return [item];
+      const policy = getOperatingScopePolicy(linkedDeal);
+      if (!policy.restricted || item.category === "completed") return [item];
+      // Persisted commitments stay visible with their exact text and dates, but
+      // unclassified free text must not become an instruction to execute it.
+      if (!["follow-up", "commitment"].includes(item.type)) return [];
+      return [{ ...item,
+        title: item.category === "waiting" ? item.title : `Research-only commitment review: ${item.relatedDeal}`,
+        recommendedNextAction: !policy.supported
+          ? "Review the unsupported operating scope before taking action."
+          : item.category === "waiting" ? "No action needed until the scheduled research-only review."
+            : researchCommitmentReview({ overdue: item.category === "at-risk", due: item.category === "act-now" }),
+        reason: `${item.reason} ${policy.explanation}`,
+      }];
+    })
     .map((item) => applyTodayPrioritization(item, { evaluatedTimestamp: nowIso(now) }))
     .sort(compareTodayItems);
   const resultLimit = Math.max(1, limit);
