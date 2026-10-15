@@ -368,6 +368,93 @@ grant execute on function public.admit_verified_property_deal(
   uuid, text, text, text, timestamptz, jsonb
 ) to authenticated;
 
+-- The serving (pre-identity) Orange importer already writes this source and
+-- verification evidence, but omits canonical columns. Reject that write rather
+-- than letting NULL identities bypass the partial unique index during a
+-- schema-first release or application rollback. No caller-controlled flag or
+-- identity inference is used. Established identities cannot be cleared/changed.
+-- Defer the source-ledger check until transaction end: canonical admission
+-- inserts the deal first and its source history second, in one transaction.
+create function public.enforce_verified_property_admission()
+returns trigger
+language plpgsql
+-- Read only this row's source ledger even when the caller cannot read that
+-- table. This trigger-only function grants no admission or table-write access;
+-- the existing deals RLS checks still authorize the original statement.
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  covered_orange boolean;
+begin
+  if tg_op = 'UPDATE' then
+    if (old.property_jurisdiction is not null or old.authoritative_parcel_id is not null)
+      and (new.organization_id, new.property_jurisdiction, new.authoritative_parcel_id)
+        is distinct from
+          (old.organization_id, old.property_jurisdiction, old.authoritative_parcel_id) then
+      raise exception using errcode = '23514',
+        message = 'An established canonical property identity cannot be removed or changed.';
+    end if;
+
+    -- Preserve untouched pre-existing terminal history, including records that
+    -- were ineligible for backfill. Reactivation must pass the checks below.
+    if coalesce(lower(btrim(old.stage)), '') in ('closed', 'dead lead')
+      and coalesce(lower(btrim(new.stage)), '') in ('closed', 'dead lead')
+      and (new.source, new.parcel_number, new.research_evidence,
+           new.property_jurisdiction, new.authoritative_parcel_id)
+        is not distinct from
+          (old.source, old.parcel_number, old.research_evidence,
+           old.property_jurisdiction, old.authoritative_parcel_id) then
+      return null;
+    end if;
+  end if;
+
+  covered_orange := new.source = 'orange-county-tax-sale' and exists (
+    select 1 from jsonb_array_elements(coalesce(new.research_evidence, '[]'::jsonb)) evidence
+    where evidence->>'sourceSystem' = 'orange-county-property-appraiser'
+      and evidence->>'verificationState' = 'verified'
+  );
+  if tg_op = 'UPDATE' and old.source = 'orange-county-tax-sale' then
+    covered_orange := coalesce(covered_orange, false) or exists (
+      select 1 from jsonb_array_elements(coalesce(old.research_evidence, '[]'::jsonb)) evidence
+      where evidence->>'sourceSystem' = 'orange-county-property-appraiser'
+        and evidence->>'verificationState' = 'verified'
+    );
+  end if;
+
+  if covered_orange and (
+    new.property_jurisdiction is distinct from 'us-fl-orange-county'
+    or new.authoritative_parcel_id is null
+    or new.authoritative_parcel_id is distinct from
+      regexp_replace(coalesce(new.parcel_number, ''), '[^0-9A-Za-z]', '', 'g')
+  ) then
+    raise exception using errcode = '23514',
+      message = 'Verified Orange property intake requires canonical admission; legacy direct writes are blocked.';
+  end if;
+
+  if tg_op = 'INSERT'
+    or (tg_op = 'UPDATE' and old.property_jurisdiction is null
+        and new.property_jurisdiction is not null) then
+    if (covered_orange or new.property_jurisdiction is not null
+        or new.authoritative_parcel_id is not null)
+      and not exists (
+        select 1 from public.deal_intake_sources s
+        where s.organization_id = new.organization_id and s.deal_id = new.id
+          and s.import_id is not distinct from new.import_id
+      ) then
+      raise exception using errcode = '23514',
+        message = 'Verified property intake requires canonical admission and its source history.';
+    end if;
+  end if;
+  return null;
+end;
+$$;
+
+create constraint trigger deals_verified_property_admission_guard
+  after insert or update on public.deals
+  deferrable initially deferred
+  for each row execute function public.enforce_verified_property_admission();
+
 comment on table public.property_identities is
   'Tenant-scoped canonical identities created only from authoritative parcel verification.';
 comment on table public.deal_intake_sources is
