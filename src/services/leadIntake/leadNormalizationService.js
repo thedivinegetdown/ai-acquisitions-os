@@ -151,3 +151,7 @@ export function toDealImportPayload(lead = {}) {
     imported_at: new Date().toISOString(),
   };
 }
+
+export function toVerifiedPropertyAdmission(lead = {}) {
+  return lead.verifiedPropertyIdentity || null;
+}

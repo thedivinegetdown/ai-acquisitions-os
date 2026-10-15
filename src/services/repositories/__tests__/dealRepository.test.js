@@ -12,10 +12,12 @@ const query = {
 };
 
 const from = vi.fn(() => query);
+const rpc = vi.fn();
 
 vi.mock("../../../supabaseClient", () => ({
   supabase: {
     from,
+    rpc,
   },
 }));
 
@@ -39,6 +41,7 @@ describe("dealRepository", () => {
     query.update.mockReturnValue(query);
     query.eq.mockReturnValue(query);
     query.in.mockReturnValue(query);
+    rpc.mockReset();
   });
 
   it("lists deals ordered by property address", async () => {
@@ -130,5 +133,39 @@ describe("dealRepository", () => {
       1,
       expect.objectContaining({ import_id: "lead-intake:v1:a", organization_id: "org-1" })
     );
+  });
+
+  it("uses transactional verified-property admission and returns the existing active deal", async () => {
+    rpc.mockResolvedValue({
+      data: { status: "existing", deal: { id: "active-deal", organization_id: "org-1" } },
+      error: null,
+    });
+    const { persistImportedDeals } = await import("../dealRepository");
+
+    const result = await persistImportedDeals([{
+      rowNumber: 1,
+      payload: { import_id: "source-b:22", source: "source-b", organization_id: "wrong" },
+      verifiedPropertyIdentity: {
+        jurisdiction: "us-fl-volusia-county",
+        authoritativeParcelId: "2123541",
+        verificationSource: "volusia-parcel-ownership",
+        verifiedAt: "2026-10-15T12:00:00Z",
+      },
+    }]);
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ importedCount: 0, duplicateCount: 1, failedCount: 0 });
+    expect(result.data.results[0]).toMatchObject({
+      status: "existing",
+      deal: { id: "active-deal", organization_id: "org-1" },
+    });
+    expect(rpc).toHaveBeenCalledWith("admit_verified_property_deal", expect.objectContaining({
+      p_organization_id: "org-1",
+      p_jurisdiction: "us-fl-volusia-county",
+      p_authoritative_parcel_id: "2123541",
+      p_verification_source: "volusia-parcel-ownership",
+      p_payload: expect.not.objectContaining({ organization_id: expect.anything() }),
+    }));
+    expect(query.insert).not.toHaveBeenCalled();
   });
 });

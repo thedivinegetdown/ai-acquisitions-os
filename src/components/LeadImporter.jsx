@@ -129,7 +129,7 @@ export default function LeadImporter({ deals = [], refresh, navigateToDeal }) {
     setCountyError("");
     try {
       const result = await confirmLeadImport(countyAnalysis);
-      const saved = result.success && result.data?.results?.find((item) => item.status === "imported")?.deal;
+      const saved = result.success && result.data?.results?.find((item) => ["imported", "existing"].includes(item.status))?.deal;
       if (!saved?.id) {
         setCountyError(result.error?.message || (result.data?.duplicateCount ? "This county case is already saved; no new lead was created." : "The research lead was not confirmed as saved. Retry or reload to check."));
         return;

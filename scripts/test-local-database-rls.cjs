@@ -105,7 +105,7 @@ function activationMustFail(target, label) {
   psql(target, { expectFailure: true, file: activationFile, label });
   psql(target, {
     label: `${label} rollback verification`,
-    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage','operational_failure_diagnostics','property_provider_evidence')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
+    sql: "do $$ begin if exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relrowsecurity and c.relname not in ('pilot_provisioning_requests','organization_settings','organization_provider_policies','organization_provider_usage','operational_failure_diagnostics','property_provider_evidence','property_identities','deal_intake_sources')) then raise exception 'Accepted-table RLS changed after blocked activation'; end if; end $$;",
   });
 }
 
@@ -230,6 +230,7 @@ function validateTarget(target, { upgrade = false } = {}) {
   psql(target, { file: path.join(testsDirectory, "eo_val_01_seed.sql"), label: "Synthetic tenant bootstrap" });
   exerciseActivationSafety(target);
   psql(target, { file: path.join(testsDirectory, "eo_val_01_rls.sql"), label: "Authenticated RLS assertions" });
+  psql(target, { file: path.join(testsDirectory, "canonical_property_identity_acceptance.sql"), label: "Canonical property identity acceptance" });
   if (upgrade) {
     psql(target, {
       capture: true, expectFailure: true, expectedError: "Build 6 admin ACL violation",

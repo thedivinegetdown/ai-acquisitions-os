@@ -31,8 +31,8 @@ grant usage on schema test_support to anon, authenticated, service_role;
 grant execute on all functions in schema test_support to anon, authenticated, service_role;
 
 select test_support.assert_true(
-  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 43,
-  'expected 43 tenant policies'
+  (select count(*) from pg_catalog.pg_policies where schemaname = 'public') = 45,
+  'expected 45 tenant policies'
 );
 select test_support.assert_true(
   (
@@ -47,11 +47,12 @@ select test_support.assert_true(
         'decision_recommendation_snapshots', 'decision_owner_decisions',
         'pilot_provisioning_requests', 'organization_settings',
         'organization_provider_policies', 'organization_provider_usage',
-        'operational_failure_diagnostics', 'property_provider_evidence'
+        'operational_failure_diagnostics', 'property_provider_evidence',
+        'property_identities', 'deal_intake_sources'
       )
       and relation.relrowsecurity
-  ) = 20,
-  'expected RLS enabled on all twenty tenant, pilot-admin, and provider-evidence tables'
+  ) = 22,
+  'expected RLS enabled on all twenty-two tenant, pilot-admin, provider-evidence, and property-identity tables'
 );
 
 -- Owner A: own-tenant read/write, cross-tenant denial, immutable ownership.
