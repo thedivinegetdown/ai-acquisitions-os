@@ -52,6 +52,7 @@ describe("LeadImporter durable confirmation", () => {
   it("does not write during preview and persists only after explicit confirmation", async () => {
     const refresh = vi.fn().mockResolvedValue();
     render(<LeadImporter deals={[]} refresh={refresh} />);
+    expect(screen.getByText("External property research → Vacant land")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Preview Manual Lead" }));
     expect(analyzeManualLead).toHaveBeenCalledTimes(1);

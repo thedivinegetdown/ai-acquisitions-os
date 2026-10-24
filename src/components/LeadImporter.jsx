@@ -14,6 +14,7 @@ import OrangeCountyWaterCaseDiscovery from "./OrangeCountyWaterCaseDiscovery";
 import VolusiaCircuitForeclosureDiscovery from "./VolusiaCircuitForeclosureDiscovery";
 import VolusiaTaxDeedSaleDiscovery from "./VolusiaTaxDeedSaleDiscovery";
 import VolusiaCodeComplianceDiscovery from "./VolusiaCodeComplianceDiscovery";
+import ExternalLandResearchIntake from "./ExternalLandResearchIntake";
 
 const fieldStyle = {
   border: "1px solid #d1d5db",
@@ -280,6 +281,7 @@ export default function LeadImporter({ deals = [], refresh, navigateToDeal }) {
         </span>
       </div>
 
+      <ExternalLandResearchIntake refresh={refresh} navigateToDeal={navigateToDeal} />
       <OrangeCountyTaxSaleDiscovery onReviewCandidate={reviewCountyCandidate} />
       {countyReview && (
         <section aria-label="County candidate review" style={cardStyle}>

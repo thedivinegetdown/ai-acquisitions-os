@@ -5,6 +5,7 @@ import {
 import {
   saveResearchCommand,
   saveSupportingEvidenceCommand,
+  saveSupportingEvidenceBatchCommand,
 } from "../../repositories/researchRepository";
 
 const state = vi.hoisted(() => ({
@@ -89,6 +90,32 @@ beforeEach(() => {
 });
 
 describe("supporting deal evidence intake", () => {
+  it("validates a whole evidence batch before one atomic write and preserves both conflict sources", async () => {
+    const result = await saveSupportingEvidenceBatchCommand(state.row, [
+      { ...ownershipCommand, fact: "County zoning: A-4", resolutionState: "CONFLICTING" },
+      { ...ownershipCommand, sourceName: "External listing", fact: "Listing zoning: A-3", status: "INDICATIVE", resolutionState: "CONFLICTING" },
+    ]);
+    expect(result.success).toBe(true);
+    expect(state.writes).toHaveLength(1);
+    expect(state.row.research_evidence).toHaveLength(3);
+    expect(state.row.research_revision).toBe(2);
+    expect(state.row.asking_price).toBe(baseDeal.asking_price);
+    expect(state.row.research_evidence.slice(1).every((item) => item.conflictState === "conflicting")).toBe(true);
+  });
+
+  it("leaves the entire batch untouched on invalid evidence, stale revision, or cross-tenant append", async () => {
+    const before = structuredClone(state.row);
+    expect((await saveSupportingEvidenceBatchCommand(before, [ownershipCommand, { ...ownershipCommand, status: "bad" }])).success).toBe(false);
+    expect(state.writes).toHaveLength(0);
+    expect(state.row).toEqual(before);
+    state.row.research_revision = 1;
+    expect((await saveSupportingEvidenceBatchCommand(before, [ownershipCommand])).success).toBe(false);
+    expect(state.row.research_evidence).toEqual(before.research_evidence);
+    state.context.organizationId = "org-2";
+    const writeCount = state.writes.length;
+    expect((await saveSupportingEvidenceBatchCommand(before, [ownershipCommand])).success).toBe(false);
+    expect(state.writes).toHaveLength(writeCount);
+  });
   it("appends complete VERIFIED ownership evidence and changes no canonical or decision fields", async () => {
     const result = await saveSupportingEvidenceCommand(state.row, ownershipCommand);
 
