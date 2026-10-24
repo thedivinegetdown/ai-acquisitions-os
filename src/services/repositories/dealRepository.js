@@ -13,6 +13,7 @@ import { recordOperationalFailure } from "./operationalDiagnosticRepository";
 import { ASSET_CLASSIFICATION_STATES, ASSET_TYPES } from "../asset-strategy/assetStrategyContracts";
 import { classifyOpportunityAsset } from "../asset-strategy/assetClassificationService";
 import { OPERATING_SCOPES } from "../deals/operatingScopePolicy";
+import { normalizeVerifiedPropertyIdentity } from "../leadIntake/propertyIdentityService";
 
 const DEAL_SELECT = "*";
 export async function saveDealOperatingScope(deal, scope) {
@@ -202,14 +203,37 @@ export async function persistImportedDeals(records = []) {
         ...stripOrganizationOwnership(record.payload || {}),
         organization_id: organizationId,
       };
-      if (ownedPayload.source === "orange-county-tax-sale" && Array.isArray(ownedPayload.research_evidence)) {
+      const verifiedPropertyIdentity = normalizeVerifiedPropertyIdentity(
+        record.verifiedPropertyIdentity
+      );
+      if (verifiedPropertyIdentity && Array.isArray(ownedPayload.research_evidence)) {
         ownedPayload.research_evidence = ownedPayload.research_evidence.map((entry) => ({ ...entry, organizationId }));
       }
-      const { data, error } = await supabase
-        .from("deals")
-        .insert(ownedPayload)
-        .select()
-        .limit(1);
+
+      let data;
+      let error;
+      let admissionStatus = "imported";
+      if (verifiedPropertyIdentity) {
+        const admission = await supabase.rpc("admit_verified_property_deal", {
+          p_organization_id: organizationId,
+          p_jurisdiction: verifiedPropertyIdentity.jurisdiction,
+          p_authoritative_parcel_id: verifiedPropertyIdentity.authoritativeParcelId,
+          p_verification_source: verifiedPropertyIdentity.verificationSource,
+          p_verified_at: verifiedPropertyIdentity.verifiedAt,
+          p_payload: stripOrganizationOwnership(ownedPayload),
+        });
+        error = admission.error;
+        admissionStatus = admission.data?.status;
+        data = admission.data?.deal ? [admission.data.deal] : null;
+      } else {
+        const insertion = await supabase
+          .from("deals")
+          .insert(ownedPayload)
+          .select()
+          .limit(1);
+        data = insertion.data;
+        error = insertion.error;
+      }
 
       if (error?.code === "23505") {
         results.push({ rowNumber: record.rowNumber, status: "duplicate" });
@@ -219,8 +243,16 @@ export async function persistImportedDeals(records = []) {
           status: "failed",
           error: "Record was rejected by persistence validation.",
         });
-      } else {
+      } else if (admissionStatus === "existing" && data?.[0]) {
+        results.push({ rowNumber: record.rowNumber, status: "existing", deal: data[0] });
+      } else if (data?.[0]) {
         results.push({ rowNumber: record.rowNumber, status: "imported", deal: data?.[0] || ownedPayload });
+      } else {
+        results.push({
+          rowNumber: record.rowNumber,
+          status: "failed",
+          error: "Record was rejected by persistence validation.",
+        });
       }
     }
 
@@ -236,7 +268,7 @@ export async function persistImportedDeals(records = []) {
     return repositorySuccess({
       results,
       importedCount: results.filter((result) => result.status === "imported").length,
-      duplicateCount: results.filter((result) => result.status === "duplicate").length,
+      duplicateCount: results.filter((result) => ["duplicate", "existing"].includes(result.status)).length,
       failedCount,
       correlationId: failedCount > 0 ? correlationId : null,
     });

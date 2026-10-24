@@ -10,7 +10,24 @@ vi.mock("../../services/leadDiscovery/orangeCountyTaxSaleSource", () => ({
   fetchOrangeCountyTaxSaleCandidates: fetchCandidates,
 }));
 vi.mock("../../supabaseClient", () => ({
-  supabase: { from: (table) => {
+  supabase: { rpc: async (name, args) => {
+    if (name !== "admit_verified_property_deal") throw new Error(`Unexpected RPC ${name}`);
+    if (db.fail) return { data: null, error: { code: "XX000", message: "synthetic insert failure" } };
+    const payload = { ...structuredClone(args.p_payload), organization_id: args.p_organization_id };
+    db.writes.push(payload);
+    const key = `${args.p_organization_id}:${args.p_jurisdiction}:${args.p_authoritative_parcel_id}`;
+    if (db.rows.has(key)) {
+      return { data: { status: "existing", deal: structuredClone(db.rows.get(key)) }, error: null };
+    }
+    const row = {
+      id: `saved-${db.nextId++}`,
+      ...payload,
+      property_jurisdiction: args.p_jurisdiction,
+      authoritative_parcel_id: args.p_authoritative_parcel_id,
+    };
+    db.rows.set(key, row);
+    return { data: { status: "imported", deal: structuredClone(row) }, error: null };
+  }, from: (table) => {
     if (table !== "deals") throw new Error(`Unexpected table ${table}`);
     const query = { payload: null, organizationId: null };
     query.insert = (payload) => { query.payload = structuredClone(payload); db.writes.push(query.payload); return query; };

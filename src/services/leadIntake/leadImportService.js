@@ -4,9 +4,11 @@ import {
   normalizeLead,
   toDealImportPayload,
   toDealPreviewPayload,
+  toVerifiedPropertyAdmission,
 } from "./leadNormalizationService";
 import { validateLeads } from "./leadValidationService";
 import { normalizeCanonicalEvidence as normalizeEvidenceReference } from "../research-intelligence/evidence/evidenceContracts";
+import { buildOrangeVerifiedPropertyIdentity } from "./propertyIdentityService";
 
 const TAX_SOURCE = "orange-county-tax-sale";
 const OCPA_SOURCE = "orange-county-property-appraiser";
@@ -31,8 +33,9 @@ export function analyzeOrangeCountyTaxSaleCandidate({ candidate, existingDeals =
   const tda = String(candidate?.externalTaxDeedNumber || "").trim();
   const parcel = String(candidate?.parcelNumber || "").trim();
   const address = String(ocpa?.address || "").trim();
-  if (candidate?.source !== TAX_SOURCE || !tda || !parcel || ocpa?.status !== "matched" ||
-      ocpa?.source !== OCPA_SOURCE || parcelKey(parcel) !== parcelKey(ocpa.parcelId) || !address) return null;
+  const verifiedPropertyIdentity = buildOrangeVerifiedPropertyIdentity(ocpa);
+  if (candidate?.source !== TAX_SOURCE || !tda || !parcel || !verifiedPropertyIdentity ||
+      parcelKey(parcel) !== parcelKey(ocpa.parcelId) || !address) return null;
 
   const taxEvidence = countyEvidence({
     sourceSystem: TAX_SOURCE, sourceType: "tax-record", sourceRecordId: tda,
@@ -65,7 +68,7 @@ export function analyzeOrangeCountyTaxSaleCandidate({ candidate, existingDeals =
       retrievedAt: ocpa.retrievedAt, sourceReference: OCPA_REFERENCE },
   });
   const lead = {
-    countyResearch: true, tdaNumber: tda, parcelNumber: parcel,
+    countyResearch: true, tdaNumber: tda, parcelNumber: parcel, verifiedPropertyIdentity,
     sellerName: "", phone: "", email: "", propertyAddress: address,
     city: ocpa.city || "", state: "FL", zip: ocpa.zip || "",
     leadSource: TAX_SOURCE, market: "Orange County, FL", askingPrice: null, notes: "",
@@ -181,6 +184,7 @@ export async function confirmLeadImport(analysis = {}) {
     acceptedLeads.map((lead) => ({
       rowNumber: lead.rowNumber,
       payload: toDealImportPayload(lead),
+      verifiedPropertyIdentity: toVerifiedPropertyAdmission(lead),
     }))
   );
 
