@@ -26,16 +26,25 @@ export async function saveResearchCommand(deal, command) {
 }
 
 export async function saveSupportingEvidenceCommand(deal, command) {
+  return saveSupportingEvidenceBatchCommand(deal, [command]);
+}
+
+// Validate the complete reviewed batch before one optimistic, tenant-bound write.
+// A stale revision or any invalid item leaves all existing evidence untouched.
+export async function saveSupportingEvidenceBatchCommand(deal, commands) {
   return runRepositoryOperation(async () => {
     const context = await requireActiveOrganizationContext();
     if (deal.organization_id !== context.organizationId) {
       throw new Error("The deal is outside the active organization.");
     }
-    const payload = buildSupportingEvidenceAppendMutation({
-      deal,
-      command,
-      actorReference: context.userId,
-    });
+    if (!Array.isArray(commands) || !commands.length) throw new Error("Reviewed evidence is required.");
+    let updated = deal;
+    for (const command of commands) {
+      updated = { ...updated, ...buildSupportingEvidenceAppendMutation({
+        deal: updated, command, actorReference: context.userId,
+      }) };
+    }
+    const payload = { research_evidence: updated.research_evidence, research_revision: updated.research_revision };
     let query = supabase.from("deals").update(payload)
       .eq("id", deal.id).eq("organization_id", context.organizationId)
       .eq("research_revision", deal.research_revision || 0);
