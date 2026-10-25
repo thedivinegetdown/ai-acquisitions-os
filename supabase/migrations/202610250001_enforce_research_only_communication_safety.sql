@@ -4,6 +4,12 @@
 
 begin;
 
+-- Wait for earlier writers, then audit a fresh committed snapshot. Hold both
+-- write-excluding locks through COMMIT so neither sequence writes nor scope
+-- changes can slip between the audit and installation. Ordinary reads continue.
+set transaction isolation level read committed;
+lock table public.sequences, public.deals in share row exclusive mode;
+
 do $$
 begin
   if exists (
