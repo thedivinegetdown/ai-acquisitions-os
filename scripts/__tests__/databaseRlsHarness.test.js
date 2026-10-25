@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -39,11 +40,42 @@ describe("EO-VAL-01 guarded database harness", () => {
 
   it("discovers all committed migrations in deterministic order", () => {
     const migrations = listMigrations().map((file) => path.basename(file));
-    expect(migrations).toHaveLength(19);
-    expect(migrations).toEqual([...migrations].sort());
+    expect(migrations).toEqual([
+      "202606240001_create_current_schema_baseline.sql",
+      "202606250001_create_seller_tasks.sql",
+      "202606270001_add_message_logs_direction.sql",
+      "202606280001_complete_current_schema_constraints.sql",
+      "202608110001_create_tenant_security_foundation.sql",
+      "202608110002_define_tenant_rls_policies.sql",
+      "202608110003_enforce_tenant_ownership_immutability.sql",
+      "202608110004_harden_twilio_communications.sql",
+      "202608130001_allow_initial_tenant_ownership_assignment.sql",
+      "202609230001_add_durable_lead_intake_idempotency.sql",
+      "202609230002_add_deal_research_resolution.sql",
+      "202609230003_add_offer_to_close_lifecycle.sql",
+      "202609240001_add_decision_memory.sql",
+      "202609240002_add_assisted_pilot_readiness.sql",
+      "202609240003_restrict_pilot_admin_function_execution.sql",
+      "202609240004_add_scale_safety_diagnostics.sql",
+      "202609240005_add_rentcast_property_evidence.sql",
+      "202610090001_add_deal_operating_scope.sql",
+      "202610150001_add_canonical_property_identity.sql",
+      "202610250001_enforce_research_only_communication_safety.sql",
+    ]);
+    expect(new Set(migrations).size).toBe(migrations.length);
     migrations.forEach((migration) =>
       expect(migration).toMatch(/^\d{12}_[a-z0-9_]+\.sql$/)
     );
+  });
+
+  it("pins the already-applied communication migration without executing SQL", () => {
+    const migration = readFileSync(path.join(
+      root, "supabase", "migrations",
+      "202610250001_enforce_research_only_communication_safety.sql"
+    ), "utf8");
+    // Git checkouts may use CRLF; compare the exact accepted LF source bytes.
+    expect(createHash("sha256").update(migration.replace(/\r\n/g, "\n")).digest("hex"))
+      .toBe("1c969dc96daf384cf531897298a2b51f69ccecb42c7e02fa52a026197117cfd4");
   });
 
   it("keeps the one-time ownership bootstrap correction in migration history", () => {

@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { buildSmsTemplates, loadMessageLogs } from "../services/conversations";
+import { getOperatingScopePolicy } from "../services/deals/operatingScopePolicy";
 import { sendOutboundSms } from "../services/sms";
 
 export default function MessageCenter({ deal }) {
   const property = deal?.property_address || "your property";
+  const operatingPolicy = getOperatingScopePolicy(deal);
+  const communicationRestricted = operatingPolicy.restricted;
 
   const templates = useMemo(
     () => buildSmsTemplates({ propertyAddress: property }),
@@ -58,6 +61,11 @@ export default function MessageCenter({ deal }) {
   async function sendSMS() {
     setError("");
     setSuccess("");
+
+    if (communicationRestricted) {
+      setError("Seller communication is disabled while this deal is research only.");
+      return;
+    }
 
     if (!currentDealId) {
       setError("Missing deal record.");
@@ -114,6 +122,12 @@ export default function MessageCenter({ deal }) {
     >
       <h3 style={{ marginTop: 0, marginBottom: 12 }}>Message Center</h3>
 
+      {communicationRestricted ? (
+        <p role="status" style={{ color: "#9a3412", fontWeight: 700 }}>
+          Seller communication is disabled while this deal is research only.
+        </p>
+      ) : null}
+
       {/* 🔥 TEMPLATE BUTTONS */}
       <div
         style={{
@@ -123,10 +137,10 @@ export default function MessageCenter({ deal }) {
           flexWrap: "wrap",
         }}
       >
-        <button onClick={() => setMessage(templates.initial)}>Initial</button>
-        <button onClick={() => setMessage(templates.followup)}>Follow-Up</button>
-        <button onClick={() => setMessage(templates.offer)}>Cash Offer</button>
-        <button onClick={() => setMessage(templates.checkin)}>Check-In</button>
+        <button disabled={communicationRestricted} onClick={() => setMessage(templates.initial)}>Initial</button>
+        <button disabled={communicationRestricted} onClick={() => setMessage(templates.followup)}>Follow-Up</button>
+        <button disabled={communicationRestricted} onClick={() => setMessage(templates.offer)}>Cash Offer</button>
+        <button disabled={communicationRestricted} onClick={() => setMessage(templates.checkin)}>Check-In</button>
       </div>
 
       <div style={{ marginBottom: 10 }}>
@@ -143,6 +157,7 @@ export default function MessageCenter({ deal }) {
 
         <input
           type="text"
+          disabled={communicationRestricted}
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           placeholder="Enter phone number"
@@ -169,6 +184,7 @@ export default function MessageCenter({ deal }) {
 
         <textarea
           rows="5"
+          disabled={communicationRestricted}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           style={{
@@ -180,7 +196,7 @@ export default function MessageCenter({ deal }) {
         />
       </div>
 
-      <button onClick={sendSMS} disabled={sending}>
+      <button onClick={sendSMS} disabled={sending || communicationRestricted}>
         {sending ? "Sending..." : "Send SMS"}
       </button>
 

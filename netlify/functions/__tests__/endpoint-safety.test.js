@@ -114,10 +114,13 @@ describe("Netlify function endpoint safety", () => {
     const handler = sendSms.createSendSmsHandler({
       authorize: authorized(),
       loadConsent: vi.fn().mockResolvedValue({ status: "unknown" }),
+      requireAcquisitionDeal: vi.fn().mockResolvedValue({
+        deal: { id: "deal-1", operating_scope: "active_acquisition" },
+      }),
     });
     const result = await handler({
       httpMethod: "POST",
-      body: JSON.stringify({ to: "+15551234567", message: "Hello from test" }),
+      body: JSON.stringify({ dealId: "deal-1", to: "+15551234567", message: "Hello from test" }),
     });
 
     commonSafeChecks(result);
@@ -137,10 +140,15 @@ describe("Netlify function endpoint safety", () => {
     delete process.env.EMAIL_PROVIDER;
     delete process.env.EMAIL_API_KEY;
 
-    const handler = sendEmail.createSendEmailHandler({ authorize: authorized() });
+    const handler = sendEmail.createSendEmailHandler({
+      authorize: authorized(),
+      requireAcquisitionDeal: vi.fn().mockResolvedValue({
+        deal: { id: "deal-1", operating_scope: "active_acquisition" },
+      }),
+    });
     const result = await handler({
       httpMethod: "POST",
-      body: JSON.stringify({ to: "person@example.com", subject: "Test", body: "Hello" }),
+      body: JSON.stringify({ dealId: "deal-1", to: "person@example.com", subject: "Test", body: "Hello" }),
     });
 
     commonSafeChecks(result);

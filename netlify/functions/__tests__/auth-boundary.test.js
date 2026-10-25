@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const {
   MUTATION_ROLES,
   bearerToken,
+  requireActiveAcquisitionDeal,
   requireAuthenticatedRequest,
   requireDealInOrganization,
   requireTenantContext,
@@ -224,6 +225,51 @@ describe("Netlify authenticated tenant boundary", () => {
 
     expect(result.response.statusCode).toBe(404);
     expect(responseBody(result).error).toBe("Resource not found.");
+  });
+
+  it("uses the stored tenant-owned scope for outbound communication", async () => {
+    const researchQuery = queryResult({
+      data: [
+        {
+          id: "deal-1",
+          organization_id: "org-1",
+          operating_scope: "research_only",
+        },
+      ],
+      error: null,
+    });
+    const activeQuery = queryResult({
+      data: [
+        {
+          id: "deal-2",
+          organization_id: "org-1",
+          operating_scope: "active_acquisition",
+        },
+      ],
+      error: null,
+    });
+
+    const blocked = await requireActiveAcquisitionDeal(
+      { from: vi.fn(() => researchQuery) },
+      "deal-1",
+      "org-1"
+    );
+    const allowed = await requireActiveAcquisitionDeal(
+      { from: vi.fn(() => activeQuery) },
+      "deal-2",
+      "org-1"
+    );
+
+    expect(blocked.response.statusCode).toBe(403);
+    expect(responseBody(blocked).status).toBe("blocked-by-operating-scope");
+    expect(allowed.deal).toMatchObject({
+      id: "deal-2",
+      organization_id: "org-1",
+      operating_scope: "active_acquisition",
+    });
+    expect(researchQuery.select).toHaveBeenCalledWith(
+      "id, organization_id, operating_scope"
+    );
   });
 
   it("does not log raw bearer tokens", async () => {

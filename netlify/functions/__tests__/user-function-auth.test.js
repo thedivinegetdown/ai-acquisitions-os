@@ -177,7 +177,13 @@ describe("user-originated Netlify API authorization", () => {
     delete process.env.EMAIL_PROVIDER;
     delete process.env.EMAIL_API_KEY;
     const context = authorized();
-    const verifyDeal = vi.fn().mockResolvedValue({ deal: { id: "deal-1" } });
+    const verifyDeal = vi.fn().mockResolvedValue({
+      deal: {
+        id: "deal-1",
+        organization_id: "org-1",
+        operating_scope: "active_acquisition",
+      },
+    });
     const handler = sendEmail.createSendEmailHandler({
       authorize: context.authorize,
       verifyDeal,

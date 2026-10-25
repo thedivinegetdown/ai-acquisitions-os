@@ -174,7 +174,7 @@ async function requireDealInOrganization(adminClient, dealId, organizationId) {
   try {
     const { data, error } = await adminClient
       .from("deals")
-      .select("id, organization_id")
+      .select("id, organization_id, operating_scope")
       .eq("id", dealId)
       .eq("organization_id", organizationId)
       .limit(1);
@@ -192,6 +192,49 @@ async function requireDealInOrganization(adminClient, dealId, organizationId) {
   }
 }
 
+async function requireActiveAcquisitionDeal(
+  adminClient,
+  dealId,
+  organizationId,
+  { verifyDeal = requireDealInOrganization } = {}
+) {
+  if (!safeTrim(dealId)) {
+    return {
+      response: json(400, {
+        success: false,
+        error: "A deal is required for outbound communication.",
+      }),
+    };
+  }
+
+  const result = await verifyDeal(adminClient, dealId, organizationId);
+  if (result.response) return result;
+  if (
+    !result.deal ||
+    result.deal.id !== safeTrim(dealId) ||
+    result.deal.organization_id !== organizationId
+  ) {
+    return {
+      response: json(404, { success: false, error: "Resource not found." }),
+    };
+  }
+
+  // Only the absent legacy value inherits acquisition behavior. Invalid or
+  // restricted values fail closed, matching the application scope policy.
+  const scope = result.deal?.operating_scope ?? "active_acquisition";
+  if (scope !== "active_acquisition") {
+    return {
+      response: json(403, {
+        success: false,
+        status: "blocked-by-operating-scope",
+        error: "Outbound communication is disabled for this deal's operating scope.",
+      }),
+    };
+  }
+
+  return result;
+}
+
 module.exports = {
   MEMBERSHIP_ROLES,
   MUTATION_ROLES,
@@ -199,6 +242,7 @@ module.exports = {
   getSupabaseRuntimeConfig,
   createServerClients,
   requireAuthenticatedRequest,
+  requireActiveAcquisitionDeal,
   requireDealInOrganization,
   requireTenantContext,
   resolveRequestedOrganizationId,

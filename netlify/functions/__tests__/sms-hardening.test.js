@@ -8,7 +8,11 @@ const originalEnv = { ...process.env };
 const fixedNow = "2026-08-11T18:00:00.000Z";
 
 function event(body = {}) {
-  return { httpMethod: "POST", body: JSON.stringify(body), headers: {} };
+  return {
+    httpMethod: "POST",
+    body: JSON.stringify({ dealId: "deal-1", ...body }),
+    headers: {},
+  };
 }
 
 function context() {
@@ -42,6 +46,13 @@ function createHandler({ consent = "unknown", twilioFactory = vi.fn() } = {}) {
       loadConsent,
       now: () => fixedNow,
       twilioFactory,
+      verifyDeal: vi.fn().mockResolvedValue({
+        deal: {
+          id: "deal-1",
+          organization_id: "org-1",
+          operating_scope: "active_acquisition",
+        },
+      }),
     }),
   };
 }
