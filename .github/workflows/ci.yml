@@ -21,6 +21,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Fallback packaging verifies files against pinned base/safety commits.
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
