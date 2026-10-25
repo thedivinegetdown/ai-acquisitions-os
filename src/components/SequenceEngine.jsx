@@ -4,6 +4,7 @@ import {
   listSequencesByDeal,
   updateSequenceStep,
 } from "../services/repositories";
+import { getOperatingScopePolicy } from "../services/deals/operatingScopePolicy";
 
 const STEPS = [
   { day: 0, type: "Call" },
@@ -22,6 +23,8 @@ function addDays(days) {
 export default function SequenceEngine({
   deal,
 }) {
+  const operatingPolicy = getOperatingScopePolicy(deal);
+  const communicationRestricted = operatingPolicy.restricted;
   const [rows, setRows] =
     useState([]);
   const [loading, setLoading] =
@@ -49,6 +52,7 @@ export default function SequenceEngine({
   }
 
   async function generate() {
+    if (communicationRestricted) return;
     setSaving(true);
 
     const payload =
@@ -75,6 +79,7 @@ export default function SequenceEngine({
   }
 
   async function markDone(id) {
+    if (communicationRestricted) return;
     const result = await updateSequenceStep(id, {
       status: "Completed",
     });
@@ -97,8 +102,15 @@ export default function SequenceEngine({
         Follow-Up Sequence
       </h3>
 
+      {communicationRestricted ? (
+        <p role="status" style={{ color: "#9a3412", fontWeight: 700 }}>
+          Outreach sequences are disabled while this deal is research only.
+        </p>
+      ) : null}
+
       {rows.length === 0 ? (
         <button
+          disabled={saving || communicationRestricted}
           onClick={
             generate
           }
@@ -161,6 +173,7 @@ export default function SequenceEngine({
                 {row.status !==
                 "Completed" ? (
                   <button
+                    disabled={communicationRestricted}
                     onClick={() =>
                       markDone(
                         row.id

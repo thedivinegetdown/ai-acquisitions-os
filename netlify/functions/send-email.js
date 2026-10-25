@@ -9,6 +9,7 @@ const {
 
 const {
   MUTATION_ROLES,
+  requireActiveAcquisitionDeal,
   requireDealInOrganization,
   requireTenantContext,
 } = require("./_shared/auth.cjs");
@@ -17,6 +18,7 @@ const MAX_BODY_CHARS = 12000;
 
 function createSendEmailHandler({
   authorize = requireTenantContext,
+  requireAcquisitionDeal = requireActiveAcquisitionDeal,
   verifyDeal = requireDealInOrganization,
 } = {}) {
   return async (event) => {
@@ -38,15 +40,6 @@ function createSendEmailHandler({
     const message = truncate(parsed.body.body || parsed.body.message, MAX_BODY_CHARS);
     const dealId = safeTrim(parsed.body.deal_id || parsed.body.dealId);
 
-    if (dealId) {
-      const deal = await verifyDeal(
-        authorization.clients.adminClient,
-        dealId,
-        authorization.context.organizationId
-      );
-      if (deal.response) return deal.response;
-    }
-
     if (!isLikelyEmail(to)) {
       return json(400, {
         success: false,
@@ -60,6 +53,14 @@ function createSendEmailHandler({
         error: "Email subject and body are required.",
       });
     }
+
+    const deal = await requireAcquisitionDeal(
+      authorization.clients.adminClient,
+      dealId,
+      authorization.context.organizationId,
+      { verifyDeal }
+    );
+    if (deal.response) return deal.response;
 
     if (!process.env.EMAIL_PROVIDER || !process.env.EMAIL_API_KEY) {
       return json(200, {

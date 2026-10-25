@@ -12,6 +12,7 @@ const {
 } = require("./_shared/security.cjs");
 const {
   MUTATION_ROLES,
+  requireActiveAcquisitionDeal,
   requireDealInOrganization,
   requireTenantContext,
 } = require("./_shared/auth.cjs");
@@ -24,6 +25,7 @@ const MAX_SMS_CHARS = 1600;
 
 function createSendSmsHandler({
   authorize = requireTenantContext,
+  requireAcquisitionDeal = requireActiveAcquisitionDeal,
   loadConsent = loadSmsConsent,
   verifyDeal = requireDealInOrganization,
   twilioFactory = twilio,
@@ -35,6 +37,7 @@ function createSendSmsHandler({
         authorize,
         loadConsent,
         now,
+        requireAcquisitionDeal,
         verifyDeal,
         twilioFactory,
       });
@@ -53,7 +56,14 @@ exports.handler = createSendSmsHandler();
 
 async function handleRequest(
   event,
-  { authorize, loadConsent, now, verifyDeal, twilioFactory }
+  {
+    authorize,
+    loadConsent,
+    now,
+    requireAcquisitionDeal,
+    verifyDeal,
+    twilioFactory,
+  }
 ) {
   const methodResponse = requirePost(event);
   if (methodResponse) return methodResponse;
@@ -73,11 +83,6 @@ async function handleRequest(
   const dealId = safeTrim(parsed.body.deal_id || parsed.body.dealId) || null;
   const { adminClient } = authorization.clients;
   const { organizationId, userId } = authorization.context;
-
-  if (dealId) {
-    const deal = await verifyDeal(adminClient, dealId, organizationId);
-    if (deal.response) return deal.response;
-  }
 
   logInfo("[SMS] Authorized request", {
     userId,
@@ -101,6 +106,11 @@ async function handleRequest(
       error: "Missing message body.",
     });
   }
+
+  const deal = await requireAcquisitionDeal(adminClient, dealId, organizationId, {
+    verifyDeal,
+  });
+  if (deal.response) return deal.response;
 
   const consent = await loadConsent(adminClient, organizationId, to);
   if (consent.response) return consent.response;
